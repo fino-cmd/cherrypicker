@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "autoPort": true,
+  "configurations": [
+    {
+      "name": "Frontend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-c", "import os,http.server,socketserver; p=int(os.environ.get('PORT',4000)); socketserver.TCPServer(('',p),http.server.SimpleHTTPRequestHandler).serve_forever()"],
+      "port": 4000
+    },
+    {
+      "name": "Backend (FastAPI)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8002"],
+      "port": 8002
+    }
+  ]
+}

@@ -1093,7 +1093,7 @@
         <span class="nav-icon"><svg viewBox="0 0 18 18" width="14" fill="none"><circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 9 Q5.5 6 9 9 Q12.5 12 15 9" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg></span>
         Pitcher Deep Dive
       </a>
-      <a href="#" class="nav-item" data-section="overview" onclick="showSection('overview',this)">
+      <a href="#" class="nav-item" data-section="matchup-tool" onclick="showSection('matchup-tool',this)">
         <span class="nav-icon"><svg viewBox="0 0 18 18" width="14" fill="none"><path d="M2 9 L9 2 L16 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9v6h3v-4h4v4h3V9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         Matchup Tool
       </a>
@@ -1134,6 +1134,11 @@
   <!-- BODY -->
   <div class="app-body">
     <main class="app-main">
+
+    <!-- ── MATCHUP TOOL ── -->
+    <section id="section-matchup-tool" class="app-section" style="display:none">
+      <!-- populated by app.js -->
+    </section>
 
     <!-- ── OVERVIEW ── -->
     <section id="section-overview" class="app-section" style="display:none">
@@ -1346,7 +1351,7 @@
   </div><!-- /.app-body -->
 </div>
 
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const d = document.getElementById('props-date');

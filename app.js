@@ -1,4 +1,4 @@
-const API = `http://${window.location.hostname}:8002`;
+const API = `http://${window.location.hostname}:8003`;
 
 // ── MLB team abbreviation → numeric ID (for logo CDN) ─────────────────────────
 const _TEAM_ID = {
@@ -112,6 +112,234 @@ function showSection(name, el) {
   if (name === 'tracker') loadTracker();
   if (name === 'overview') loadOverview();
   if (name === 'todays-picks') loadTodaysPicks();
+  if (name === 'matchup-tool') loadMatchupTool();
+}
+
+// ── MATCHUP TOOL ──────────────────────────────────────────────────────────────
+
+let _matchupToolGames = null;
+const _cubeSimData    = {};   // game_id → sim result + ou_line
+
+async function loadMatchupTool() {
+  const sec = document.getElementById('section-matchup-tool');
+  if (!sec || sec.dataset.built) return;
+  sec.dataset.built = '1';
+
+  sec.innerHTML = `
+    <div class="mt-header">
+      <div class="pp-title">MATCHUP <span class="pp-title-accent">SIMULATOR</span></div>
+      <div class="pp-desc">Monte Carlo 10,000-game O/U — xFIP × xwOBA model</div>
+    </div>
+    <div id="sim-cube-grid" class="sim-cube-grid">
+      <div class="sim-cube-status">Cargando partidos…</div>
+    </div>
+
+    <!-- Nerd-data bottom drawer -->
+    <div id="nerd-overlay" class="nerd-overlay" onclick="closeNerdPanel()"></div>
+    <div id="nerd-drawer" class="nerd-drawer" role="dialog" aria-modal="true" aria-label="Nerd data">
+      <div class="nerd-drawer-pill" onclick="closeNerdPanel()" role="button" aria-label="Cerrar"></div>
+      <div class="nerd-drawer-scroll" id="nerd-drawer-content"></div>
+    </div>
+  `;
+
+  try {
+    const games = await apiFetch('/api/games/today');
+    _matchupToolGames = games;
+    const grid = document.getElementById('sim-cube-grid');
+
+    if (!games.length) {
+      grid.innerHTML = '<div class="sim-cube-status">No hay partidos hoy</div>';
+      return;
+    }
+
+    grid.innerHTML = games.map(g => `
+      <div class="sim-cube" id="cube-${g.game_id}" onclick="openNerdPanel(${g.game_id})">
+
+        <!-- ── Red header ── -->
+        <div class="sim-cube-top">
+          <img src="cherry.png" class="sim-cube-cherry" alt="" />
+          <div class="sim-cube-teams">
+            <span class="sim-cube-team">${g.away_team}</span>
+            <span class="sim-cube-at">@</span>
+            <span class="sim-cube-team">${g.home_team}</span>
+          </div>
+          <div class="sim-cube-pitchers">${g.away_pitcher.name} · ${g.home_pitcher.name}</div>
+        </div>
+
+        <!-- ── Verdict (hidden until sim runs) ── -->
+        <div class="sim-cube-verdict" id="verdict-${g.game_id}" aria-live="polite">
+          <span class="sim-cube-direction" id="vdir-${g.game_id}"></span>
+          <span class="sim-cube-total"    id="vtot-${g.game_id}"></span>
+          <span class="sim-cube-prob"     id="vprob-${g.game_id}"></span>
+        </div>
+
+        <!-- ── Controls ── -->
+        <div class="sim-cube-bottom" onclick="event.stopPropagation()">
+          <div class="sim-cube-ou-wrap">
+            <label class="sim-cube-ou-label" for="ou-${g.game_id}">O/U</label>
+            <input  class="sim-cube-ou-input" id="ou-${g.game_id}"
+                    type="number" step="0.5" min="1" max="30" value="8.5"
+                    aria-label="Línea Over/Under" />
+          </div>
+          <button class="sim-cube-play" id="play-${g.game_id}"
+                  onclick="runCubeSim(${g.game_id})"
+                  aria-label="Simular partido ${g.away_team} vs ${g.home_team}">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+              <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+    `).join('');
+
+  } catch (e) {
+    document.getElementById('sim-cube-grid').innerHTML =
+      '<div class="sim-cube-status">Error al cargar partidos</div>';
+  }
+}
+
+async function runCubeSim(game_id) {
+  const playBtn = document.getElementById(`play-${game_id}`);
+  const ouInput = document.getElementById(`ou-${game_id}`);
+  const ou_line = parseFloat(ouInput?.value ?? 8.5);
+  if (isNaN(ou_line)) return;
+
+  playBtn.disabled = true;
+  playBtn.classList.add('sim-cube-play--loading');
+
+  try {
+    const d = await apiPost('/api/simulation/ou', { game_id, ou_line });
+    _cubeSimData[game_id] = { ...d, ou_line };
+
+    const isOver   = d.over_prob >= d.under_prob;
+    const direction = isOver ? 'OVER' : 'UNDER';
+    const prob      = Math.round(Math.max(d.over_prob, d.under_prob) * 100);
+
+    document.getElementById(`vdir-${game_id}`).textContent  = direction;
+    document.getElementById(`vdir-${game_id}`).className    =
+      `sim-cube-direction sim-cube-direction--${direction.toLowerCase()}`;
+    document.getElementById(`vtot-${game_id}`).textContent  = d.avg_total.toFixed(1);
+    document.getElementById(`vprob-${game_id}`).textContent = `${prob}%`;
+
+    const cube = document.getElementById(`cube-${game_id}`);
+    cube.classList.add('sim-cube--result');
+
+  } catch (e) {
+    _showToast('Error en simulación: ' + e.message, 'error');
+  } finally {
+    playBtn.disabled = false;
+    playBtn.classList.remove('sim-cube-play--loading');
+  }
+}
+
+function openNerdPanel(game_id) {
+  const data = _cubeSimData[game_id];
+  if (!data) return;   // no sim yet — nothing to show
+
+  const d        = data;
+  const ou_line  = d.ou_line;
+  const fmtKPct  = v => v != null ? (v * 100).toFixed(1) + '%' : '—';
+
+  const overPct  = Math.round(d.over_prob  * 100);
+  const underPct = Math.round(d.under_prob * 100);
+  const edgeAbs  = Math.abs(d.edge_pct * 100).toFixed(1);
+  const edgeDir  = d.edge_pct >= 0 ? 'OVER' : 'UNDER';
+  const edgeSign = d.edge_pct >= 0 ? '+' : '-';
+  const barClass = overPct > 55 ? 'mt-bar-green' : overPct < 45 ? 'mt-bar-red' : 'mt-bar-yellow';
+
+  const parkColor = d.park_factor >= 105 ? 'var(--red-light)' : d.park_factor <= 95 ? '#22c55e' : 'var(--text-muted)';
+  const parkLabel = d.park_factor >= 105 ? 'hitter-friendly' : d.park_factor <= 95 ? 'pitcher-friendly' : 'neutral';
+
+  const maxCount = Math.max(...d.histogram.map(b => b.count), 1);
+  const histHTML = d.histogram.map(b => {
+    const w  = Math.round((b.count / maxCount) * 100);
+    const hl = ou_line >= b.lo && ou_line <= b.hi;
+    return `<div class="mt-hist-row${hl ? ' mt-hist-highlight' : ''}">
+      <span class="mt-hist-bucket">${b.bucket}</span>
+      <div class="mt-hist-bar-wrap"><div class="mt-hist-bar${hl ? ' mt-hist-bar-hl' : ''}" style="width:${w}%"></div></div>
+      <span class="mt-hist-count">${b.count.toLocaleString()}</span>
+    </div>`;
+  }).join('');
+
+  let lineupHTML = '';
+  if (d.lineup_confirmed) {
+    const rows = Array.from({length: 9}, (_, i) => {
+      const h = (d.home_lineup[i] || {}).name || '—';
+      const a = (d.away_lineup[i] || {}).name || '—';
+      return `<div class="mt-lineup-row">
+        <span class="mt-lineup-num">${i + 1}</span>
+        <span class="mt-lineup-name">${h}</span>
+        <span class="mt-lineup-name mt-lineup-away">${a}</span>
+      </div>`;
+    }).join('');
+    lineupHTML = `<div class="mt-lineup-display">
+      <div class="mt-lineup-header"><span></span><span>${d.home_team}</span><span>${d.away_team}</span></div>
+      ${rows}
+    </div>`;
+  }
+
+  document.getElementById('nerd-drawer-content').innerHTML = `
+    <div class="nerd-drawer-title">${d.away_team} @ ${d.home_team}</div>
+    <div class="nerd-drawer-subtitle">${d.away_pitcher} vs ${d.home_pitcher} · ${d.park_name}</div>
+
+    <div class="mt-stats-row" style="margin-bottom:16px">
+      <div class="ov-card mt-stat-card"><div class="ov-label">${d.home_team} RUNS</div><div class="ov-val red">${num(d.exp_runs_home)}</div></div>
+      <div class="ov-card mt-stat-card"><div class="ov-label">TOTAL PROM</div><div class="ov-val red">${num(d.avg_total)}</div></div>
+      <div class="ov-card mt-stat-card"><div class="ov-label">${d.away_team} RUNS</div><div class="ov-val red">${num(d.exp_runs_away)}</div></div>
+    </div>
+
+    <div class="mt-prob-card" style="margin-bottom:16px">
+      <div class="mt-prob-labels">
+        <span class="mt-prob-label-over">OVER ${overPct}%</span>
+        <span class="mt-prob-label-under">UNDER ${underPct}%</span>
+      </div>
+      <div class="mt-prob-track">
+        <div class="mt-prob-bar ${barClass}" style="width:${overPct}%"></div>
+      </div>
+      <div class="mt-edge-text">${edgeSign}${edgeAbs}% EDGE → ${edgeDir}</div>
+    </div>
+
+    <div class="ov-card mt-context-card" style="margin-bottom:16px">
+      <div class="mt-label" style="margin-bottom:10px">MATCHUP CONTEXT</div>
+      <div class="mt-context-rows">
+        <div class="mt-context-row">
+          <span class="mt-context-side">${d.home_team}</span>
+          <span class="mt-context-detail">${d.away_pitcher} <span class="mt-hand-badge">${d.away_pitcher_hand}HP</span> — K%: <strong>${fmtKPct(d.home_k_pct_vs_hand)}</strong></span>
+        </div>
+        <div class="mt-context-row">
+          <span class="mt-context-side">${d.away_team}</span>
+          <span class="mt-context-detail">${d.home_pitcher} <span class="mt-hand-badge">${d.home_pitcher_hand}HP</span> — K%: <strong>${fmtKPct(d.away_k_pct_vs_hand)}</strong></span>
+        </div>
+        <div class="mt-context-row">
+          <span class="mt-context-side" style="font-size:16px;letter-spacing:0">🏟</span>
+          <span class="mt-context-detail"><strong>${d.park_name}</strong> · PF: <strong style="color:${parkColor}">${d.park_factor}</strong> <span style="color:${parkColor}">${parkLabel}</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-hist-card" style="margin-bottom:16px">
+      <div class="mt-hist-title">DISTRIBUCIÓN DE CARRERAS TOTALES</div>
+      <div class="mt-histogram">${histHTML}</div>
+    </div>
+
+    <div class="mt-footer-note" style="color:${d.lineup_confirmed ? '#22c55e' : ''}">
+      ${d.lineup_confirmed
+        ? `✅ Lineup confirmado (${(d.home_lineup || []).length} bateadores)`
+        : '⚠️ Stats de temporada — lineup no confirmado'}
+    </div>
+    ${lineupHTML}
+  `;
+
+  const overlay = document.getElementById('nerd-overlay');
+  const drawer  = document.getElementById('nerd-drawer');
+  overlay.classList.add('nerd-overlay--on');
+  drawer.classList.add('nerd-drawer--open');
+}
+
+function closeNerdPanel() {
+  document.getElementById('nerd-overlay').classList.remove('nerd-overlay--on');
+  document.getElementById('nerd-drawer').classList.remove('nerd-drawer--open');
 }
 
 // ── MAIN MARKETS ──────────────────────────────────────────────────────────────

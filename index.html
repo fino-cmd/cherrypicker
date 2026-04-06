@@ -1223,7 +1223,16 @@
 
     <!-- ── BETTING TRACKER ── -->
     <section id="section-tracker" class="app-section" style="display:none">
-      <h2 class="section-title">K-Prop Picks Tracker</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <h2 class="section-title" style="margin-bottom:0">K-Prop Picks Tracker</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span id="retrain-status-text" style="font-size:11px;color:var(--text-dim)"></span>
+          <button class="tp-log-btn" id="retrain-btn" onclick="triggerRetrain()"
+                  style="background:var(--bg3);border:1px solid var(--border);color:var(--text-muted);font-size:11px">
+            ↻ Reentrenar modelo
+          </button>
+        </div>
+      </div>
       <div class="picks-summary">
         <div class="picks-stat">
           <div class="picks-stat-label">Record</div>
@@ -1351,7 +1360,7 @@
   </div><!-- /.app-body -->
 </div>
 
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const d = document.getElementById('props-date');

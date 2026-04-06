@@ -77,6 +77,13 @@ def _load() -> None:
     _medians   = joblib.load(median_path) if median_path.exists() else {}
 
 
+def _reload_model() -> None:
+    """Force reload model from disk — called after retraining."""
+    global _model, _feat_cols, _medians
+    _model = _feat_cols = _medians = None
+    _load()
+
+
 # ── Core prediction ───────────────────────────────────────────────────────────
 
 def predict_strikeouts(pitcher_features: dict) -> dict:

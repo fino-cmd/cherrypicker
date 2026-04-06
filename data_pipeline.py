@@ -33,7 +33,8 @@ from tqdm import tqdm
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-SEASONS             = [2022, 2023, 2024]
+CURRENT_SEASON      = 2026
+SEASONS             = [2022, 2023, 2024, 2025, CURRENT_SEASON]
 MLB_API             = "https://statsapi.mlb.com/api/v1"
 DATA_DIR            = Path("data")
 CHECKPOINT_PATH     = DATA_DIR / "checkpoint.csv"
@@ -637,9 +638,12 @@ def build_training_data() -> pd.DataFrame:
         team_batting = load_team_batting_mlb(year)
 
         # Filter to genuine starters
+        # Relax thresholds for the current season (few games played yet)
+        min_gs = 1 if year == CURRENT_SEASON else 8
+        min_ip = 3 if year == CURRENT_SEASON else 30
         all_count = len(pitcher_stats)
         starters  = pitcher_stats[
-            (pitcher_stats["gs"] >= 8) & (pitcher_stats["ip"] >= 30)
+            (pitcher_stats["gs"] >= min_gs) & (pitcher_stats["ip"] >= min_ip)
         ].copy().reset_index(drop=True)
 
         dropped_n = all_count - len(starters)

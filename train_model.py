@@ -1,7 +1,7 @@
 """
 CherryPick — Model Training
-Trains a Gradient Boosting regressor on 2022–2023 data,
-evaluates on the 2024 holdout, then saves the model.
+Trains a Gradient Boosting regressor on all available historical data,
+using the most recent full season as holdout evaluation.
 
 Run:    python train_model.py
 Output: models/k_model.pkl
@@ -63,12 +63,26 @@ def train():
     df = load_data()
 
     # ── Time-aware split: NEVER random-split sports data ──────────────────────
-    # Using 2024 data to predict 2022 games would be pure data leakage.
-    train_df = df[df["season"] <= 2023].copy()
-    test_df  = df[df["season"] == 2024].copy()
+    # Holdout = most recent COMPLETE season (last season with >= 300 starts).
+    # Current partial season (2026) goes into training — more data = better.
+    seasons_available = sorted(df["season"].unique())
+    complete_seasons  = [s for s in seasons_available
+                         if len(df[df["season"] == s]) >= 300]
+    current_season    = max(seasons_available)
 
-    log.info("Train: %d rows (2022–2023) | Test: %d rows (2024)",
-             len(train_df), len(test_df))
+    if len(complete_seasons) >= 2:
+        holdout_season = complete_seasons[-1]
+        # If current season is partial, include it in training
+        train_seasons  = [s for s in seasons_available if s != holdout_season]
+    else:
+        holdout_season = seasons_available[-1]
+        train_seasons  = seasons_available[:-1]
+
+    train_df = df[df["season"].isin(train_seasons)].copy()
+    test_df  = df[df["season"] == holdout_season].copy()
+
+    log.info("Train: %d rows (seasons: %s) | Test: %d rows (%d)",
+             len(train_df), train_seasons, len(test_df), holdout_season)
 
     if len(train_df) < 500:
         log.warning("Very small training set (%d rows) — check data pipeline", len(train_df))
@@ -95,7 +109,7 @@ def train():
 
     # ── 4-fold time-series cross-validation on training set ───────────────────
     # Each fold's validation set is always chronologically after its train set.
-    print("Time-Series Cross-Validation (4 folds) on 2022-2023:")
+    print(f"Time-Series Cross-Validation (4 folds) on training seasons {train_seasons}:")
     print("-" * 45)
 
     tscv    = TimeSeriesSplit(n_splits=4)
@@ -117,7 +131,7 @@ def train():
     print(f"  Mean CV MAE: {mean_cv_mae:.3f} K's\n")
 
     # ── Final model: train on all 2022–2023 data ──────────────────────────────
-    log.info("Training final model on full 2022-2023 set...")
+    log.info("Training final model on full training set (seasons: %s)...", train_seasons)
     model = _new_model()
     model.fit(X_train, y_train)
 

@@ -1,4 +1,4 @@
-const API = `http://${window.location.hostname}:8003`;
+const API = `http://${window.location.hostname}:8002`;
 
 // ── MLB team abbreviation → numeric ID (for logo CDN) ─────────────────────────
 const _TEAM_ID = {
@@ -1107,6 +1107,46 @@ function _applyPickToRow(row, pick) {
 // ── BETTING TRACKER ────────────────────────────────────────────────────────────
 
 let trackerChart = null;
+
+async function triggerRetrain() {
+  const btn  = document.getElementById('retrain-btn');
+  const text = document.getElementById('retrain-status-text');
+
+  btn.disabled    = true;
+  btn.textContent = '↻ Iniciando…';
+
+  try {
+    await apiPost('/api/model/retrain', {});
+    text.textContent = 'Pipeline corriendo — puede tardar 10-30 min';
+    text.style.color = '#f59e0b';
+    btn.textContent  = '↻ Corriendo…';
+    _showToast('Reentrenamiento iniciado. El modelo se actualizará automáticamente.', 'info');
+    const poll = setInterval(async () => {
+      try {
+        const s = await apiFetch('/api/model/retrain/status');
+        if (!s.running) {
+          clearInterval(poll);
+          btn.disabled    = false;
+          if (s.error) {
+            text.textContent = 'Error: ' + s.error.slice(0, 80);
+            text.style.color = 'var(--red-light)';
+            btn.textContent  = '↻ Reentrenar modelo';
+            _showToast('Error en reentrenamiento: ' + s.error.slice(0, 60), 'error');
+          } else {
+            text.textContent = 'Modelo actualizado ' + (s.last || '');
+            text.style.color = '#22c55e';
+            btn.textContent  = '↻ Reentrenar modelo';
+            _showToast('Modelo reentrenado exitosamente.', 'success');
+          }
+        }
+      } catch (_) {}
+    }, 15000);
+  } catch (e) {
+    btn.disabled    = false;
+    btn.textContent = '↻ Reentrenar modelo';
+    _showToast('Error: ' + e.message, 'error');
+  }
+}
 
 async function loadTracker() {
   loading('tracker-tbody', 'Loading pick history…');

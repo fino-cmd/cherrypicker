@@ -220,10 +220,11 @@ def _discipline_from_savant_roster(year: int) -> dict:
     log.info("  Savant+roster discipline fallback %d", year)
 
     # Step 1: individual batter stats from Savant custom leaderboard
+    # Column name changes: o_swing_percent → oz_swing_percent, contact_percent → iz_contact_percent
     url = (
         "https://baseballsavant.mlb.com/leaderboard/custom"
         f"?year={year}&type=batter&filter=&sort=3&sortDir=DESC"
-        "&min=100&selections=o_swing_percent,contact_percent,whiff_percent,pa&csv=true"
+        "&min=100&selections=oz_swing_percent,iz_contact_percent,whiff_percent,pa&csv=true"
     )
     try:
         r = httpx.get(url, timeout=30, follow_redirects=True,
@@ -276,9 +277,9 @@ def _discipline_from_savant_roster(year: int) -> dict:
         return {}
 
     stat_map = {
-        "o_swing_percent": "opp_chase_pct",
-        "contact_percent":  "opp_contact_pct",
-        "whiff_percent":    "opp_swstr_pct",
+        "oz_swing_percent":  "opp_chase_pct",
+        "iz_contact_percent": "opp_contact_pct",
+        "whiff_percent":      "opp_swstr_pct",
     }
     present = {raw: out_name for raw, out_name in stat_map.items() if raw in batter_df.columns}
     if not present:
@@ -338,12 +339,18 @@ def load_savant_pitching(year: int) -> pd.DataFrame:
     """
     Fetch pitcher season stats from Baseball Savant custom leaderboard.
     Returns player_id (MLBAM), csw_pct, swstr_pct, k_pct_season (all as decimals).
+
+    CSW% derivation: Savant's csw_rate_percent column has been null since ~2024.
+    We compute it from raw pitch counts instead:
+        csw_pct = (p_called_strike + p_swinging_strike) / (pa * LG_PITCHES_PER_PA)
+    League average pitches/PA ≈ 3.82 (stable across 2022-2025).
     """
     log.info("  Baseball Savant pitching %d", year)
+    # Fetch both whiff/k stats and raw pitch counts in one request
     url = (
         "https://baseballsavant.mlb.com/leaderboard/custom"
         f"?year={year}&type=pitcher&filter=&sort=3&sortDir=DESC"
-        "&min=1&selections=k_percent,bb_percent,whiff_percent,csw_rate_percent,ip&csv=true"
+        "&min=1&selections=k_percent,bb_percent,whiff_percent,p_called_strike,p_swinging_strike,pa,ip&csv=true"
     )
     try:
         r = httpx.get(url, timeout=30, follow_redirects=True,
@@ -352,21 +359,39 @@ def load_savant_pitching(year: int) -> pd.DataFrame:
         df = pd.read_csv(io.StringIO(r.text))
         time.sleep(0.5)
 
-        # Rename and normalise
+        df["player_id"] = pd.to_numeric(df["player_id"], errors="coerce").astype("Int64")
+        df = df.dropna(subset=["player_id"])
+
+        # Rename swstr and k%
         rename = {
-            "player_id":        "player_id",
-            "csw_rate_percent": "csw_pct",
-            "whiff_percent":    "swstr_pct",
-            "k_percent":        "k_pct_season",
+            "whiff_percent": "swstr_pct",
+            "k_percent":     "k_pct_season",
         }
         df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
 
-        for col in ["csw_pct", "swstr_pct", "k_pct_season"]:
+        for col in ["swstr_pct", "k_pct_season"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce") / 100.0
 
-        df["player_id"] = pd.to_numeric(df["player_id"], errors="coerce").astype("Int64")
-        df = df.dropna(subset=["player_id"])
+        # Derive CSW% from raw pitch counts
+        # csw_pct_L15 is a misnomer — it's actually season-level CSW%, stored under
+        # that name for model compatibility.
+        LG_PITCHES_PER_PA = 3.82
+        for col in ["p_called_strike", "p_swinging_strike", "pa"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        if "p_called_strike" in df.columns and "p_swinging_strike" in df.columns and "pa" in df.columns:
+            total_est = df["pa"] * LG_PITCHES_PER_PA
+            df["csw_pct"] = (df["p_called_strike"] + df["p_swinging_strike"]) / total_est
+            # Clamp to plausible range — protects against tiny-sample outliers
+            df["csw_pct"] = df["csw_pct"].clip(0.15, 0.45)
+            csw_ok = df["csw_pct"].notna().sum()
+            log.info("    CSW%% derived from pitch counts: %d / %d pitchers", csw_ok, len(df))
+        else:
+            df["csw_pct"] = np.nan
+            log.warning("    load_savant_pitching: pitch count columns missing — csw_pct will be null")
+
         log.info("    Savant: %d pitchers", len(df))
         return df[["player_id", "csw_pct", "swstr_pct", "k_pct_season"]]
     except Exception as exc:
@@ -472,6 +497,89 @@ def load_team_batting_mlb(year: int) -> dict:
             }
 
     return out
+
+
+# ── Batter splits vs pitcher hand ────────────────────────────────────────────
+
+def load_batter_splits(year: int) -> dict:
+    """
+    Returns {(player_id, pitcher_hand): k_pct} for all batters.
+    Uses MLB Stats API /stats with sitCodes=vl (vs LHP) and vr (vs RHP).
+    Only includes batters with >= 10 PA against that hand.
+    """
+    log.info("  Batter splits vs hand %d", year)
+    result: dict = {}
+    for site_code, hand in [("vl", "L"), ("vr", "R")]:
+        data = mlb_get("/stats", stats="season", group="hitting", gameType="R",
+                       season=year, playerPool="All", limit=3000,
+                       sitCodes=site_code, sportId=1)
+        for split in data.get("stats", [{}])[0].get("splits", []):
+            p  = split.get("player", {})
+            s  = split.get("stat", {})
+            pid = p.get("id")
+            so  = int(s.get("strikeOuts",       0) or 0)
+            pa  = int(s.get("plateAppearances", 0) or 0)
+            if pid and pa >= 10:
+                result[(int(pid), hand)] = so / pa
+        time.sleep(0.3)
+    log.info("    Batter splits: %d entries", len(result))
+    return result
+
+
+_BATTING_ORDER_WEIGHTS = [1.4, 1.4, 1.4, 1.4, 1.0, 1.0, 1.0, 0.7, 0.7]
+
+
+def _fetch_pitcher_hand(mlb_id: int) -> str:
+    """Returns pitcher's throwing hand ('L' or 'R'). Defaults to 'R'."""
+    try:
+        data = mlb_get(f"/people/{mlb_id}")
+        people = data.get("people", [])
+        if people:
+            return people[0].get("pitchHand", {}).get("code", "R") or "R"
+    except Exception:
+        pass
+    return "R"
+
+
+def _game_lineup_k_pct(game_pk, pitcher_hand: str,
+                        batter_splits: dict, home_away: int):
+    """
+    Fetch opponent batting lineup from the MLB boxscore for a historical game
+    and return (weighted_k_pct, n_matched).
+
+    home_away: 1 = pitcher is home team (opponent = away lineup),
+               0 = pitcher is away team (opponent = home lineup).
+    Returns (float, int) — k_pct is None if too few batters matched.
+    """
+    if not game_pk:
+        return None, 0
+    try:
+        data = mlb_get(f"/game/{int(game_pk)}/boxscore")
+        teams = data.get("teams", {})
+        opp_side  = "away" if home_away == 1 else "home"
+        side_data = teams.get(opp_side, {})
+        batting_order = side_data.get("battingOrder", [])
+        if len(batting_order) < 7:
+            return None, 0
+
+        hand = pitcher_hand or "R"
+        k_vals: list = []
+        wts:    list = []
+        n_matched = 0
+        for i, pid in enumerate(batting_order[:9]):
+            kp = batter_splits.get((int(pid), hand))
+            if kp is not None:
+                n_matched += 1
+                w = _BATTING_ORDER_WEIGHTS[i]
+                k_vals.append(kp * w)
+                wts.append(w)
+
+        if len(k_vals) < 5:
+            return None, n_matched
+        return round(sum(k_vals) / sum(wts), 4), n_matched
+    except Exception as exc:
+        log.debug("_game_lineup_k_pct game_pk=%s: %s", game_pk, exc)
+        return None, 0
 
 
 # ── Per-game logs (MLB Stats API) ─────────────────────────────────────────────
@@ -637,6 +745,10 @@ def build_training_data() -> pd.DataFrame:
 
         team_batting = load_team_batting_mlb(year)
 
+        # Batter K% splits vs LHP/RHP — loaded once per season
+        batter_splits = load_batter_splits(year)
+        time.sleep(0.3)
+
         # Filter to genuine starters
         # Relax thresholds for the current season (few games played yet)
         min_gs = 1 if year == CURRENT_SEASON else 8
@@ -671,6 +783,10 @@ def build_training_data() -> pd.DataFrame:
 
             pbar.set_postfix(pitcher=str(name)[:20])
 
+            # Pitcher's throwing hand — one API call per pitcher
+            pitcher_hand = _fetch_pitcher_hand(mlb_id)
+            time.sleep(0.2)
+
             s_csw   = pr.get("csw_pct",    np.nan)
             s_swstr = pr.get("swstr_pct",  np.nan)
             s_k9    = pr.get("k9",         np.nan)
@@ -691,15 +807,24 @@ def build_training_data() -> pd.DataFrame:
                 opp       = str(g.get("opponent", ""))
                 opp_stats = team_batting.get(opp, {})
                 park_team = g["team"] if int(g.get("home_away", 0)) == 1 else opp
+                ha        = int(g.get("home_away", 0))
 
                 try:
                     month = pd.to_datetime(g["date"]).month
                 except Exception:
                     month = 6
 
+                # Lineup K% from actual boxscore batting order
+                gk = g.get("game_pk")
+                opp_k_pct_lineup, lineup_n_matched = _game_lineup_k_pct(
+                    gk, pitcher_hand, batter_splits, ha
+                )
+                time.sleep(0.3)
+
                 all_rows.append({
                     "season":                  year,
                     "date":                    str(g["date"])[:10],
+                    "game_pk":                 int(gk) if pd.notna(gk) else None,
                     "pitcher_id":              mlb_id,
                     "pitcher_name":            name,
                     "team":                    str(g.get("team", "")),
@@ -721,6 +846,8 @@ def build_training_data() -> pd.DataFrame:
                     "xfip_season":             np.nan,
                     "stuff_plus":              s_stuff,
                     "opp_k_pct_vs_hand":       opp_stats.get("opp_k_pct_vs_hand",  np.nan),
+                    "opp_k_pct_lineup":        opp_k_pct_lineup,
+                    "lineup_confirmed":        1 if lineup_n_matched >= 7 else 0,
                     "opp_chase_pct":           opp_stats.get("opp_chase_pct",       np.nan),
                     "opp_contact_pct":         opp_stats.get("opp_contact_pct",     np.nan),
                     "opp_swstr_pct":           opp_stats.get("opp_swstr_pct",       np.nan),
@@ -827,17 +954,31 @@ def patch_existing_data() -> pd.DataFrame:
 
     # Reset previously-failed fills (0.0 is invalid for stuff_plus ~100; ~0.29 for chase)
     # so the lookup below overwrites them with real values.
-    TARGET_COLS = ["stuff_plus", "opp_chase_pct", "opp_contact_pct", "opp_swstr_pct"]
+    TARGET_COLS = ["csw_pct_L15", "stuff_plus", "opp_chase_pct", "opp_contact_pct", "opp_swstr_pct"]
     for col in TARGET_COLS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-            # Treat 0.0 as missing — no valid stat is exactly 0
             df.loc[df[col] == 0.0, col] = np.nan
 
     for year in sorted(df["season"].dropna().unique()):
         year = int(year)
         mask = df["season"] == year
         log.info("== Patching season %d (%d rows) ==", year, mask.sum())
+
+        # ── CSW% ──────────────────────────────────────────────────────────────
+        # Season-level CSW% — stored as csw_pct_L15 for model compatibility.
+        savant_df = load_savant_pitching(year)
+        if not savant_df.empty and "csw_pct" in savant_df.columns:
+            csw_map = (
+                savant_df.dropna(subset=["player_id"])
+                .set_index("player_id")["csw_pct"]
+                .to_dict()
+            )
+            if "csw_pct_L15" not in df.columns:
+                df["csw_pct_L15"] = np.nan
+            df.loc[mask, "csw_pct_L15"] = df.loc[mask, "pitcher_id"].map(csw_map)
+            filled = df.loc[mask, "csw_pct_L15"].notna().sum()
+            log.info("  csw_pct_L15 filled: %d / %d rows", filled, mask.sum())
 
         # ── Stuff+ ────────────────────────────────────────────────────────────
         stuff_df = load_stuff_plus(year)
@@ -871,7 +1012,7 @@ def patch_existing_data() -> pd.DataFrame:
             log.info("  %s filled: %d / %d rows", out_col, filled, mask.sum())
 
     # Re-apply median imputation for any remaining nulls
-    TARGET_COLS = ["stuff_plus", "opp_chase_pct", "opp_contact_pct", "opp_swstr_pct"]
+    TARGET_COLS = ["csw_pct_L15", "stuff_plus", "opp_chase_pct", "opp_contact_pct", "opp_swstr_pct"]
     for col in TARGET_COLS:
         if col in df.columns:
             null_n = df[col].isna().sum()

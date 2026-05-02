@@ -30,6 +30,31 @@ DATA_PATH  = Path("data/training_data.csv")
 MODELS_DIR = Path("models")
 MODELS_DIR.mkdir(exist_ok=True)
 
+# ── Tier 1 #3 — Recency weighting ──────────────────────────────────────────────
+# Older starts get exponentially less weight than recent ones. The half-life is
+# expressed in DAYS — at HALF_LIFE_DAYS days old, the weight drops by 50%.
+#
+# Why: MLB strikes-out trends drift season-over-season (rule changes, ball spec,
+# pitch-clock effects). 2022 data is statistically different from 2026 data.
+# Without recency weighting, the model treats them equally, blunting its read
+# on current-regime pitching. With a half-life of 365 days:
+#   • Same season as today → weight = 1.0
+#   • 1 year old           → weight ≈ 0.50
+#   • 2 years old          → weight ≈ 0.25
+#   • 3 years old          → weight ≈ 0.125
+# This reweights ~14k rows toward 2025-2026 without dropping older data
+# (which still has signal — pitcher career features, opponent profiles, etc.).
+RECENCY_HALF_LIFE_DAYS = 365
+
+
+def _compute_recency_weights(dates: pd.Series, ref_date: pd.Timestamp) -> np.ndarray:
+    """Exponential-decay weights based on age (days from ref_date).
+    Returns weights normalized so the most recent row has weight 1.0."""
+    age_days = (ref_date - dates).dt.days.clip(lower=0).values.astype(float)
+    decay = np.log(2) / float(RECENCY_HALF_LIFE_DAYS)  # half-life in days
+    weights = np.exp(-decay * age_days)
+    return weights
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -90,6 +115,13 @@ def train():
     X_train, feat_cols = prepare_features(train_df)
     y_train = train_df["actual_strikeouts"].values
 
+    # Recency weights — newest game in train_df is the reference.
+    ref_date = train_df["date"].max()
+    sample_weights = _compute_recency_weights(train_df["date"], ref_date)
+    log.info("Recency weights (half-life %dd): newest=%.3f, oldest=%.3f, mean=%.3f",
+             RECENCY_HALF_LIFE_DAYS,
+             float(sample_weights.max()), float(sample_weights.min()), float(sample_weights.mean()))
+
     # Save training-set medians for use at prediction time (avoids leakage)
     train_medians = X_train.median().to_dict()
 
@@ -118,9 +150,10 @@ def train():
     for fold, (tr_idx, val_idx) in enumerate(tscv.split(X_train), 1):
         X_tr,  X_val = X_train.iloc[tr_idx],  X_train.iloc[val_idx]
         y_tr,  y_val = y_train[tr_idx],        y_train[val_idx]
+        w_tr         = sample_weights[tr_idx]
 
         m = _new_model()
-        m.fit(X_tr, y_tr)
+        m.fit(X_tr, y_tr, sample_weight=w_tr)
         preds = m.predict(X_val)
         mae   = mean_absolute_error(y_val, preds)
         cv_maes.append(mae)
@@ -130,10 +163,10 @@ def train():
     print("-" * 45)
     print(f"  Mean CV MAE: {mean_cv_mae:.3f} K's\n")
 
-    # ── Final model: train on all 2022–2023 data ──────────────────────────────
+    # ── Final model: train on all 2022–2023 data with recency weights ─────────
     log.info("Training final model on full training set (seasons: %s)...", train_seasons)
     model = _new_model()
-    model.fit(X_train, y_train)
+    model.fit(X_train, y_train, sample_weight=sample_weights)
 
     # ── 2024 holdout evaluation ───────────────────────────────────────────────
     test_preds = model.predict(X_test)
@@ -202,6 +235,10 @@ def train():
         "n_features":   len(feat_cols),
         "feature_cols": feat_cols,
         "top_features": importances.index[:5].tolist(),
+        "recency_half_life_days": RECENCY_HALF_LIFE_DAYS,
+        "weight_min":   float(sample_weights.min()),
+        "weight_max":   float(sample_weights.max()),
+        "weight_mean":  float(sample_weights.mean()),
     }
     (MODELS_DIR / "eval_summary.json").write_text(json.dumps(summary, indent=2))
 

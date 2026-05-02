@@ -12,7 +12,14 @@ import pandas as pd
 # model learn recency bias faster without relying solely on tree depth.
 
 def _wavg(a, b, c, wa=0.40, wb=0.35, wc=0.25) -> pd.Series:
-    """Vectorised weighted average of three Series, ignoring NaN."""
+    """Vectorised weighted average of three Series, ignoring NaN.
+
+    Inputs are coerced to numeric upfront to avoid pandas 3.x object-dtype
+    downcast warnings when columns arrive as strings/mixed (CSV reads).
+    """
+    a = pd.to_numeric(a, errors="coerce")
+    b = pd.to_numeric(b, errors="coerce")
+    c = pd.to_numeric(c, errors="coerce")
     num = a.fillna(0) * wa + b.fillna(0) * wb + c.fillna(0) * wc
     den = a.notna().astype(float) * wa + \
           b.notna().astype(float) * wb + \
@@ -102,6 +109,8 @@ FEATURE_COLS = [
     "implied_max_batters",
     # Opponent
     "opp_k_pct_vs_hand",
+    "opp_k_pct_lineup",
+    "lineup_confirmed",
     "opp_chase_pct",
     "opp_contact_pct",
     "opp_swstr_pct",

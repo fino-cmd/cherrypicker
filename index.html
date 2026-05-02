@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=56" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -822,11 +822,11 @@
       <span class="lp-logo-text"><span class="logo-cherry">CHERRY</span><span class="logo-pick">PICK</span></span>
     </div>
     <div class="lp-nav-links">
-      <a href="#">Predictions</a>
-      <a href="#">How it Works</a>
-      <a href="#">Pricing</a>
+      <a href="#">Predicciones</a>
+      <a href="#">Cómo Funciona</a>
+      <a href="#">Precios</a>
     </div>
-    <button class="lp-login-btn" onclick="goToApp()">Log in</button>
+    <button class="lp-login-btn" onclick="goToApp()">Ingresar</button>
   </nav>
 
   <!-- HERO -->
@@ -834,7 +834,7 @@
 
     <!-- Left: copy -->
     <div class="lp-hero-content">
-      <div class="lp-hero-badge">MLB PITCHER ANALYTICS</div>
+      <div class="lp-hero-badge">análisis de pitchers MLB</div>
       <div class="lp-hero-brand">
         <h1 class="lp-hero-title">
           <span class="lp-title-cherry">CHERRY</span>
@@ -842,14 +842,14 @@
           PICK
         </h1>
       </div>
-      <p class="lp-hero-sub">the ultimate data-driven mlb pitcher<br/>strikeout prediction model</p>
-      <button class="lp-launch-btn" onclick="goToApp()">LAUNCH</button>
+      <p class="lp-hero-sub">el modelo definitivo de predicción<br/>de ponches para MLB</p>
+      <button class="lp-launch-btn" onclick="goToApp()">ingresar</button>
     </div>
 
     <!-- Right: visual panel -->
     <div class="lp-hero-visual">
       <div class="lp-diamond-panel">
-        <div class="lp-dp-label">Field Model</div>
+        <div class="lp-dp-label">Modelo de Campo</div>
         <svg viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg">
           <path class="lp-draw-slow" d="M 28,250 Q 140,18 252,250"
             fill="none" stroke="rgba(212,43,60,0.35)" stroke-width="1.2"/>
@@ -884,15 +884,15 @@
 
       <div class="lp-hero-stats">
         <div class="lp-hero-stat">
-          <span class="lp-hero-stat-label">TRAINING STARTS</span>
+          <span class="lp-hero-stat-label">aperturas de entrenamiento</span>
           <span class="lp-hero-stat-val">10,795</span>
         </div>
         <div class="lp-hero-stat">
-          <span class="lp-hero-stat-label">SEASON HIT RATE</span>
+          <span class="lp-hero-stat-label">acierto de temporada</span>
           <span class="lp-hero-stat-val">61.4%</span>
         </div>
         <div class="lp-hero-stat">
-          <span class="lp-hero-stat-label">AVG MODEL EDGE</span>
+          <span class="lp-hero-stat-label">ventaja prom. del modelo</span>
           <span class="lp-hero-stat-val">+0.9K</span>
         </div>
       </div>
@@ -903,25 +903,25 @@
   <!-- TICKER -->
   <div class="lp-ticker">
     <div class="lp-ticker-track">
-      <span class="lp-ticker-item"><span class="ti-key">Training Starts</span><span class="ti-val">10,795</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Model MAE</span><span class="ti-val">1.23 K</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Season Hit Rate</span><span class="ti-val">61.4%</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Avg Edge Threshold</span><span class="ti-val">≥ 0.8 K</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Min Confidence</span><span class="ti-val">Score 3+</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Features</span><span class="ti-val">CSW% · SwStr% · K9</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Rolling Window</span><span class="ti-val">L15 Starts</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Park Factors</span><span class="ti-val">Included</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Model Type</span><span class="ti-val">Gradient Boost</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Aperturas Entrenamiento</span><span class="ti-val">10,795</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">MAE del Modelo</span><span class="ti-val">1.23 K</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Acierto de Temporada</span><span class="ti-val">61.4%</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Umbral Ventaja</span><span class="ti-val">≥ 0.8 K</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Confianza Mínima</span><span class="ti-val">Score 3+</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Variables</span><span class="ti-val">CSW% · SwStr% · K9</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Ventana Rolling</span><span class="ti-val">Últimas 15</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Factor de Estadio</span><span class="ti-val">Incluido</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Tipo de Modelo</span><span class="ti-val">Gradient Boost</span><span class="ti-sep"></span></span>
       <!-- duplicate for seamless loop -->
-      <span class="lp-ticker-item"><span class="ti-key">Training Starts</span><span class="ti-val">10,795</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Model MAE</span><span class="ti-val">1.23 K</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Season Hit Rate</span><span class="ti-val">61.4%</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Avg Edge Threshold</span><span class="ti-val">≥ 0.8 K</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Min Confidence</span><span class="ti-val">Score 3+</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Features</span><span class="ti-val">CSW% · SwStr% · K9</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Rolling Window</span><span class="ti-val">L15 Starts</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Park Factors</span><span class="ti-val">Included</span><span class="ti-sep"></span></span>
-      <span class="lp-ticker-item"><span class="ti-key">Model Type</span><span class="ti-val">Gradient Boost</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Aperturas Entrenamiento</span><span class="ti-val">10,795</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">MAE del Modelo</span><span class="ti-val">1.23 K</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Acierto de Temporada</span><span class="ti-val">61.4%</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Umbral Ventaja</span><span class="ti-val">≥ 0.8 K</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Confianza Mínima</span><span class="ti-val">Score 3+</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Variables</span><span class="ti-val">CSW% · SwStr% · K9</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Ventana Rolling</span><span class="ti-val">Últimas 15</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Factor de Estadio</span><span class="ti-val">Incluido</span><span class="ti-sep"></span></span>
+      <span class="lp-ticker-item"><span class="ti-key">Tipo de Modelo</span><span class="ti-val">Gradient Boost</span><span class="ti-sep"></span></span>
     </div>
   </div>
 
@@ -929,10 +929,10 @@
   <section class="lp-precision">
     <div class="lp-precision-inner">
       <div class="lp-precision-header lp-reveal">
-        <div class="lp-section-tag">THE EDGE</div>
-        <h2 class="lp-precision-title">ENGINEERED<br/>FOR<br/>PRECISION</h2>
-        <p class="lp-precision-desc">Every projection is backed by a machine learning model trained on thousands of real pitcher starts — combining pitch-level metrics, opponent tendencies, and park factors into a single number you can bet with confidence.</p>
-        <button class="lp-launch-btn lp-launch-sm" onclick="goToApp()">Get Started</button>
+        <div class="lp-section-tag">la ventaja</div>
+        <h2 class="lp-precision-title">diseñado<br/>para la<br/>precisión</h2>
+        <p class="lp-precision-desc">Cada proyección está respaldada por un modelo de machine learning entrenado con miles de aperturas reales — combinando métricas de lanzamientos, tendencias del rival y factores del estadio en un solo número en el que puedes apostar con confianza.</p>
+        <button class="lp-launch-btn lp-launch-sm" onclick="goToApp()">Comenzar</button>
       </div>
       <div class="lp-bento lp-reveal">
         <div class="lp-bento-card lp-bento-wide">
@@ -942,11 +942,11 @@
               <path d="M14 30 Q19 18 24 24 Q29 30 34 16" stroke-width="2" stroke-linecap="round" fill="none"/>
             </svg>
           </div>
-          <div class="lp-bento-title">Real-Time Probability Engine</div>
-          <div class="lp-bento-desc">Gradient-boosted model refreshed every day with the latest pitcher stats, rest, and matchup context. No stale data.</div>
+          <div class="lp-bento-title">Motor de Probabilidad en Tiempo Real</div>
+          <div class="lp-bento-desc">Modelo gradient-boosted actualizado cada día con las últimas estadísticas del pitcher, descanso y contexto del enfrentamiento. Sin datos desactualizados.</div>
           <div class="lp-bento-stat">
             <span class="lp-stat-num">10,795</span>
-            <span class="lp-stat-label">training starts</span>
+            <span class="lp-stat-label">aperturas entrenadas</span>
           </div>
         </div>
         <div class="lp-bento-card">
@@ -956,8 +956,8 @@
               <circle cx="40" cy="12" r="3" fill="#d42b3c"/>
             </svg>
           </div>
-          <div class="lp-bento-title">Verified Accuracy</div>
-          <div class="lp-bento-desc">Model MAE tracked against closing lines. OVER/UNDER recs only fire when edge ≥ 0.8 Ks and confidence ≥ 3.</div>
+          <div class="lp-bento-title">Precisión Verificada</div>
+          <div class="lp-bento-desc">MAE del modelo rastreado contra las líneas de cierre. Las recomendaciones OVER/UNDER solo se activan cuando la ventaja ≥ 0.8 Ks y la confianza ≥ 3.</div>
         </div>
         <div class="lp-bento-card">
           <div class="lp-bento-icon">
@@ -967,16 +967,16 @@
               <line x1="18" y1="14" x2="18" y2="38" stroke-width="1" stroke-dasharray="2,2"/>
             </svg>
           </div>
-          <div class="lp-bento-title">Pitch History</div>
-          <div class="lp-bento-desc">L15-game rolling CSW%, SwStr%, and K9 feed directly into each projection — recency bias built in.</div>
+          <div class="lp-bento-title">Historial de Lanzamientos</div>
+          <div class="lp-bento-desc">CSW%, SwStr% y K9 de los últimos 15 juegos alimentan directamente cada proyección — sesgo de recencia incorporado.</div>
         </div>
         <div class="lp-bento-card lp-bento-accent">
           <div class="lp-bento-icon">
             <img src="https://em-content.zobj.net/source/apple/354/cherries_1f352.png" width="30" alt="cherry"/>
           </div>
-          <div class="lp-bento-title">The "Cherry" Signal</div>
-          <div class="lp-bento-desc">Only the highest-confidence picks surface as actionable. No noise — just the ripest opportunities.</div>
-          <div class="lp-bento-tag">HIGH CONFIDENCE ONLY</div>
+          <div class="lp-bento-title">La Señal "Cherry"</div>
+          <div class="lp-bento-desc">Solo los picks de mayor confianza aparecen como accionables. Sin ruido — solo las mejores oportunidades.</div>
+          <div class="lp-bento-tag">solo alta confianza</div>
         </div>
       </div>
     </div>
@@ -986,58 +986,58 @@
   <section class="lp-pricing">
     <div class="lp-pricing-inner">
       <div class="lp-reveal">
-        <div class="lp-section-tag">PRICING</div>
-        <h2 class="lp-pricing-title">CHOOSE<br/>YOUR LEVEL</h2>
+        <div class="lp-section-tag">precios</div>
+        <h2 class="lp-pricing-title">elige<br/>tu nivel</h2>
       </div>
       <div class="lp-pricing-grid lp-reveal">
 
         <!-- Rookie -->
         <div class="lp-price-card">
-          <div class="lp-price-tier">ROOKIE</div>
-          <div class="lp-price-amount">Free</div>
-          <div class="lp-price-period">forever</div>
+          <div class="lp-price-tier">rookie</div>
+          <div class="lp-price-amount">Gratis</div>
+          <div class="lp-price-period">para siempre</div>
           <ul class="lp-price-features">
-            <li>Today's probable starters</li>
-            <li>Model projections (delayed)</li>
-            <li>Basic K-line entry</li>
-            <li class="lp-feature-off">Live edge alerts</li>
-            <li class="lp-feature-off">Confidence scores</li>
-            <li class="lp-feature-off">Full pick history</li>
+            <li>Abridores probables de hoy</li>
+            <li>Proyecciones del modelo (retrasadas)</li>
+            <li>Entrada básica de línea K</li>
+            <li class="lp-feature-off">Alertas de ventaja en vivo</li>
+            <li class="lp-feature-off">Puntuaciones de confianza</li>
+            <li class="lp-feature-off">Historial completo de picks</li>
           </ul>
-          <button class="lp-price-btn lp-price-btn-outline" onclick="goToApp()">Get Started</button>
+          <button class="lp-price-btn lp-price-btn-outline" onclick="goToApp()">Comenzar</button>
         </div>
 
         <!-- Veteran — most popular -->
         <div class="lp-price-card lp-price-popular">
-          <div class="lp-popular-badge">MOST POPULAR</div>
-          <div class="lp-price-tier">VETERAN</div>
-          <div class="lp-price-amount">$49<span class="lp-price-mo">/mo</span></div>
-          <div class="lp-price-period">billed monthly</div>
+          <div class="lp-popular-badge">más popular</div>
+          <div class="lp-price-tier">veterano</div>
+          <div class="lp-price-amount">$49<span class="lp-price-mo">/mes</span></div>
+          <div class="lp-price-period">facturado mensualmente</div>
           <ul class="lp-price-features">
-            <li>Everything in Rookie</li>
-            <li>Real-time edge alerts</li>
-            <li>Full confidence scores</li>
-            <li>CI bands per pick</li>
-            <li>Tracker + ROI dashboard</li>
-            <li class="lp-feature-off">API access</li>
+            <li>Todo en Rookie</li>
+            <li>Alertas de ventaja en tiempo real</li>
+            <li>Puntuaciones de confianza completas</li>
+            <li>Bandas de IC por pick</li>
+            <li>Tracker + panel de Ganancia neta</li>
+            <li class="lp-feature-off">Acceso a API</li>
           </ul>
-          <button class="lp-price-btn lp-price-btn-solid" onclick="goToApp()">Start Free Trial</button>
+          <button class="lp-price-btn lp-price-btn-solid" onclick="goToApp()">Comenzar Prueba Gratuita</button>
         </div>
 
         <!-- Hall of Fame -->
         <div class="lp-price-card">
-          <div class="lp-price-tier">HALL OF FAME</div>
-          <div class="lp-price-amount">$199<span class="lp-price-mo">/mo</span></div>
-          <div class="lp-price-period">billed monthly</div>
+          <div class="lp-price-tier">salón de la fama</div>
+          <div class="lp-price-amount">$199<span class="lp-price-mo">/mes</span></div>
+          <div class="lp-price-period">facturado mensualmente</div>
           <ul class="lp-price-features">
-            <li>Everything in Veteran</li>
-            <li>REST API access</li>
-            <li>Batch predictions</li>
-            <li>Custom model params</li>
-            <li>Priority support</li>
-            <li>Early feature access</li>
+            <li>Todo en Veterano</li>
+            <li>Acceso a REST API</li>
+            <li>Predicciones por lote</li>
+            <li>Parámetros de modelo personalizados</li>
+            <li>Soporte prioritario</li>
+            <li>Acceso anticipado a funciones</li>
           </ul>
-          <button class="lp-price-btn lp-price-btn-outline" onclick="goToApp()">Contact Us</button>
+          <button class="lp-price-btn lp-price-btn-outline" onclick="goToApp()">Contáctanos</button>
         </div>
 
       </div>
@@ -1046,9 +1046,9 @@
 
   <!-- CTA BANNER -->
   <section class="lp-cta-banner">
-    <h2 class="lp-cta-title">STOP GUESSING.<br/>START PICKING.</h2>
-    <p class="lp-cta-sub">Join bettors using real machine learning to find edge on pitcher strikeout props.</p>
-    <button class="lp-cta-white-btn" onclick="goToApp()">Get Started Today</button>
+    <h2 class="lp-cta-title">deja de adivinar.<br/>empieza a ganar.</h2>
+    <p class="lp-cta-sub">Únete a apostadores que usan machine learning real para encontrar ventaja en props de ponches.</p>
+    <button class="lp-cta-white-btn" onclick="goToApp()">Comenzar Hoy</button>
   </section>
 
   <!-- FOOTER -->
@@ -1058,14 +1058,14 @@
       <span class="lp-logo-text"><span class="logo-cherry">CHERRY</span><span class="logo-pick">PICK</span></span>
     </div>
     <div class="lp-footer-links">
-      <a href="#">Predictions</a>
-      <a href="#">How it Works</a>
-      <a href="#">Pricing</a>
-      <a href="#">Terms</a>
-      <a href="#">Privacy</a>
-      <a href="#">Betting Disclaimer</a>
+      <a href="#">Predicciones</a>
+      <a href="#">Cómo Funciona</a>
+      <a href="#">Precios</a>
+      <a href="#">Términos</a>
+      <a href="#">Privacidad</a>
+      <a href="#">Aviso de Apuestas</a>
     </div>
-    <div class="lp-footer-copy">&copy; 2025 cherrypick. For entertainment purposes.</div>
+    <div class="lp-footer-copy">&copy; 2025 cherrypick. Solo para fines de entretenimiento.</div>
   </footer>
 
 </div>
@@ -1080,32 +1080,8 @@
   <header class="app-topbar">
     <div class="topbar-brand">
       <img src="cherries.png" class="logo-cherry-icon" width="20" height="20" alt="" aria-hidden="true" />
-      <span class="logo-cherry">CHERRY</span><span class="logo-pick">PICK</span>
+      <span><span class="logo-cherry">CHERRY</span><span class="logo-pick">PICK</span></span>
     </div>
-
-    <!-- Nav (moved from sidebar) -->
-    <nav class="topbar-nav">
-      <a href="#" class="nav-item" data-section="main-markets" onclick="showSection('main-markets',this)">
-        <span class="nav-icon"><svg viewBox="0 0 18 18" width="14" fill="none"><polyline points="1,13 5,7 9,10 16,3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        Live Props
-      </a>
-      <a href="#" class="nav-item active" data-section="pitcher-props" onclick="showSection('pitcher-props',this)">
-        <span class="nav-icon"><svg viewBox="0 0 18 18" width="14" fill="none"><circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 9 Q5.5 6 9 9 Q12.5 12 15 9" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg></span>
-        Pitcher Deep Dive
-      </a>
-      <a href="#" class="nav-item" data-section="matchup-tool" onclick="showSection('matchup-tool',this)">
-        <span class="nav-icon"><svg viewBox="0 0 18 18" width="14" fill="none"><path d="M2 9 L9 2 L16 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9v6h3v-4h4v4h3V9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        Matchup Tool
-      </a>
-      <a href="#" class="nav-item" data-section="tracker" onclick="showSection('tracker',this)">
-        <span class="nav-icon"><svg viewBox="0 0 18 18" width="14" fill="none"><rect x="2.5" y="2.5" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.4"/><line x1="5.5" y1="6.5" x2="12.5" y2="6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="5.5" y1="9" x2="12.5" y2="9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="5.5" y1="11.5" x2="9" y2="11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
-        Bet Tracker
-      </a>
-      <a href="#" class="nav-item" data-section="todays-picks" onclick="showSection('todays-picks',this)">
-        <span class="nav-icon"><svg viewBox="0 0 18 18" width="14" fill="none"><path d="M9 2l1.8 3.6 4 .6-2.9 2.8.7 4L9 11l-3.6 1.9.7-4L3.2 6.2l4-.6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
-        Today's Picks
-      </a>
-    </nav>
 
     <div class="topbar-actions">
       <!-- Search toggle -->
@@ -1115,7 +1091,7 @@
             <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
             <line x1="13" y1="13" x2="17" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          <input class="topbar-search" id="topbar-search-input" type="text" placeholder="Search pitchers, teams…" />
+          <input class="topbar-search" id="topbar-search-input" type="text" placeholder="Buscar pitchers, equipos…" />
         </div>
         <button class="topbar-icon-btn" id="search-toggle-btn" onclick="toggleSearch()" title="Search">
           <svg viewBox="0 0 20 20" width="18" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><line x1="13" y1="13" x2="17" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -1133,6 +1109,39 @@
 
   <!-- BODY -->
   <div class="app-body">
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item" data-section="main-markets" onclick="showSection('main-markets',this)">
+          <span class="nav-icon"><svg viewBox="0 0 18 18" width="16" fill="none"><polyline points="1,13 5,7 9,10 16,3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          Props en Vivo
+        </a>
+        <a href="#" class="nav-item active" data-section="pitcher-props" onclick="showSection('pitcher-props',this)">
+          <span class="nav-icon"><svg viewBox="0 0 18 18" width="16" fill="none"><circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 9 Q5.5 6 9 9 Q12.5 12 15 9" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg></span>
+          Análisis Pitchers
+        </a>
+        <a href="#" class="nav-item" data-section="matchup-tool" onclick="showSection('matchup-tool',this)">
+          <span class="nav-icon"><svg viewBox="0 0 18 18" width="16" fill="none"><path d="M2 9 L9 2 L16 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9v6h3v-4h4v4h3V9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          Sim. Runs Totales
+        </a>
+        <a href="#" class="nav-item" data-section="tracker" onclick="showSection('tracker',this)">
+          <span class="nav-icon"><svg viewBox="0 0 18 18" width="16" fill="none"><rect x="2.5" y="2.5" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.4"/><line x1="5.5" y1="6.5" x2="12.5" y2="6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="5.5" y1="9" x2="12.5" y2="9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="5.5" y1="11.5" x2="9" y2="11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+          Tracker
+        </a>
+        <a href="#" class="nav-item" data-section="todays-picks" onclick="showSection('todays-picks',this)">
+          <span class="nav-icon"><svg viewBox="0 0 18 18" width="16" fill="none"><path d="M9 2l1.8 3.6 4 .6-2.9 2.8.7 4L9 11l-3.6 1.9.7-4L3.2 6.2l4-.6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+          Picks de Hoy
+        </a>
+      </nav>
+      <div class="sb-bottom">
+        <div class="sb-help">
+          <div class="sb-help-icon">?</div>
+          Ayuda y Feedback
+        </div>
+      </div>
+    </aside>
+
     <main class="app-main">
 
     <!-- ── MATCHUP TOOL ── -->
@@ -1142,51 +1151,51 @@
 
     <!-- ── OVERVIEW ── -->
     <section id="section-overview" class="app-section" style="display:none">
-      <h2 class="section-title">Overview</h2>
+      <h2 class="section-title">Resumen</h2>
       <div class="overview-grid">
         <div class="ov-card">
-          <div class="ov-label">Today's Games</div>
+          <div class="ov-label">Partidos Hoy</div>
           <div class="ov-val red" id="ov-games">—</div>
         </div>
         <div class="ov-card">
-          <div class="ov-label">Season ROI</div>
+          <div class="ov-label">Ganancia Neta</div>
           <div class="ov-val red" id="ov-roi">—</div>
         </div>
         <div class="ov-card">
-          <div class="ov-label">Wins</div>
+          <div class="ov-label">Victorias</div>
           <div class="ov-val red" id="ov-wins">—</div>
         </div>
         <div class="ov-card">
-          <div class="ov-label">Losses</div>
+          <div class="ov-label">Derrotas</div>
           <div class="ov-val red" id="ov-losses">—</div>
         </div>
       </div>
       <div class="chart-card" style="margin-top:24px">
-        <div class="chart-card-title">Season Performance</div>
+        <div class="chart-card-title">Rendimiento de Temporada</div>
         <canvas id="overviewChart" height="80"></canvas>
       </div>
     </section>
 
     <!-- ── MAIN MARKETS ── -->
     <section id="section-main-markets" class="app-section" style="display:none">
-      <h2 class="section-title">Today's Matchups</h2>
+      <h2 class="section-title">Partidos de Hoy</h2>
       <div class="matchup-list" id="matchup-list">
-        <div class="loading-block">Loading today's games…</div>
+        <div class="loading-block">Cargando partidos de hoy…</div>
       </div>
-      <h3 class="section-subtitle">Live Market Comparison</h3>
+      <h3 class="section-subtitle">Comparativa de Mercado</h3>
       <div class="table-wrap">
         <table class="market-table">
           <thead>
             <tr>
-              <th>Matchup</th>
-              <th>Betano Line</th>
-              <th>DraftKings Line</th>
-              <th>FanDuel Line</th>
-              <th>Model Price</th>
+              <th>Partido</th>
+              <th>Línea Betano</th>
+              <th>Línea DraftKings</th>
+              <th>Línea FanDuel</th>
+              <th>Precio Modelo</th>
             </tr>
           </thead>
           <tbody id="market-table-body">
-            <tr><td colspan="5" class="loading-cell">Loading…</td></tr>
+            <tr><td colspan="5" class="loading-cell">Cargando…</td></tr>
           </tbody>
         </table>
       </div>
@@ -1196,26 +1205,43 @@
     <section id="section-pitcher-props" class="app-section">
       <div class="pp-header">
         <div class="pp-slate-text" id="pp-slate-text"></div>
-        <h2 class="pp-title">PITCHER STRIKEOUTS <span class="pp-title-accent">SIMULATION</span></h2>
-        <p class="pp-desc">k-line projections based on historical pitch mix, opponent strikeout rate, ballpark factor and recent workload. pick a line, log the result.</p>
+        <h2 class="pp-title">PONCHES <span class="pp-title-accent">PITCHERS</span></h2>
+        <p class="pp-desc">Proyecciones K basadas en mix histórico, tasa de ponches del rival, factor de estadio y carga reciente. Elegí una línea y registrá el resultado.</p>
+
+        <!-- Enhanced-view toggle -->
+        <div class="view-toggle-wrap">
+          <button class="view-toggle-btn" id="pp-view-toggle" onclick="togglePropsView()">
+            <span class="view-toggle-dot"></span>
+            <span class="view-toggle-label">Vista ampliada</span>
+          </button>
+        </div>
       </div>
-      <div class="table-wrap">
+
+      <!-- Enhanced view: cube grid (hidden by default) -->
+      <div class="cube-grid" id="props-cubes-grid" style="display:none"></div>
+
+      <!-- Classic view: mobile cards -->
+      <div class="props-mobile-grid" id="props-mobile-cards"></div>
+
+      <!-- Classic view: desktop table -->
+      <div class="table-wrap pp-table-wrap">
         <table class="pp-table">
           <thead>
             <tr>
               <th style="min-width:190px">PITCHER</th>
-              <th>OPP</th>
-              <th style="width:1%;white-space:nowrap">K&nbsp;LINE</th>
-              <th>MODEL</th>
-              <th>EDGE</th>
-              <th style="min-width:90px">CONF.&nbsp;INTERVAL</th>
-              <th>CONFIDENCE</th>
-              <th style="display:none">RECORD</th>
-              <th>RESULT</th>
+              <th>RIVAL</th>
+              <th style="width:1%;white-space:nowrap">K&nbsp;LÍNEA</th>
+              <th>MODELO</th>
+              <th>VENTAJA</th>
+              <th style="min-width:90px">INT.&nbsp;CONFIANZA</th>
+              <th>CONFIANZA</th>
+              <th>LINEUP</th>
+              <th>FORMA</th>
+              <th>RESULTADO</th>
             </tr>
           </thead>
           <tbody id="props-tbody">
-            <tr><td colspan="9" class="loading-cell">Loading…</td></tr>
+            <tr><td colspan="10" class="loading-cell">Cargando…</td></tr>
           </tbody>
         </table>
       </div>
@@ -1223,9 +1249,11 @@
 
     <!-- ── BETTING TRACKER ── -->
     <section id="section-tracker" class="app-section" style="display:none">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <h2 class="section-title" style="margin-bottom:0">K-Prop Picks Tracker</h2>
-        <div style="display:flex;align-items:center;gap:10px">
+
+      <!-- Header -->
+      <div class="trk-header">
+        <h2 class="pp-title">HISTORIAL DE <span class="pp-title-accent">APUESTAS</span></h2>
+        <div class="trk-header-actions">
           <span id="retrain-status-text" style="font-size:11px;color:var(--text-dim)"></span>
           <button class="tp-log-btn" id="retrain-btn" onclick="triggerRetrain()"
                   style="background:var(--bg3);border:1px solid var(--border);color:var(--text-muted);font-size:11px">
@@ -1233,74 +1261,249 @@
           </button>
         </div>
       </div>
+      <div style="margin-bottom:20px">
+        <span id="retrain-schedule-text" style="font-size:11px;color:var(--text-dim);font-style:italic"></span>
+      </div>
+
+      <!-- Stats strip -->
       <div class="picks-summary">
         <div class="picks-stat">
-          <div class="picks-stat-label">Record</div>
-          <div class="picks-stat-val red" id="picks-record">—</div>
+          <div class="picks-stat-label">Registro</div>
+          <div class="picks-stat-val" id="picks-record">—</div>
+          <div class="picks-stat-sub"><span id="picks-hitrate">—</span> aciertos</div>
         </div>
         <div class="picks-stat">
-          <div class="picks-stat-label">Hit Rate</div>
-          <div class="picks-stat-val" id="picks-hitrate">—</div>
-        </div>
-        <div class="picks-stat">
-          <div class="picks-stat-label">ROI (–110)</div>
+          <div class="picks-stat-label">Ganancia Neta</div>
           <div class="picks-stat-val" id="picks-roi">—</div>
+          <div class="picks-stat-sub">ROI temporada</div>
         </div>
         <div class="picks-stat">
-          <div class="picks-stat-label">Avg Edge</div>
+          <div class="picks-stat-label">Ventaja Prom.</div>
           <div class="picks-stat-val" id="picks-avgedge">—</div>
+          <div class="picks-stat-sub">vs línea de mercado</div>
+        </div>
+        <div class="picks-stat">
+          <div class="picks-stat-label">P&amp;L ($)</div>
+          <div class="picks-stat-val" id="picks-pnl-pesos">—</div>
+          <div class="picks-stat-sub">resultado en pesos</div>
         </div>
       </div>
+
+      <!-- Bankroll settings (Auto-P&L) -->
+      <div class="bankroll-card" id="bankroll-card">
+        <div class="bankroll-header">
+          <div>
+            <div class="bankroll-title">Banca · Sizing · Filtros</div>
+            <div class="bankroll-sub">
+              Stake ($) = <code>kelly_fraction × banca</code>, capado al tope %.
+              Picks con EV menor o stake menor a los mínimos se degradan a SKIP.
+            </div>
+          </div>
+          <div class="bankroll-totals">
+            <div class="odds-quota-chip oqc-ok" id="odds-quota-chip" style="display:none">
+              <span class="oqc-lbl">Odds API</span>
+              <span class="oqc-val">— restantes</span>
+            </div>
+            <div class="bankroll-tot">
+              <span>Apostado (cerrado)</span>
+              <b id="bankroll-staked">—</b>
+            </div>
+            <div class="bankroll-tot">
+              <span>Abierto</span>
+              <b id="bankroll-open">—</b>
+            </div>
+            <div class="bankroll-tot">
+              <span>ROI real</span>
+              <b id="bankroll-roi">—</b>
+            </div>
+          </div>
+        </div>
+        <div class="bankroll-form">
+          <div class="bankroll-field">
+            <label for="bankroll-total-input">Banca total</label>
+            <div class="bankroll-input-wrap">
+              <span class="bankroll-currency">$</span>
+              <input type="number" id="bankroll-total-input" min="1" step="1000" value="100000">
+              <span class="bankroll-unit-sfx">pesos</span>
+            </div>
+          </div>
+          <div class="bankroll-field">
+            <label for="bankroll-unit-input">1 unidad (display)</label>
+            <div class="bankroll-input-wrap">
+              <span class="bankroll-currency">$</span>
+              <input type="number" id="bankroll-unit-input" min="1" step="100" value="1000">
+              <span class="bankroll-unit-sfx">pesos</span>
+            </div>
+          </div>
+          <div class="bankroll-field">
+            <label for="bankroll-cap-input">Tope por pick</label>
+            <div class="bankroll-input-wrap">
+              <input type="number" id="bankroll-cap-input" min="0.5" max="25" step="0.5" value="3">
+              <span class="bankroll-unit-sfx">% de la banca</span>
+            </div>
+          </div>
+          <div class="bankroll-field">
+            <label for="bankroll-minev-input" title="Picks con EV menor a este umbral se degradan a SKIP — protege contra ruido del modelo en edges chicos">EV mínimo</label>
+            <div class="bankroll-input-wrap">
+              <input type="number" id="bankroll-minev-input" min="0" max="50" step="0.5" value="5">
+              <span class="bankroll-unit-sfx">% por pick</span>
+            </div>
+          </div>
+          <div class="bankroll-field">
+            <label for="bankroll-minstake-input" title="Stake mínimo absoluto — picks donde Kelly pide menos se degradan a SKIP (fricción operativa)">Stake mínimo</label>
+            <div class="bankroll-input-wrap">
+              <span class="bankroll-currency">$</span>
+              <input type="number" id="bankroll-minstake-input" min="0" step="500" value="2000">
+              <span class="bankroll-unit-sfx">pesos</span>
+            </div>
+          </div>
+          <button type="button" class="bankroll-save-btn" onclick="saveBankrollUnit()">Guardar</button>
+          <span class="bankroll-msg" id="bankroll-msg"></span>
+        </div>
+      </div>
+
+      <!-- Chart + Calibration -->
       <div class="tracker-grid">
         <div class="chart-card">
-          <div class="chart-card-title">Cumulative ROI (K Props)</div>
-          <canvas id="trackerChart" height="120"></canvas>
+          <div class="chart-card-header">
+            <div class="chart-card-title">GANANCIA NETA ACUMULADA</div>
+            <div class="chart-range-btns" id="chartRangeBtns">
+              <button class="crb" data-range="7d" onclick="setChartRange('7d')">7D</button>
+              <button class="crb" data-range="1m" onclick="setChartRange('1m')">1M</button>
+              <button class="crb" data-range="3m" onclick="setChartRange('3m')">3M</button>
+              <button class="crb" data-range="6m" onclick="setChartRange('6m')">6M</button>
+              <button class="crb" data-range="1y" onclick="setChartRange('1y')">1A</button>
+              <button class="crb crb--active" data-range="all" onclick="setChartRange('all')">TODO</button>
+            </div>
+          </div>
+          <div style="position:relative;height:200px;z-index:1">
+            <canvas id="trackerChart"></canvas>
+          </div>
         </div>
         <div class="calibration-card">
-          <div class="chart-card-title">Session Summary</div>
+          <div class="chart-card-title">CALIBRACIÓN</div>
           <div class="brier-box">
-            <div class="brier-label">Season ROI</div>
+            <div class="brier-label">Ganancia Neta de Temporada <span class="info-icon">ⓘ</span></div>
             <div class="brier-val" id="stat-roi">—</div>
-            <div class="brier-sub" style="margin-top:16px">
-              <span class="result-badge win" id="stat-wins">—</span> W &nbsp;
-              <span class="result-badge loss" id="stat-losses">—</span> L
+            <span class="brier-badge excellent" id="stat-quality"></span>
+            <div class="brier-sub" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:12px">
+              <span class="result-badge win" id="stat-wins">—</span><span style="color:var(--text-dim)">G</span>
+              <span class="result-badge loss" id="stat-losses">—</span><span style="color:var(--text-dim)">P</span>
             </div>
-            <div style="margin-top:12px;font-size:12px;color:#888">
-              Avg Edge: <strong id="stat-clv">—</strong>
+            <div style="margin-top:10px;font-size:13px;color:var(--text-muted)">
+              Ventaja Prom.: <strong id="stat-clv" style="color:var(--text)">—</strong>
             </div>
           </div>
         </div>
       </div>
-      <h3 class="section-subtitle">Pick History</h3>
-      <div class="table-wrap">
-        <table class="tracker-table">
-          <thead>
-            <tr>
-              <th>Pitcher</th>
-              <th>Team</th>
-              <th>Opp</th>
-              <th>Line</th>
-              <th>Model</th>
-              <th>Edge</th>
-              <th>Rec</th>
-              <th>CI</th>
-              <th>Conf</th>
-              <th>Result</th>
-            </tr>
-          </thead>
-          <tbody id="tracker-tbody">
-            <tr><td colspan="10" class="loading-cell">Loading…</td></tr>
-          </tbody>
-        </table>
+
+      <!-- O/U summary strip (hidden IDs kept for JS) -->
+      <div style="display:none">
+        <span id="ou-record"></span><span id="ou-hitrate"></span>
+        <span id="ou-pending"></span><span id="ou-avgedge"></span>
       </div>
-      <h3 class="section-subtitle">Add Bet</h3>
+
+      <!-- Bundle A #12 — Brier score + reliability diagram -->
+      <section id="calibration-section" class="calibration-section" style="display:none">
+        <h3 class="section-subtitle" style="margin-top:40px">
+          Calibración del Modelo
+          <span class="calib-n" id="calib-n"></span>
+        </h3>
+        <p class="section-sub-desc">
+          ¿Cuando el modelo dice 72%, realmente gana 72% de las veces? El Brier score
+          mide eso (0 = perfecto, 0.25 = moneda, &lt;0.21 = mejor que el mercado).
+        </p>
+        <div class="calib-grid">
+          <div class="calib-brier-card">
+            <div class="calib-brier-label">Brier Score</div>
+            <div class="calib-brier-val" id="calib-brier-val">—</div>
+            <div class="calib-brier-benchmark">
+              <span>Moneda 0.25</span>
+              <span>Mercado ~0.21</span>
+              <span>Bueno &lt; 0.18</span>
+            </div>
+            <div class="calib-interp" id="calib-interp">—</div>
+          </div>
+          <div class="calib-reliability-card">
+            <div class="calib-reliability-label">Confiabilidad (predicho vs real)</div>
+            <div class="calib-bars" id="calib-bars">
+              <div class="calib-empty">Sin datos.</div>
+            </div>
+          </div>
+          <div class="calib-platt-card" id="calib-platt-card">
+            <div class="calib-platt-header">
+              <span class="calib-platt-label" id="calib-platt-label">Calibración</span>
+              <span class="calib-platt-status" id="calib-platt-status">Sin calibrar</span>
+            </div>
+            <div class="calib-platt-body" id="calib-platt-body">
+              <p class="calib-platt-desc">
+                Recalibración post-hoc sobre los picks settled. Auto-selecciona
+                Platt (sigmoide) o Isotonic (monotónico flexible) según menor Brier.
+              </p>
+            </div>
+            <button type="button" class="calib-platt-btn" id="calib-platt-btn"
+                    onclick="recalibratePlatt()">Recalibrar ahora</button>
+            <div class="calib-platt-msg" id="calib-platt-msg"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Day-paginated pick cards -->
+      <div class="trk-day-nav" id="trk-day-nav" style="display:none">
+        <button class="trk-day-btn" id="trk-prev" onclick="trackerNavDay(1)" title="Día anterior">&#8592;</button>
+        <span class="trk-day-label" id="trk-day-label">—</span>
+        <button class="trk-day-btn" id="trk-next" onclick="trackerNavDay(-1)" title="Día siguiente">&#8594;</button>
+      </div>
+      <div id="trk-day-cards" class="trk-day-cards">
+        <div class="loading-cell" style="padding:32px 0;text-align:center">Cargando…</div>
+      </div>
+
+      <!-- Retro pitcher pick (back-fill K-prop picks from past dates) -->
+      <h3 class="section-subtitle" style="margin-top:40px">
+        Cargar pick retro de pitcher
+        <button type="button" class="retro-toggle-btn" onclick="toggleRetroForm()"
+                id="retro-toggle-btn">+ nuevo</button>
+      </h3>
+      <p class="section-sub-desc">
+        Para backfill de apuestas que olvidaste loguear. Se guarda en el histórico de picks y alimenta la calibración del modelo.
+      </p>
+      <form id="retro-pick-form" class="bet-form" style="display:none" onsubmit="submitRetroPick(event)">
+        <div class="form-row">
+          <label>Fecha <input type="date" name="rp_date" required /></label>
+          <label>Pitcher <input type="text" name="rp_pitcher" placeholder="Gerrit Cole" required /></label>
+          <label>Equipo <input type="text" name="rp_team" placeholder="NYY" maxlength="4" required /></label>
+          <label>Rival <input type="text" name="rp_opp" placeholder="BOS" maxlength="4" /></label>
+        </div>
+        <div class="form-row">
+          <label>K Línea <input type="number" name="rp_kline" step="0.5" min="0.5" placeholder="7.5" required /></label>
+          <label>Pick
+            <select name="rp_rec" required>
+              <option value="">— elegir —</option>
+              <option value="OVER">OVER</option>
+              <option value="UNDER">UNDER</option>
+              <option value="SKIP">SKIP</option>
+            </select>
+          </label>
+          <label>Ks reales <input type="number" name="rp_actual" step="1" min="0" placeholder="9" /></label>
+          <label>Cuota <input type="number" name="rp_odds" step="0.01" min="1" placeholder="1.91" /></label>
+        </div>
+        <div class="form-row">
+          <label>Casino <input type="text" name="rp_casino" placeholder="bet365" /></label>
+          <label>Unidades <input type="number" name="rp_units" step="0.1" min="0.1" placeholder="1.0" /></label>
+          <label style="flex:1">Notas <input type="text" name="rp_notes" placeholder="Notas opcionales" /></label>
+          <button type="submit" class="btn-launch" style="align-self:flex-end">Guardar</button>
+        </div>
+      </form>
+
+      <!-- Add Bet form -->
+      <h3 class="section-subtitle" style="margin-top:40px">Agregar Apuesta</h3>
       <form id="bet-form" class="bet-form">
         <div class="form-row">
-          <label>Date <input type="date" name="bet_date" required /></label>
-          <label>Game <input type="text" name="bet_game" placeholder="NYY vs BOS" required /></label>
-          <label>Market
+          <label>Fecha <input type="date" name="bet_date" required /></label>
+          <label>Partido <input type="text" name="bet_game" placeholder="NYY vs BOS" required /></label>
+          <label>Mercado
             <select name="bet_market" required>
-              <option value="">— select —</option>
+              <option value="">— elegir —</option>
               <option>K Over</option>
               <option>K Under</option>
               <option>Moneyline</option>
@@ -1310,21 +1513,21 @@
           </label>
         </div>
         <div class="form-row">
-          <label>Odds (decimal) <input type="number" name="bet_odds" step="0.01" min="1" placeholder="1.91" required /></label>
-          <label>Units <input type="number" name="bet_units" step="0.1" min="0.1" placeholder="1.0" required /></label>
-          <label>Result
+          <label>Cuota (decimal) <input type="number" name="bet_odds" step="0.01" min="1" placeholder="1.91" required /></label>
+          <label>Unidades <input type="number" name="bet_units" step="0.1" min="0.1" placeholder="1.0" required /></label>
+          <label>Resultado
             <select name="bet_result">
-              <option value="">Pending</option>
-              <option value="W">Win</option>
-              <option value="L">Loss</option>
+              <option value="">Pendiente</option>
+              <option value="W">Ganada</option>
+              <option value="L">Perdida</option>
               <option value="P">Push</option>
             </select>
           </label>
-          <label>CLV <input type="number" name="bet_clv" step="0.01" placeholder="0.03" /></label>
+          <label>Ventaja <input type="number" name="bet_clv" step="0.01" placeholder="0.03" /></label>
         </div>
         <div class="form-row">
-          <label style="flex:1">Notes <input type="text" name="bet_notes" placeholder="Optional notes" /></label>
-          <button type="submit" class="btn-launch" style="align-self:flex-end">Add Bet</button>
+          <label style="flex:1">Notas <input type="text" name="bet_notes" placeholder="Notas opcionales" /></label>
+          <button type="submit" class="btn-launch" style="align-self:flex-end">Agregar</button>
         </div>
       </form>
     </section>
@@ -1333,34 +1536,97 @@
     <section id="section-todays-picks" class="app-section" style="display:none">
       <div class="pp-header">
         <div class="pp-slate-text" id="tp-slate-text"></div>
-        <h2 class="pp-title">TODAY'S <span class="pp-title-accent">PICKS</span></h2>
-        <p class="pp-desc">model-backed over/under projections for today's slate. only actionable picks shown.</p>
+        <h2 class="pp-title">picks de <span class="pp-title-accent">hoy</span></h2>
+        <p class="pp-desc">Proyecciones over/under respaldadas por el modelo. Solo se muestran picks accionables.</p>
+
+        <div class="view-toggle-wrap">
+          <button class="view-toggle-btn" id="tp-view-toggle" onclick="toggleTodaysView()">
+            <span class="view-toggle-dot"></span>
+            <span class="view-toggle-label">Vista ampliada</span>
+          </button>
+        </div>
       </div>
+
+      <!-- Casino deposit summary — sums stake_pesos by casino so you know
+           how much to fund each book before placing today's slate. -->
+      <div class="casino-deposit-card" id="casino-deposit-card" style="display:none">
+        <div class="cdc-header">
+          <div>
+            <div class="cdc-title">Depósitos por Casino</div>
+            <div class="cdc-sub">Suma de los stakes recomendados de hoy. Cargá esto en cada book antes de apostar.</div>
+          </div>
+          <div class="cdc-total-wrap">
+            <span class="cdc-total-label">Total a apostar</span>
+            <b class="cdc-total-val" id="cdc-total-val">—</b>
+          </div>
+        </div>
+        <div class="cdc-rows" id="cdc-rows"></div>
+        <div class="cdc-footer" id="cdc-footer"></div>
+      </div>
+
+      <!-- Enhanced view: cube grid (hidden by default) -->
+      <div class="cube-grid" id="tp-cubes-grid" style="display:none"></div>
+
+      <!-- Desktop table -->
       <div class="table-wrap tp-table-wrap">
         <table class="tp-table">
           <thead>
             <tr>
-              <th>PITCHER</th>
-              <th>OPP</th>
-              <th>K LINE</th>
-              <th>PROJ</th>
-              <th>EDGE</th>
-              <th>PICK</th>
-              <th>RESULT</th>
+              <th>pitcher</th>
+              <th>rival</th>
+              <th>k línea</th>
+              <th>proy.</th>
+              <th>ventaja</th>
+              <th>pick</th>
+              <th>resultado</th>
             </tr>
           </thead>
           <tbody id="tp-tbody">
-            <tr><td colspan="7" class="loading-cell">Loading…</td></tr>
+            <tr><td colspan="7" class="loading-cell">Cargando…</td></tr>
           </tbody>
         </table>
       </div>
+      <!-- Mobile cards -->
+      <div class="tp-cards-grid" id="tp-cards-grid"></div>
     </section>
 
     </main>
   </div><!-- /.app-body -->
+
+  <!-- Mobile bottom nav -->
+  <nav class="mobile-bottom-nav">
+    <a href="#" class="mbn-item" data-section="main-markets" onclick="showSection('main-markets',this)">
+      <span class="mbn-icon"><svg viewBox="0 0 18 18" width="20" fill="none"><polyline points="1,13 5,7 9,10 16,3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="mbn-label">Props</span>
+    </a>
+    <a href="#" class="mbn-item active" data-section="pitcher-props" onclick="showSection('pitcher-props',this)">
+      <span class="mbn-icon"><svg viewBox="0 0 18 18" width="20" fill="none"><circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 9 Q5.5 6 9 9 Q12.5 12 15 9" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg></span>
+      <span class="mbn-label">Pitchers</span>
+    </a>
+    <a href="#" class="mbn-item" data-section="matchup-tool" onclick="showSection('matchup-tool',this)">
+      <span class="mbn-icon"><svg viewBox="0 0 18 18" width="20" fill="none"><path d="M2 9 L9 2 L16 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9v6h3v-4h4v4h3V9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="mbn-label">Runs</span>
+    </a>
+    <a href="#" class="mbn-item" data-section="todays-picks" onclick="showSection('todays-picks',this)">
+      <span class="mbn-icon"><svg viewBox="0 0 18 18" width="20" fill="none"><path d="M9 2l1.8 3.6 4 .6-2.9 2.8.7 4L9 11l-3.6 1.9.7-4L3.2 6.2l4-.6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+      <span class="mbn-label">Picks</span>
+    </a>
+    <a href="#" class="mbn-item" data-section="tracker" onclick="showSection('tracker',this)">
+      <span class="mbn-icon"><svg viewBox="0 0 18 18" width="20" fill="none"><rect x="2.5" y="2.5" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.4"/><line x1="5.5" y1="6.5" x2="12.5" y2="6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="5.5" y1="9" x2="12.5" y2="9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="5.5" y1="11.5" x2="9" y2="11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+      <span class="mbn-label">Tracker</span>
+    </a>
+  </nav>
+
 </div>
 
-<script src="app.js?v=25"></script>
+<!-- Pitcher nerd drawer (mobile) -->
+<div id="pitcher-nerd-overlay" class="nerd-overlay" onclick="closePitcherNerd()"></div>
+<div id="pitcher-nerd-drawer" class="nerd-drawer" role="dialog" aria-modal="true" aria-label="Pitcher stats">
+  <div class="nerd-drawer-pill" onclick="closePitcherNerd()" role="button" aria-label="Cerrar"></div>
+  <div class="nerd-drawer-scroll" id="pitcher-nerd-content"></div>
+</div>
+
+<script src="app.js?v=74"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const d = document.getElementById('props-date');

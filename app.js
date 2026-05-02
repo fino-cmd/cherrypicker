@@ -75,6 +75,16 @@ function pct(v) { return v != null ? (v * 100).toFixed(1) + '%' : '—'; }
 function num(v, d = 2) { return v != null ? Number(v).toFixed(d) : '—'; }
 function dash(v) { return v != null ? v : '—'; }
 
+// Argentine peso formatter — "1.234.567" style, no decimals, optional sign prefix.
+const _MONEY_FMT = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
+function money(v, withSign = false) {
+  if (v == null || isNaN(v)) return '—';
+  const n = Math.round(Number(v));
+  const abs = _MONEY_FMT.format(Math.abs(n));
+  const sign = n < 0 ? '-' : (withSign && n > 0 ? '+' : '');
+  return `${sign}$${abs}`;
+}
+
 function loading(id, msg = 'Loading…') {
   const el = document.getElementById(id);
   if (el) el.innerHTML = `<tr><td colspan="20" class="loading-cell">${msg}</td></tr>`;
@@ -91,7 +101,7 @@ function goToApp() {
   document.getElementById('page-landing').classList.remove('active');
   const app = document.getElementById('page-app');
   app.style.display = 'flex';
-  showSection('pitcher-props', document.querySelector('.nav-item[data-section="pitcher-props"]'));
+  showSection('pitcher-props', null);
 }
 
 function goToLanding() {
@@ -103,8 +113,9 @@ function showSection(name, el) {
   document.querySelectorAll('.app-section').forEach(s => s.style.display = 'none');
   const target = document.getElementById('section-' + name);
   if (target) target.style.display = 'block';
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if (el) el.classList.add('active');
+  // Sync sidebar nav items and mobile bottom nav items
+  document.querySelectorAll('.nav-item, .mbn-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll(`.nav-item[data-section="${name}"], .mbn-item[data-section="${name}"]`).forEach(n => n.classList.add('active'));
 
   // Lazy-load section data
   if (name === 'main-markets') loadMatchups();
@@ -117,8 +128,9 @@ function showSection(name, el) {
 
 // ── MATCHUP TOOL ──────────────────────────────────────────────────────────────
 
-let _matchupToolGames = null;
-const _cubeSimData    = {};   // game_id → sim result + ou_line
+let _matchupToolGames  = null;
+const _cubeSimData     = {};   // game_id → sim result + ou_line
+let _lineupStatusMap   = {};   // game_id → bool (shared across sections)
 
 async function loadMatchupTool() {
   const sec = document.getElementById('section-matchup-tool');
@@ -127,8 +139,8 @@ async function loadMatchupTool() {
 
   sec.innerHTML = `
     <div class="mt-header">
-      <div class="pp-title">MATCHUP <span class="pp-title-accent">SIMULATOR</span></div>
-      <div class="pp-desc">Monte Carlo 10,000-game O/U — xFIP × xwOBA model</div>
+      <div class="pp-title">SIMULADOR DE <span class="pp-title-accent">RUNS</span></div>
+      <div class="pp-desc">Monte Carlo 10,000 partidos — modelo xFIP × xwOBA</div>
     </div>
     <div id="sim-cube-grid" class="sim-cube-grid">
       <div class="sim-cube-status">Cargando partidos…</div>
@@ -148,38 +160,51 @@ async function loadMatchupTool() {
     const grid = document.getElementById('sim-cube-grid');
 
     if (!games.length) {
-      grid.innerHTML = '<div class="sim-cube-status">No hay partidos hoy</div>';
+      grid.innerHTML = '<div class="sim-cube-status">No hay partidos programados hoy</div>';
       return;
     }
 
     grid.innerHTML = games.map(g => `
       <div class="sim-cube" id="cube-${g.game_id}" onclick="openNerdPanel(${g.game_id})">
 
-        <!-- ── Red header ── -->
+        <!-- Cherry badge — hidden until pick qualifies -->
+        <img src="cherry.png" class="sim-cube-cherry-badge" id="cherry-${g.game_id}" alt="pick" />
+
+        <!-- Teams + pitchers -->
         <div class="sim-cube-top">
-          <img src="cherry.png" class="sim-cube-cherry" alt="" />
           <div class="sim-cube-teams">
-            <span class="sim-cube-team">${g.away_team}</span>
+            <div class="sim-cube-team-block">
+              ${_teamLogoUrl(g.away_team) ? `<img src="${_teamLogoUrl(g.away_team)}" class="sim-cube-logo" alt="${g.away_team}" onerror="this.style.display='none'">` : ''}
+              <span class="sim-cube-team">${g.away_team}</span>
+            </div>
             <span class="sim-cube-at">@</span>
-            <span class="sim-cube-team">${g.home_team}</span>
+            <div class="sim-cube-team-block">
+              <span class="sim-cube-team">${g.home_team}</span>
+              ${_teamLogoUrl(g.home_team) ? `<img src="${_teamLogoUrl(g.home_team)}" class="sim-cube-logo" alt="${g.home_team}" onerror="this.style.display='none'">` : ''}
+            </div>
           </div>
           <div class="sim-cube-pitchers">${g.away_pitcher.name} · ${g.home_pitcher.name}</div>
+          <span class="sim-cube-lineup-status" id="lineup-status-${g.game_id}"></span>
         </div>
 
-        <!-- ── Verdict (hidden until sim runs) ── -->
+        <!-- Verdict (hidden until sim runs) -->
         <div class="sim-cube-verdict" id="verdict-${g.game_id}" aria-live="polite">
           <span class="sim-cube-direction" id="vdir-${g.game_id}"></span>
           <span class="sim-cube-total"    id="vtot-${g.game_id}"></span>
           <span class="sim-cube-prob"     id="vprob-${g.game_id}"></span>
         </div>
 
-        <!-- ── Controls ── -->
+        <!-- Controls -->
         <div class="sim-cube-bottom" onclick="event.stopPropagation()">
-          <div class="sim-cube-ou-wrap">
-            <label class="sim-cube-ou-label" for="ou-${g.game_id}">O/U</label>
-            <input  class="sim-cube-ou-input" id="ou-${g.game_id}"
-                    type="number" step="0.5" min="1" max="30" value="8.5"
-                    aria-label="Línea Over/Under" />
+          <div class="sim-cube-runs-row">
+            <span class="sim-cube-ou-label">O/U LINE</span>
+            <div class="runs-chips-wrap" id="runs-chips-${g.game_id}">
+              ${_RUNS_PRESETS.map(v =>
+                `<button class="runs-chip${v === 8.5 ? ' runs-chip--active' : ''}"
+                  onclick="event.stopPropagation();selectRunsLine(this,${g.game_id})"
+                  data-val="${v}">${v}</button>`
+              ).join('')}
+            </div>
           </div>
           <button class="sim-cube-play" id="play-${g.game_id}"
                   onclick="runCubeSim(${g.game_id})"
@@ -193,16 +218,35 @@ async function loadMatchupTool() {
       </div>
     `).join('');
 
+    // Fetch lineup status in background and update badges
+    apiFetch('/api/lineup-status').then(statusMap => {
+      Object.assign(_lineupStatusMap, statusMap);
+      for (const [gid, sides] of Object.entries(statusMap)) {
+        // Run simulator cube badge (either side confirmed)
+        const confirmed = (sides.home || sides.away);
+        const el = document.getElementById(`lineup-status-${gid}`);
+        if (el) {
+          if (confirmed) {
+            el.textContent = '● LINEUP LISTO';
+            el.className = 'sim-cube-lineup-status sim-cube-lineup-status--ready';
+          } else {
+            el.textContent = '○ Sin lineup';
+            el.className = 'sim-cube-lineup-status sim-cube-lineup-status--pending';
+          }
+        }
+      }
+    }).catch(() => {});
+
   } catch (e) {
     document.getElementById('sim-cube-grid').innerHTML =
-      '<div class="sim-cube-status">Error al cargar partidos</div>';
+      '<div class="sim-cube-status">Error al cargar los partidos</div>';
   }
 }
 
 async function runCubeSim(game_id) {
   const playBtn = document.getElementById(`play-${game_id}`);
-  const ouInput = document.getElementById(`ou-${game_id}`);
-  const ou_line = parseFloat(ouInput?.value ?? 8.5);
+  const activeChip = document.querySelector(`#runs-chips-${game_id} .runs-chip--active`);
+  const ou_line = activeChip ? parseFloat(activeChip.dataset.val) : 8.5;
   if (isNaN(ou_line)) return;
 
   playBtn.disabled = true;
@@ -212,18 +256,119 @@ async function runCubeSim(game_id) {
     const d = await apiPost('/api/simulation/ou', { game_id, ou_line });
     _cubeSimData[game_id] = { ...d, ou_line };
 
-    const isOver   = d.over_prob >= d.under_prob;
-    const direction = isOver ? 'OVER' : 'UNDER';
+    // Update lineup badge based on confirmed result from simulation
+    const lsEl = document.getElementById(`lineup-status-${game_id}`);
+    if (lsEl) {
+      if (d.lineup_confirmed) {
+        lsEl.textContent = '● LINEUP LISTO';
+        lsEl.className = 'sim-cube-lineup-status sim-cube-lineup-status--ready';
+      } else {
+        lsEl.textContent = '○ Sin lineup';
+        lsEl.className = 'sim-cube-lineup-status sim-cube-lineup-status--pending';
+      }
+    }
+
+    const isOver    = d.over_prob >= d.under_prob;
+    const edgeAbs   = Math.abs(d.edge_pct);
+    const rec       = edgeAbs >= 0.05 ? (isOver ? 'OVER' : 'UNDER') : 'SKIP';
     const prob      = Math.round(Math.max(d.over_prob, d.under_prob) * 100);
 
-    document.getElementById(`vdir-${game_id}`).textContent  = direction;
-    document.getElementById(`vdir-${game_id}`).className    =
-      `sim-cube-direction sim-cube-direction--${direction.toLowerCase()}`;
-    document.getElementById(`vtot-${game_id}`).textContent  = d.avg_total.toFixed(1);
-    document.getElementById(`vprob-${game_id}`).textContent = `${prob}%`;
+    const vdir = document.getElementById(`vdir-${game_id}`);
+    const vtot = document.getElementById(`vtot-${game_id}`);
+    const vprob = document.getElementById(`vprob-${game_id}`);
+
+    if (rec === 'SKIP') {
+      vdir.textContent = 'SKIP';
+      vdir.className   = 'sim-cube-direction sim-cube-direction--skip';
+      vtot.textContent = '';
+      vprob.textContent = '';
+    } else {
+      vdir.textContent = rec;
+      vdir.className   = `sim-cube-direction sim-cube-direction--${rec.toLowerCase()}`;
+      vtot.textContent = d.avg_total.toFixed(1);
+      vprob.textContent = `${prob}%`;
+    }
 
     const cube = document.getElementById(`cube-${game_id}`);
     cube.classList.add('sim-cube--result');
+
+    // Show/hide cherry badge
+    const cherry = document.getElementById(`cherry-${game_id}`);
+    if (cherry) cherry.classList.toggle('sim-cube-cherry-badge--visible', rec !== 'SKIP');
+
+    // Lock the card — replace controls with result summary + undo button
+    const bottom = cube.querySelector('.sim-cube-bottom');
+    const dirCls = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : 'skip';
+    const bpHome = d.home_bullpen_xfip != null ? d.home_bullpen_xfip.toFixed(2) : '—';
+    const bpAway = d.away_bullpen_xfip != null ? d.away_bullpen_xfip.toFixed(2) : '—';
+
+    // Weather summary (compact chip, hidden on domes)
+    let wxChipHTML = '';
+    const wx = d.weather;
+    if (wx && wx.roof !== 'dome') {
+      const wLabel = (d.weather_detail || {}).wind_label || 'CROSS';
+      const wCls   = wLabel === 'OUT' ? 'wx-out' : wLabel === 'IN' ? 'wx-in' : 'wx-cross';
+      wxChipHTML = `
+        <div class="sim-cube-locked-wx" title="${Math.round(wx.temp_f)}°F · ${Math.round(wx.wind_mph)} mph ${wLabel} · HR ${wx.humidity_pct}%">
+          <span>${Math.round(wx.temp_f)}°</span>
+          <span class="sim-cube-locked-bp-sep">·</span>
+          <span class="${wCls}">💨 ${Math.round(wx.wind_mph)} ${wLabel}</span>
+        </div>`;
+    } else if (wx && wx.roof === 'dome') {
+      wxChipHTML = `<div class="sim-cube-locked-wx"><span style="opacity:.6">🏟 DOME</span></div>`;
+    }
+
+    bottom.innerHTML = `
+      <div class="sim-cube-locked-result" onclick="event.stopPropagation()">
+        <div class="sim-cube-locked-verdict">
+          <span class="sim-cube-locked-rec sim-cube-locked-rec--${dirCls}">${rec}</span>
+          <span class="sim-cube-locked-line">O/U ${ou_line}</span>
+          <span class="sim-cube-locked-prob">${Math.round(Math.max(d.over_prob, d.under_prob) * 100)}%</span>
+        </div>
+        <div class="sim-cube-locked-bp">
+          <span title="Bullpen xFIP ${d.home_team}">${d.home_team} BP ${bpHome}</span>
+          <span class="sim-cube-locked-bp-sep">·</span>
+          <span title="Bullpen xFIP ${d.away_team}">${d.away_team} BP ${bpAway}</span>
+        </div>
+        ${wxChipHTML}
+        <div class="sim-cube-locked-actions">
+          <button class="sim-cube-edit-btn" onclick="editCubeSim(${game_id}, ${ou_line})">✏ editar</button>
+          <button class="sim-cube-undo-btn" onclick="undoCubeSim(${game_id})">↩ undo</button>
+        </div>
+      </div>`;
+
+    // Auto-save when model recommends OVER or UNDER (not SKIP)
+    if (rec !== 'SKIP') {
+      try {
+        const wxSnap = d.weather || {};
+        const wxLabel = (d.weather_detail || {}).wind_label || null;
+        await apiPost('/api/matchup-picks', {
+          game_id,
+          ou_line,
+          direction:    rec,
+          edge_pct:     d.edge_pct,
+          avg_total:    d.avg_total,
+          confidence:   d.confidence,
+          home_team:    d.home_team,
+          away_team:    d.away_team,
+          home_pitcher: d.home_pitcher,
+          away_pitcher: d.away_pitcher,
+          // Weather snapshot at save-time
+          weather_factor:     d.weather_factor,
+          weather_temp_f:     wxSnap.temp_f ?? null,
+          weather_wind_mph:   wxSnap.wind_mph ?? null,
+          weather_wind_label: wxLabel,
+          weather_roof:       wxSnap.roof ?? null,
+        });
+        _showToast(`${rec} ${ou_line} — ${d.away_team} @ ${d.home_team} guardado`, 'success');
+        const tpSec = document.getElementById('section-todays-picks');
+        if (tpSec && tpSec.style.display !== 'none') loadTodaysPicks();
+      } catch (err) {
+        _showToast(`Error guardando simulación: ${err.message}`, 'error');
+      }
+    } else {
+      _showToast(`SKIP — edge insuficiente (${(Math.abs(d.edge_pct) * 100).toFixed(1)}% < 5%)`, 'info');
+    }
 
   } catch (e) {
     _showToast('Error en simulación: ' + e.message, 'error');
@@ -232,6 +377,96 @@ async function runCubeSim(game_id) {
     playBtn.classList.remove('sim-cube-play--loading');
   }
 }
+
+async function undoCubeSim(game_id) {
+  // Delete pick from DB
+  try { await fetch(`${API}/api/matchup-picks/${game_id}`, { method: 'DELETE' }); } catch (_) {}
+
+  // Reset card state
+  delete _cubeSimData[game_id];
+  const cube = document.getElementById(`cube-${game_id}`);
+  if (!cube) return;
+  cube.classList.remove('sim-cube--result');
+
+  // Clear verdict
+  const vdir = document.getElementById(`vdir-${game_id}`);
+  const vtot = document.getElementById(`vtot-${game_id}`);
+  const vprob = document.getElementById(`vprob-${game_id}`);
+  if (vdir) { vdir.textContent = ''; vdir.className = 'sim-cube-direction'; }
+  if (vtot) vtot.textContent = '';
+  if (vprob) vprob.textContent = '';
+
+  // Hide cherry
+  const cherry = document.getElementById(`cherry-${game_id}`);
+  if (cherry) cherry.classList.remove('sim-cube-cherry-badge--visible');
+
+  // Restore controls
+  const bottom = cube.querySelector('.sim-cube-bottom');
+  const activeVal = 8.5;
+  bottom.innerHTML = `
+    <div class="sim-cube-runs-row">
+      <span class="sim-cube-ou-label">O/U LINE</span>
+      <div class="runs-chips-wrap" id="runs-chips-${game_id}">
+        ${_RUNS_PRESETS.map(v =>
+          `<button class="runs-chip${v === activeVal ? ' runs-chip--active' : ''}"
+            onclick="event.stopPropagation();selectRunsLine(this,${game_id})"
+            data-val="${v}">${v}</button>`
+        ).join('')}
+      </div>
+    </div>
+    <button class="sim-cube-play" id="play-${game_id}"
+            onclick="runCubeSim(${game_id})"
+            aria-label="Simular">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+        <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/>
+      </svg>
+    </button>`;
+
+  const tpSec = document.getElementById('section-todays-picks');
+  if (tpSec && tpSec.style.display !== 'none') loadTodaysPicks();
+}
+
+function editCubeSim(game_id, prev_ou_line) {
+  // Unlock the card for re-simulation — keeps DB pick intact (re-sim will upsert)
+  delete _cubeSimData[game_id];
+  const cube = document.getElementById(`cube-${game_id}`);
+  if (!cube) return;
+  cube.classList.remove('sim-cube--result');
+
+  // Clear verdict display
+  const vdir  = document.getElementById(`vdir-${game_id}`);
+  const vtot  = document.getElementById(`vtot-${game_id}`);
+  const vprob = document.getElementById(`vprob-${game_id}`);
+  if (vdir)  { vdir.textContent = ''; vdir.className = 'sim-cube-direction'; }
+  if (vtot)  vtot.textContent  = '';
+  if (vprob) vprob.textContent = '';
+
+  const cherry = document.getElementById(`cherry-${game_id}`);
+  if (cherry) cherry.classList.remove('sim-cube-cherry-badge--visible');
+
+  // Restore chips with the previously simulated line active
+  const activeVal = prev_ou_line;
+  const bottom = cube.querySelector('.sim-cube-bottom');
+  bottom.innerHTML = `
+    <div class="sim-cube-runs-row">
+      <span class="sim-cube-ou-label">O/U LINE</span>
+      <div class="runs-chips-wrap" id="runs-chips-${game_id}">
+        ${_RUNS_PRESETS.map(v =>
+          `<button class="runs-chip${v === activeVal ? ' runs-chip--active' : ''}"
+            onclick="event.stopPropagation();selectRunsLine(this,${game_id})"
+            data-val="${v}">${v}</button>`
+        ).join('')}
+      </div>
+    </div>
+    <button class="sim-cube-play" id="play-${game_id}"
+            onclick="runCubeSim(${game_id})"
+            aria-label="Simular">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+        <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/>
+      </svg>
+    </button>`;
+}
+
 
 function openNerdPanel(game_id) {
   const data = _cubeSimData[game_id];
@@ -250,6 +485,39 @@ function openNerdPanel(game_id) {
 
   const parkColor = d.park_factor >= 105 ? 'var(--red-light)' : d.park_factor <= 95 ? '#22c55e' : 'var(--text-muted)';
   const parkLabel = d.park_factor >= 105 ? 'hitter-friendly' : d.park_factor <= 95 ? 'pitcher-friendly' : 'neutral';
+
+  // ── Weather chip (null if no forecast or unknown park) ──
+  const wx     = d.weather;
+  const wxDet  = d.weather_detail || {};
+  const wxFac  = d.weather_factor != null ? d.weather_factor : 1;
+  let wxRowHTML = '';
+  if (wx) {
+    // Arrow rotated to show wind direction the air is blowing TOWARD
+    // (Open-Meteo dir is "from", so TOWARD = dir + 180°)
+    const arrowRot  = (wx.wind_dir_deg + 180) % 360;
+    const roofTag   = wx.roof === 'dome' ? ' · <span style="opacity:.75">DOME · weather ignored</span>'
+                    : wx.roof === 'retractable' ? ' · <span style="opacity:.75">retractable</span>'
+                    : '';
+    const wLabel    = wxDet.wind_label || '—';
+    const windColor = wLabel === 'OUT' ? 'var(--red-light)'
+                    : wLabel === 'IN'  ? '#22c55e'
+                    : 'var(--text-muted)';
+    const factorPct = ((wxFac - 1) * 100);
+    const factorStr = (factorPct >= 0 ? '+' : '') + factorPct.toFixed(1) + '%';
+    const factorColor = factorPct > 0.5 ? 'var(--red-light)' : factorPct < -0.5 ? '#22c55e' : 'var(--text-muted)';
+    const rainStr   = wx.precip_pct > 20 ? ` · ☔ ${wx.precip_pct}%` : '';
+    wxRowHTML = `
+        <div class="mt-context-row">
+          <span class="mt-context-side" style="font-size:16px;letter-spacing:0">🌤</span>
+          <span class="mt-context-detail">
+            <strong>${Math.round(wx.temp_f)}°F</strong> ·
+            <span style="display:inline-block;transform:rotate(${arrowRot}deg);color:${windColor}">➤</span>
+            <strong style="color:${windColor}">${Math.round(wx.wind_mph)} mph ${wLabel}</strong> ·
+            HR ${wx.humidity_pct}%${rainStr}${roofTag}
+            · <strong style="color:${factorColor}">runs ${factorStr}</strong>
+          </span>
+        </div>`;
+  }
 
   const maxCount = Math.max(...d.histogram.map(b => b.count), 1);
   const histHTML = d.histogram.map(b => {
@@ -314,7 +582,7 @@ function openNerdPanel(game_id) {
         <div class="mt-context-row">
           <span class="mt-context-side" style="font-size:16px;letter-spacing:0">🏟</span>
           <span class="mt-context-detail"><strong>${d.park_name}</strong> · PF: <strong style="color:${parkColor}">${d.park_factor}</strong> <span style="color:${parkColor}">${parkLabel}</span></span>
-        </div>
+        </div>${wxRowHTML}
       </div>
     </div>
 
@@ -349,13 +617,13 @@ async function loadMatchups() {
   const tableBody = document.getElementById('market-table-body');
   if (!list) return;
 
-  list.innerHTML = '<div class="loading-block">Loading today\'s games…</div>';
+  list.innerHTML = '<div class="loading-block">Cargando partidos de hoy…</div>';
 
   try {
     const games = await apiFetch('/api/games/today');
 
     if (!games.length) {
-      list.innerHTML = '<div class="loading-block">No games scheduled today.</div>';
+      list.innerHTML = '<div class="loading-block">No hay partidos programados hoy.</div>';
       return;
     }
 
@@ -381,7 +649,7 @@ async function loadMatchups() {
       const card = document.createElement('div');
       card.className = 'matchup-card' + (isRecommended ? ' recommended' : '');
       card.innerHTML = `
-        ${isRecommended ? '<div class="recommended-badge">Recommended Pick</div>' : ''}
+        ${isRecommended ? '<div class="recommended-badge">Pick Recomendado</div>' : ''}
         <div class="matchup-teams">
           <div class="team-side left">
             <img src="https://www.mlbstatic.com/team-logos/${game.away_team_id}.svg"
@@ -481,11 +749,13 @@ function _edgePill(edge) {
 async function loadPitchers() {
   loading('props-tbody', 'Loading pitcher data…');
   try {
-    const [pitchers, picks, stats] = await Promise.all([
+    const [pitchers, picks, stats, lineupStatus] = await Promise.all([
       apiFetch('/api/pitchers/today').catch(() => []),
       apiFetch('/api/picks/today').catch(() => []),
       apiFetch('/api/stats/summary').catch(() => ({})),
+      apiFetch('/api/lineup-status').catch(() => ({})),
     ]);
+    Object.assign(_lineupStatusMap, lineupStatus);
     const picksMap = {};
     picks.forEach(p => { picksMap[p.pitcher_name.toLowerCase()] = p; });
     renderPropsTable(pitchers, picksMap);
@@ -504,18 +774,35 @@ function _headshotUrl(pitcherId) {
 }
 
 // K-line preset chips (common half-integer values)
-const _KLINE_PRESETS = [3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0];
+const _KLINE_PRESETS = [3.5, 4.5, 5.5, 6.5, 7.5, 8.5];
+
+// Runs (O/U) preset chips — only .5 lines
+const _RUNS_PRESETS = [4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5, 12.5];
+
+function selectRunsLine(chip, game_id) {
+  const wrap = document.getElementById(`runs-chips-${game_id}`);
+  if (!wrap) return;
+  wrap.querySelectorAll('.runs-chip').forEach(c => c.classList.remove('runs-chip--active'));
+  chip.classList.add('runs-chip--active');
+}
 
 function _klineEntry() {
+  // pointerdown fires before blur on both mouse and touch; preventDefault
+  // stops the input from losing focus so the chip tap registers in one go
+  // on mobile. touchstart is a backup for older iOS Safari that doesn't
+  // dispatch pointer events consistently inside overflow:hidden containers.
   const chips = _KLINE_PRESETS.map(v =>
-    `<button class="kline-chip" onmousedown="event.preventDefault(); _pickLine(this,${v})">${v}</button>`
+    `<button type="button" class="kline-chip"
+             onpointerdown="event.preventDefault(); _pickLine(this,${v})"
+             ontouchstart="event.preventDefault(); _pickLine(this,${v})"
+             onclick="event.preventDefault()">${v}</button>`
   ).join('');
   return `
     <div class="kline-entry">
       <div class="kline-field">
         <input type="text" inputmode="decimal" class="k-line-input" placeholder="5.5"
                onfocus="this.closest('.kline-entry').classList.add('open')"
-               onblur="setTimeout(()=>this.closest('.kline-entry').classList.remove('open'),200)">
+               onblur="setTimeout(()=>{const e=this.closest('.kline-entry'); if(e && !e.contains(document.activeElement)) e.classList.remove('open');},250)">
         <button class="line-submit-btn" onclick="submitLine(this)">&#8594;</button>
       </div>
       <div class="kline-presets">${chips}</div>
@@ -528,12 +815,26 @@ function _pickLine(chipBtn, val) {
   submitLine(entry.querySelector('.line-submit-btn'));
 }
 
+// Mobile pitcher data store (safeId → {p, pick, avatarHtml, color, lineCell, modelCell, edgeCell, ciCell, confPct, resultCell})
+const _pitcherStore = {};
+
+// Returns true when the batting lineup that faces this pitcher is confirmed
+function _pitcherLineupConfirmed(p) {
+  // If already set by a K-line submission, trust it
+  if (p.lineup_confirmed) return true;
+  // Otherwise check the pre-loaded status map
+  const sides = _lineupStatusMap[p.game_id];
+  if (!sides) return false;
+  // Home pitcher faces away batters, away pitcher faces home batters
+  return p.home_away === 1 ? sides.away : sides.home;
+}
+
 function renderPropsTable(pitchers, picksMap = {}) {
   const tbody = document.getElementById('props-tbody');
   if (!tbody) return;
 
   if (!pitchers.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="loading-cell">No pitcher data available today.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="loading-cell">No hay pitchers en el slate de hoy.</td></tr>';
     return;
   }
 
@@ -576,7 +877,7 @@ function renderPropsTable(pitchers, picksMap = {}) {
 
     // K-LINE cell
     const lineCell = pick
-      ? `<strong class="pp-kline-val">${num(pick.k_line, 1)}</strong>`
+      ? `<div class="pp-kline-set"><strong class="pp-kline-val">${num(pick.k_line, 1)}</strong><button class="pp-kline-edit-btn" onclick="editKLine(this)" title="Cambiar línea">✎</button></div>`
       : _klineEntry();
 
     // MODEL cell
@@ -610,15 +911,15 @@ function renderPropsTable(pitchers, picksMap = {}) {
     } else if (pick && rec !== 'SKIP') {
       resultCell = `
         <div class="tp-log-row">
+          <button type="button" class="pp-cancel-btn" onclick="cancelPick(this,event)" title="Scratched / injured">&#8630;</button>
           <input type="text" inputmode="decimal" class="result-ks-input tp-ks-input" placeholder="Ks">
           <button class="tp-log-btn" onclick="submitResult(this)">LOG</button>
-          <button class="pp-cancel-btn" onclick="cancelPick(this)" title="Scratched / injured">&#8630;</button>
         </div>`;
     } else if (pick) {
       resultCell = `
         <div style="display:flex;gap:5px;align-items:center">
+          <button type="button" class="pp-cancel-btn" onclick="cancelPick(this,event)" title="Undo pick">&#8630;</button>
           <span style="font-size:11px;color:var(--text-dim)">SKIP</span>
-          <button class="pp-cancel-btn" onclick="cancelPick(this)" title="Undo pick">&#8630;</button>
         </div>`;
     } else {
       resultCell = `<span style="color:var(--text-dim);font-size:11px">—</span>`;
@@ -646,15 +947,359 @@ function renderPropsTable(pitchers, picksMap = {}) {
         <td>${edgeCell}</td>
         <td>${ciCell}</td>
         <td><span class="pp-conf-pct">${confPct}%</span></td>
-        <td><span style="color:var(--text-muted);font-size:12px">—</span></td>
+        <td>${_pitcherLineupConfirmed(p) ? '<span class="pp-lineup-badge">LINEUP</span>' : '<span style="color:var(--text-dim);font-size:11px">—</span>'}</td>
+        <td>${p.recent_k_rate != null ? `<span class="pp-forma-val" title="K/9 últimas 3 salidas">${p.recent_k_rate.toFixed(1)}</span>` : '<span style="color:var(--text-dim);font-size:11px">—</span>'}</td>
         <td>${resultCell}</td>
       </tr>
     `;
   }).join('');
+
+  // ── Render mobile pitcher cards ──
+  _renderMobilePitcherCards(pitchers, picksMap);
 }
 
+function _renderMobilePitcherCards(pitchers, picksMap) {
+  const grid = document.getElementById('props-mobile-cards');
+  if (!grid) return;
+
+  if (!pitchers.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--text-muted);padding:24px 0;text-align:center">No hay pitchers hoy.</div>';
+    return;
+  }
+
+  grid.innerHTML = pitchers.map(p => {
+    const name      = p.name;
+    const pick      = picksMap[name.toLowerCase()];
+    const safeId    = name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    const color     = _avatarColor(name);
+    const initials  = _initials(name);
+    const photoUrl  = _headshotUrl(p.pitcher_id);
+    const confPct   = ((p.confidence_level || 1) * 20);
+    const rec       = pick ? (pick.recommendation || 'SKIP') : 'SKIP';
+    const isTopPick = pick && (rec === 'OVER' || rec === 'UNDER') && (p.confidence_level || 0) >= 4;
+
+    const avatarHtml = photoUrl
+      ? `<img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+             alt="${name}" />
+         <div class="pp-avatar" style="background:${color};display:none;position:absolute;inset:0;border-radius:50%;align-items:center;justify-content:center;font-size:14px;font-weight:700">${initials}</div>`
+      : `<div class="pp-avatar" style="background:${color};position:absolute;inset:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">${initials}</div>`;
+
+    const oppLogo  = _teamLogoUrl(p.opponent);
+    const oppHtml  = oppLogo
+      ? `<img src="${oppLogo}" width="14" height="14" style="object-fit:contain;vertical-align:middle;margin-right:3px" onerror="this.style.display='none'">vs ${p.opponent}`
+      : `vs ${p.opponent || '—'}`;
+
+    const lineCell = pick
+      ? `<span class="pmc-line-val">${num(pick.k_line, 1)}</span>`
+      : _klineEntry();
+
+    const cherryHtml = (rec === 'OVER' || rec === 'UNDER')
+      ? `<img src="cherry.png" class="pmc-cherry" alt="${rec}" />`
+      : '';
+
+    // Store data for nerd drawer
+    const edgeCell   = pick ? _edgePill(pick.edge) : '<span class="pp-edge-pill none">—</span>';
+    const ciCell     = pick ? _ciBar(pick.ci_low, pick.ci_high, pick.model_proj) : _ciBar(null, null, null);
+    _pitcherStore[safeId] = { p, pick, confPct, edgeCell, ciCell, rec, initials, color, photoUrl };
+
+    return `
+      <div class="pmc-card" id="pmc-${safeId}" data-pitcher="${name}" data-team="${p.team}">
+        <div class="pmc-head" onclick="openPitcherNerd('${safeId}')">
+          <div class="pmc-avatar-wrap" style="background:${color};position:relative">${avatarHtml}</div>
+          <div class="pmc-info">
+            <div class="pmc-name">${name}</div>
+            <div class="pmc-opp">${oppHtml}</div>
+          </div>
+          ${cherryHtml}
+          ${isTopPick ? '<span class="pmc-top-badge">TOP PICK</span>' : ''}
+        </div>
+        <div class="pmc-line" id="pmc-line-${safeId}">${lineCell}</div>
+      </div>`;
+  }).join('');
+}
+
+function openPitcherNerd(safeId) {
+  const d = _pitcherStore[safeId];
+  if (!d) return;
+  const { p, pick, confPct, edgeCell, ciCell, rec, initials, color, photoUrl } = d;
+
+  const modelNum = pick && pick.model_proj != null ? num(pick.model_proj, 1) : '—';
+  const kLine    = pick ? num(pick.k_line, 1) : '—';
+
+  const dirArrow = rec === 'OVER' ? '↑' : rec === 'UNDER' ? '↓' : '';
+  const dirClass = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : 'skip';
+
+  let resultHtml = '';
+  if (pick && pick.actual_ks != null) {
+    const res  = pick.result || '';
+    const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : 'push';
+    const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    resultHtml = `<div style="text-align:center;margin-top:16px"><span class="tp-result-pill ${rc}">${icon} ${pick.actual_ks}K</span></div>`;
+  } else if (pick && rec !== 'SKIP') {
+    resultHtml = `
+      <div class="tp-log-row" style="justify-content:center;margin-top:16px">
+        <input type="text" inputmode="decimal" class="result-ks-input tp-ks-input" placeholder="Ks">
+        <button class="tp-log-btn" onclick="submitResultFromNerd('${safeId}',this)">LOG</button>
+      </div>`;
+  }
+
+  const avatarInner = photoUrl
+    ? `<img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.style.display='none'"><div class="pp-avatar" style="background:${color};display:none;position:absolute;inset:0;border-radius:50%;align-items:center;justify-content:center;font-size:18px;font-weight:700">${initials}</div>`
+    : `<div class="pp-avatar" style="background:${color};position:absolute;inset:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700">${initials}</div>`;
+
+  // Set data-pitcher/data-team on the drawer so submitLine can find it
+  const drawerEl = document.getElementById('pitcher-nerd-drawer');
+  drawerEl.dataset.pitcher = p.name;
+  drawerEl.dataset.team    = p.team || '';
+
+  const kLineCell = pick
+    ? `<div style="font-family:var(--font-display);font-size:24px;color:var(--text);display:flex;align-items:center;justify-content:center;gap:8px">
+         ${kLine}
+         <button class="pp-kline-edit-btn" onclick="editKLineNerd('${safeId}')" title="Cambiar línea">✎</button>
+       </div>`
+    : `<div id="nerd-kline-entry">${_klineEntry()}</div>`;
+
+  document.getElementById('pitcher-nerd-content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-top:8px">
+      <div style="width:52px;height:52px;border-radius:50%;overflow:hidden;flex-shrink:0;position:relative;background:${color}">${avatarInner}</div>
+      <div>
+        <div class="nerd-drawer-title" style="font-size:22px">${p.name}</div>
+        <div class="nerd-drawer-subtitle">vs ${p.opponent || '—'}</div>
+        <span class="${_lineupStatusMap[p.game_id] ? 'pn-lineup-badge pn-lineup-badge--ready' : 'pn-lineup-badge pn-lineup-badge--pending'}">${_lineupStatusMap[p.game_id] ? '● LINEUP LISTO' : '○ Sin lineup'}</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div id="nerd-kline-cell" style="background:var(--bg3);border-radius:10px;padding:12px 8px;text-align:center">
+        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:4px">K LINE</div>
+        ${kLineCell}
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:12px 8px;text-align:center">
+        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:4px">MODEL</div>
+        <div style="font-family:var(--font-display);font-size:24px;color:var(--text)">${modelNum} ${dirArrow ? `<span class="pp-model-dir ${dirClass}" style="font-size:16px">${dirArrow}</span>` : ''}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:12px 8px;text-align:center">
+        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:4px">CONF.</div>
+        <div style="font-family:var(--font-display);font-size:24px;color:var(--text)">${confPct}%</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">EDGE</div>
+      ${edgeCell}
+    </div>
+
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">CONFIDENCE INTERVAL</div>
+      ${ciCell}
+    </div>
+
+    <div style="margin-bottom:4px">
+      <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">PICK</div>
+      <span class="pp-edge-pill ${dirClass}" style="font-size:14px;padding:5px 14px">${rec}</span>
+    </div>
+
+    <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="pn-stat-cell"><div class="pn-stat-label">K%</div><div class="pn-stat-val">${p.k_pct != null ? (p.k_pct*100).toFixed(1)+'%' : '—'}</div></div>
+      <div class="pn-stat-cell"><div class="pn-stat-label">K-BB%</div><div class="pn-stat-val">${p.kbb_pct != null ? (p.kbb_pct*100).toFixed(1)+'%' : '—'}</div></div>
+      <div class="pn-stat-cell"><div class="pn-stat-label">SwStr%</div><div class="pn-stat-val">${p.swstr_pct != null ? (p.swstr_pct*100).toFixed(1)+'%' : '—'}</div></div>
+      <div class="pn-stat-cell"><div class="pn-stat-label">Put-Away%</div><div class="pn-stat-val">${p.putaway_pct != null ? (p.putaway_pct*100).toFixed(1)+'%' : '—'}</div></div>
+      <div class="pn-stat-cell"><div class="pn-stat-label">OPP K% vs ${p.hand||'—'}</div><div class="pn-stat-val">${p.opp_k_pct != null ? (p.opp_k_pct*100).toFixed(1)+'%' : '—'}</div></div>
+      <div class="pn-stat-cell"><div class="pn-stat-label">K/9 L3</div><div class="pn-stat-val">${p.recent_k_rate != null ? p.recent_k_rate.toFixed(1) : '—'}</div></div>
+    </div>
+
+    ${resultHtml}
+  `;
+
+  document.getElementById('pitcher-nerd-overlay').classList.add('open');
+  document.getElementById('pitcher-nerd-drawer').classList.add('open');
+}
+
+function closePitcherNerd() {
+  document.getElementById('pitcher-nerd-overlay').classList.remove('open');
+  document.getElementById('pitcher-nerd-drawer').classList.remove('open');
+}
+
+async function submitResultFromNerd(safeId, btn) {
+  const d = _pitcherStore[safeId];
+  if (!d) return;
+  const nerdInput = btn.previousElementSibling;
+  const actualKs  = parseFloat(nerdInput.value.replace(',', '.'));
+  if (isNaN(actualKs) || actualKs < 0) { nerdInput.focus(); return; }
+
+  btn.disabled    = true;
+  btn.textContent = '…';
+
+  try {
+    const today  = new Date().toLocaleDateString('en-CA');
+    const result = await apiPost('/api/picks/result', { date: today, pitcher_name: d.p.name, actual_ks: actualKs });
+    const res    = result.result || '';
+    const rc     = res === 'W' ? 'win' : res === 'L' ? 'loss' : res === 'P' ? 'push' : 'pending';
+    const icon   = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    const label  = res === 'W' ? 'WIN' : res === 'L' ? 'LOSS' : res === 'P' ? 'PUSH' : '?';
+    _showToast(`${d.p.name} — ${actualKs} Ks → ${label}`, res === 'W' ? 'success' : 'info');
+    // Also update desktop table row if visible
+    const row = document.getElementById(`prop-row-${safeId}`);
+    if (row) row.querySelectorAll('td')[9].innerHTML = `<span class="tp-result-pill ${rc}">${icon} ${actualKs}K</span>`;
+    closePitcherNerd();
+  } catch (e) {
+    btn.disabled    = false;
+    btn.textContent = 'LOG';
+    _showToast('Error: ' + e.message, 'error');
+  }
+}
 
 // ── TODAY'S PICKS PAGE ────────────────────────────────────────────────────────
+
+function _tpCardResultHtml(pick) {
+  if (pick.actual_ks != null && pick.result) {
+    const rc   = pick.result === 'W' ? 'win' : pick.result === 'L' ? 'loss' : 'push';
+    const icon = pick.result === 'W' ? '✓' : pick.result === 'L' ? '✕' : '·';
+    return `<span class="tp-result-pill ${rc}">${icon} ${pick.actual_ks}K</span>`;
+  }
+  const safeId = pick.pitcher_name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+  return `
+    <div class="tp-log-row">
+      <input type="text" inputmode="decimal" class="tp-ks-input"
+             placeholder="Ks" data-pitcher="${pick.pitcher_name}" data-safeid="${safeId}">
+      <button class="tp-log-btn" onclick="submitTodaysPick(this)">LOG</button>
+    </div>`;
+}
+
+function _buildTpCards(actionable, matchupPicks) {
+  const cardsGrid = document.getElementById('tp-cards-grid');
+  if (!cardsGrid) return;
+
+  cardsGrid.innerHTML = actionable.map(pick => {
+    const name    = pick.pitcher_name;
+    const safeId  = name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    const rec     = pick.recommendation;
+    const recCls  = rec === 'OVER' ? 'over' : 'under';
+    const photoUrl = _headshotUrl(pick.pitcher_id);
+    const color    = _avatarColor(name);
+    const initials = _initials(name);
+    const teamLogo = _teamLogoUrl(pick.team);
+    const oppLogo  = _teamLogoUrl(pick.opponent);
+    const edgeSign = pick.edge >= 0 ? '+' : '';
+    const edgeCls  = pick.edge >= 0 ? 'over' : 'under';
+
+    const avatarHtml = photoUrl
+      ? `<img src="${photoUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+              alt="${name}">
+         <div class="tp-row-avatar-fallback" style="background:${color};display:none">${initials}</div>`
+      : `<div class="tp-row-avatar-fallback" style="background:${color}">${initials}</div>`;
+
+    const teamLogoHtml = teamLogo
+      ? `<img src="${teamLogo}" class="tp-inline-team-logo" alt="${pick.team}">`
+      : '';
+    const oppLogoHtml = oppLogo
+      ? `<img src="${oppLogo}" class="tp-opp-logo" alt="${pick.opponent}"
+              onerror="this.style.display='none'">`
+      : '';
+
+    const settled = pick.actual_ks != null && pick.result;
+    let cardCls = settled
+      ? (pick.result === 'W' ? 'tp-card--win' : pick.result === 'L' ? 'tp-card--loss' : 'tp-card--push')
+      : `tp-card--${recCls}`;
+
+    return `
+      <div class="tp-card ${cardCls}" id="tpc-${safeId}">
+        <div class="tp-card-head">
+          <div class="tp-card-avatar">${avatarHtml}</div>
+          <div class="tp-card-info">
+            <div class="tp-card-name">${name}${teamLogoHtml}</div>
+            <div class="tp-card-opp">
+              <span class="tp-vs-label">vs</span>
+              ${oppLogoHtml || `<span class="tp-dim">${pick.opponent || '—'}</span>`}
+            </div>
+          </div>
+          <span class="tp-rec-pill ${recCls}">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span>
+        </div>
+        <div class="tp-card-stats">
+          <div class="tp-cs">
+            <span class="tp-cs-lbl">línea</span>
+            <span class="tp-cs-val">${num(pick.k_line, 1)}</span>
+          </div>
+          <div class="tp-cs">
+            <span class="tp-cs-lbl">proy.</span>
+            <span class="tp-cs-val">${pick.model_proj != null ? num(pick.model_proj, 1) : '—'}</span>
+          </div>
+          <div class="tp-cs">
+            <span class="tp-cs-lbl">ventaja</span>
+            <span class="tp-cs-val tp-edge ${edgeCls}">${edgeSign}${num(pick.edge, 1)}K</span>
+          </div>
+        </div>
+        <div class="tp-card-foot" id="tpc-result-${safeId}">
+          ${_tpCardResultHtml(pick)}
+        </div>
+      </div>`;
+  }).join('');
+
+  // Matchup cards
+  let matchupSection = document.getElementById('tp-matchup-cards');
+  if (matchupPicks.length) {
+    if (!matchupSection) {
+      matchupSection = document.createElement('div');
+      matchupSection.id = 'tp-matchup-cards';
+      matchupSection.className = 'tp-matchup-cards';
+      cardsGrid.after(matchupSection);
+    }
+    matchupSection.innerHTML = `
+      <div class="tp-section-divider">o/u picks — matchup simulator</div>
+      ${matchupPicks.map(mp => {
+        const dir    = mp.direction;
+        const dirCls = dir === 'OVER' ? 'over' : 'under';
+        const edgePct = (mp.edge_pct * 100).toFixed(1);
+        const edgeSign = mp.edge_pct >= 0 ? '+' : '';
+        const awayLogo = _teamLogoUrl(mp.away_team);
+        const homeLogo = _teamLogoUrl(mp.home_team);
+        const settled = mp.result;
+        const mcCls = settled
+          ? (mp.result === 'W' ? 'tp-matchup-card--win' : mp.result === 'L' ? 'tp-matchup-card--loss' : 'tp-matchup-card--push')
+          : `tp-matchup-card--${dirCls}`;
+
+        let resultHtml;
+        if (mp.result) {
+          const rc   = mp.result === 'W' ? 'win' : mp.result === 'L' ? 'loss' : 'push';
+          const icon = mp.result === 'W' ? '✓' : mp.result === 'L' ? '✕' : '·';
+          resultHtml = `
+            <div class="tp-log-row">
+              <span class="tp-result-pill ${rc}">${icon} ${mp.actual_total}</span>
+              <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${mp.game_id}, ${mp.actual_total})" title="Editar resultado">✏</button>
+            </div>`;
+        } else {
+          resultHtml = `
+            <div class="tp-log-row">
+              <input type="text" inputmode="decimal" class="tp-ks-input"
+                     placeholder="Total" data-gameid="${mp.game_id}">
+              <button class="tp-log-btn" onclick="submitMatchupResult(this)">LOG</button>
+            </div>`;
+        }
+
+        return `
+          <div class="tp-matchup-card ${mcCls}">
+            <div class="tp-mc-head">
+              <div class="tp-mc-teams">
+                ${awayLogo ? `<img src="${awayLogo}" class="tp-opp-logo" alt="${mp.away_team}" onerror="this.style.display='none'">` : `<span>${mp.away_team}</span>`}
+                <span class="tp-vs-label">@</span>
+                ${homeLogo ? `<img src="${homeLogo}" class="tp-opp-logo" alt="${mp.home_team}" onerror="this.style.display='none'">` : `<span>${mp.home_team}</span>`}
+              </div>
+              <span class="tp-rec-pill ${dirCls}">${dir === 'OVER' ? '▲' : '▼'} ${dir}</span>
+            </div>
+            <div class="tp-mc-pitchers">${mp.away_pitcher || '?'} · ${mp.home_pitcher || '?'}</div>
+            <div class="tp-mc-stats">
+              <div class="tp-cs"><span class="tp-cs-lbl">línea</span><span class="tp-cs-val">${num(mp.ou_line, 1)}</span></div>
+              <div class="tp-cs"><span class="tp-cs-lbl">sim prom</span><span class="tp-cs-val">${num(mp.avg_total, 1)}</span></div>
+              <div class="tp-cs"><span class="tp-cs-lbl">ventaja</span><span class="tp-cs-val tp-edge ${dirCls}">${edgeSign}${edgePct}%</span></div>
+            </div>
+            <div class="tp-mc-foot">${resultHtml}</div>
+          </div>`;
+      }).join('')}`;
+  } else if (matchupSection) {
+    matchupSection.remove();
+  }
+}
 
 async function loadTodaysPicks() {
   const tbody   = document.getElementById('tp-tbody');
@@ -663,92 +1308,236 @@ async function loadTodaysPicks() {
   tbody.innerHTML = '<tr><td colspan="7" class="loading-cell">Loading…</td></tr>';
 
   try {
-    const picks = await apiFetch('/api/picks/today').catch(() => []);
+    const [picks, matchupPicks] = await Promise.all([
+      apiFetch('/api/picks/today').catch(() => []),
+      apiFetch('/api/matchup-picks/today').catch(() => []),
+    ]);
 
     const actionable = picks.filter(p => p.recommendation === 'OVER' || p.recommendation === 'UNDER');
+    const totalPicks = actionable.length + matchupPicks.length;
 
     const today  = new Date();
     const dateStr = today.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
-    if (slateEl) slateEl.textContent = `${dateStr}  ·  ${actionable.length} actionable pick${actionable.length !== 1 ? 's' : ''}`;
+    if (slateEl) slateEl.textContent = `${dateStr}  ·  ${totalPicks} pick${totalPicks !== 1 ? 's' : ''} guardado${totalPicks !== 1 ? 's' : ''}`;
 
     if (!actionable.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="loading-cell" style="padding:40px 0;color:var(--text-dim)">no actionable picks yet — submit k-lines in pitcher deep dive.</td></tr>';
-      return;
+      tbody.innerHTML = '<tr><td colspan="7" class="loading-cell" style="padding:40px 0;color:var(--text-dim)">Sin picks accionables aún — ingresá K-líneas en Análisis de Pitchers.</td></tr>';
     }
 
-    tbody.innerHTML = actionable.map(pick => {
-      const name    = pick.pitcher_name;
-      const safeId  = name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
-      const rec     = pick.recommendation;
-      const recCls  = rec === 'OVER' ? 'over' : 'under';
-      const photoUrl = _headshotUrl(pick.pitcher_id);
-      const color    = _avatarColor(name);
-      const initials = _initials(name);
+    if (actionable.length) {
+      tbody.innerHTML = actionable.map(pick => {
+        const name    = pick.pitcher_name;
+        const safeId  = name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+        const rec     = pick.recommendation;
+        const recCls  = rec === 'OVER' ? 'over' : 'under';
+        const photoUrl = _headshotUrl(pick.pitcher_id);
+        const color    = _avatarColor(name);
+        const initials = _initials(name);
 
-      const teamLogo = _teamLogoUrl(pick.team);
-      const oppLogo  = _teamLogoUrl(pick.opponent);
-      const avatarHtml = photoUrl
-        ? `<img src="${photoUrl}" class="tp-row-avatar-img" alt="${name}"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-           <div class="tp-row-avatar-fallback" style="background:${color};display:none">${initials}</div>`
-        : `<div class="tp-row-avatar-fallback" style="background:${color}">${initials}</div>`;
-      const teamLogoHtml = teamLogo
-        ? `<img src="${teamLogo}" class="tp-inline-team-logo" alt="${pick.team}">`
-        : '';
+        const teamLogo = _teamLogoUrl(pick.team);
+        const oppLogo  = _teamLogoUrl(pick.opponent);
+        const avatarHtml = photoUrl
+          ? `<img src="${photoUrl}" class="tp-row-avatar-img" alt="${name}"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+             <div class="tp-row-avatar-fallback" style="background:${color};display:none">${initials}</div>`
+          : `<div class="tp-row-avatar-fallback" style="background:${color}">${initials}</div>`;
+        const teamLogoHtml = teamLogo
+          ? `<img src="${teamLogo}" class="tp-inline-team-logo" alt="${pick.team}">`
+          : '';
 
-      const edgeSign = pick.edge >= 0 ? '+' : '';
-      const edgeCls  = pick.edge >= 0 ? 'over' : 'under';
+        const edgeSign = pick.edge >= 0 ? '+' : '';
+        const edgeCls  = pick.edge >= 0 ? 'over' : 'under';
 
-      let resultCell;
-      if (pick.actual_ks != null && pick.result) {
-        const rc   = pick.result === 'W' ? 'win' : pick.result === 'L' ? 'loss' : 'push';
-        const icon = pick.result === 'W' ? '✓' : pick.result === 'L' ? '✕' : '·';
-        resultCell = `<span class="tp-result-pill ${rc}">${icon} ${pick.actual_ks}K</span>`;
-      } else {
-        resultCell = `
-          <div class="tp-log-row">
-            <input type="text" inputmode="decimal" class="tp-ks-input"
-                   placeholder="Ks" data-pitcher="${name}" data-safeid="${safeId}">
-            <button class="tp-log-btn" onclick="submitTodaysPick(this)">LOG</button>
-          </div>`;
-      }
+        let resultCell;
+        if (pick.actual_ks != null && pick.result) {
+          const rc   = pick.result === 'W' ? 'win' : pick.result === 'L' ? 'loss' : 'push';
+          const icon = pick.result === 'W' ? '✓' : pick.result === 'L' ? '✕' : '·';
+          resultCell = `<span class="tp-result-pill ${rc}">${icon} ${pick.actual_ks}K</span>`;
+        } else {
+          resultCell = `
+            <div class="tp-log-row">
+              <input type="text" inputmode="decimal" class="tp-ks-input"
+                     placeholder="Ks" data-pitcher="${name}" data-safeid="${safeId}">
+              <button class="tp-log-btn" onclick="submitTodaysPick(this)">LOG</button>
+            </div>`;
+        }
 
-      const rowSettled = pick.actual_ks != null && pick.result;
-      const rowCls = rowSettled
-        ? (pick.result === 'W' ? 'tp-row-win' : pick.result === 'L' ? 'tp-row-loss' : 'tp-row-push')
-        : '';
+        const rowSettled = pick.actual_ks != null && pick.result;
+        const rowCls = rowSettled
+          ? (pick.result === 'W' ? 'tp-row-win' : pick.result === 'L' ? 'tp-row-loss' : 'tp-row-push')
+          : '';
 
-      return `
-        <tr class="tp-row ${rowCls}" id="tp-row-${safeId}">
-          <td>
-            <div class="tp-pitcher-cell">
-              <div class="tp-row-avatar">${avatarHtml}</div>
-              <div>
-                <div class="tp-row-name">${name} ${teamLogoHtml}</div>
+        return `
+          <tr class="tp-row ${rowCls}" id="tp-row-${safeId}">
+            <td>
+              <div class="tp-pitcher-cell">
+                <div class="tp-row-avatar">${avatarHtml}</div>
+                <div>
+                  <div class="tp-row-name">${name} ${teamLogoHtml}</div>
+                </div>
               </div>
-            </div>
-          </td>
-          <td>
-            <div class="tp-opp-cell">
-              <span class="tp-vs-label">vs</span>
-              ${oppLogo
-                ? `<img src="${oppLogo}" class="tp-opp-logo" alt="${pick.opponent}"
-                       onerror="this.outerHTML='<span class=tp-dim>${pick.opponent||'—'}</span>'">`
-                : `<span class="tp-dim">${pick.opponent || '—'}</span>`}
-            </div>
-          </td>
-          <td><strong>${num(pick.k_line, 1)}</strong></td>
-          <td>${pick.model_proj != null ? num(pick.model_proj, 1) : '—'}</td>
-          <td><span class="tp-edge ${edgeCls}">${edgeSign}${num(pick.edge, 1)}</span></td>
-          <td><span class="tp-rec-pill ${recCls}">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span></td>
-          <td id="tp-result-${safeId}">${resultCell}</td>
-        </tr>`;
-    }).join('');
+            </td>
+            <td>
+              <div class="tp-opp-cell">
+                <span class="tp-vs-label">vs</span>
+                ${oppLogo
+                  ? `<img src="${oppLogo}" class="tp-opp-logo" alt="${pick.opponent}"
+                         onerror="this.outerHTML='<span class=tp-dim>${pick.opponent||'—'}</span>'">`
+                  : `<span class="tp-dim">${pick.opponent || '—'}</span>`}
+              </div>
+            </td>
+            <td><strong>${num(pick.k_line, 1)}</strong></td>
+            <td>${pick.model_proj != null ? num(pick.model_proj, 1) : '—'}</td>
+            <td><span class="tp-edge ${edgeCls}">${edgeSign}${num(pick.edge, 1)}</span></td>
+            <td><span class="tp-rec-pill ${recCls}">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span></td>
+            <td id="tp-result-${safeId}">${resultCell}</td>
+          </tr>`;
+      }).join('');
+    }
+
+    // ── Matchup O/U picks section ─────────────────────────────────────────────
+    let mpSection = document.getElementById('tp-matchup-section');
+    if (matchupPicks.length) {
+      if (!mpSection) {
+        mpSection = document.createElement('div');
+        mpSection.id = 'tp-matchup-section';
+        tbody.closest('.table-wrap').after(mpSection);
+      }
+      mpSection.innerHTML = `
+        <div class="tp-section-divider">O/U PICKS — MATCHUP SIMULATOR</div>
+        <div class="table-wrap tp-table-wrap">
+          <table class="tp-table">
+            <thead>
+              <tr>
+                <th>PARTIDO</th>
+                <th>PITCHERS</th>
+                <th>LÍNEA</th>
+                <th>PROM SIM</th>
+                <th>EDGE</th>
+                <th>PICK</th>
+                <th>RESULTADO</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${matchupPicks.map(mp => {
+                const dir    = mp.direction;
+                const dirCls = dir === 'OVER' ? 'over' : 'under';
+                const edgePct = (mp.edge_pct * 100).toFixed(1);
+                const edgeSign = mp.edge_pct >= 0 ? '+' : '';
+                const awayLogo = _teamLogoUrl(mp.away_team);
+                const homeLogo = _teamLogoUrl(mp.home_team);
+                const teamsHtml = `
+                  <div class="tp-opp-cell" style="gap:6px">
+                    ${awayLogo ? `<img src="${awayLogo}" class="tp-opp-logo" alt="${mp.away_team}" onerror="this.style.display='none'">` : `<span>${mp.away_team}</span>`}
+                    <span class="tp-vs-label">@</span>
+                    ${homeLogo ? `<img src="${homeLogo}" class="tp-opp-logo" alt="${mp.home_team}" onerror="this.style.display='none'">` : `<span>${mp.home_team}</span>`}
+                  </div>`;
+
+                let resultCell;
+                if (mp.result) {
+                  const rc   = mp.result === 'W' ? 'win' : mp.result === 'L' ? 'loss' : 'push';
+                  const icon = mp.result === 'W' ? '✓' : mp.result === 'L' ? '✕' : '·';
+                  resultCell = `
+                    <div class="tp-log-row">
+                      <span class="tp-result-pill ${rc}">${icon} ${mp.actual_total}</span>
+                      <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${mp.game_id}, ${mp.actual_total})" title="Editar resultado">✏</button>
+                    </div>`;
+                } else {
+                  resultCell = `
+                    <div class="tp-log-row">
+                      <input type="text" inputmode="decimal" class="tp-ks-input"
+                             placeholder="Total" data-gameid="${mp.game_id}">
+                      <button class="tp-log-btn" onclick="submitMatchupResult(this)">LOG</button>
+                    </div>`;
+                }
+
+                return `
+                  <tr class="tp-row${mp.result === 'W' ? ' tp-row-win' : mp.result === 'L' ? ' tp-row-loss' : mp.result === 'P' ? ' tp-row-push' : ''}">
+                    <td>${teamsHtml}</td>
+                    <td style="font-size:11px;color:var(--text-muted)">${mp.away_pitcher || '?'} · ${mp.home_pitcher || '?'}</td>
+                    <td><strong>${num(mp.ou_line, 1)}</strong></td>
+                    <td>${num(mp.avg_total, 1)}</td>
+                    <td><span class="tp-edge ${dirCls}">${edgeSign}${edgePct}%</span></td>
+                    <td><span class="tp-rec-pill ${dirCls}">${dir === 'OVER' ? '▲' : '▼'} ${dir}</span></td>
+                    <td>${resultCell}</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } else if (mpSection) {
+      mpSection.remove();
+    }
+
+    // Build mobile bet cards
+    _buildTpCards(actionable, matchupPicks);
 
   } catch (e) {
     console.error(e);
     tbody.innerHTML = `<tr><td colspan="7" class="loading-cell">Error: ${e.message}</td></tr>`;
   }
+}
+
+async function submitMatchupResult(btn) {
+  const input  = btn.previousElementSibling;
+  const gameId = parseInt(input.dataset.gameid);
+  const total  = parseFloat(input.value.replace(',', '.'));
+  if (isNaN(total) || total < 0) { input.focus(); return; }
+
+  btn.disabled    = true;
+  btn.textContent = '…';
+  input.disabled  = true;
+
+  try {
+    const result = await apiPost('/api/matchup-picks/result', { game_id: gameId, actual_total: total });
+    const res  = result.result || '';
+    const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : 'push';
+    const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    const container = btn.closest('td') || btn.closest('.tp-mc-foot') || btn.closest('.tp-card-foot');
+    const logRow = btn.closest('.tp-log-row');
+    if (logRow) {
+      logRow.innerHTML = `
+        <span class="tp-result-pill ${rc}">${icon} ${total}</span>
+        <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${gameId}, ${total})" title="Editar resultado">✏</button>`;
+    } else if (container) {
+      container.innerHTML = `
+        <div class="tp-log-row">
+          <span class="tp-result-pill ${rc}">${icon} ${total}</span>
+          <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${gameId}, ${total})" title="Editar resultado">✏</button>
+        </div>`;
+    }
+    const row = btn.closest('tr');
+    if (row) {
+      row.classList.remove('tp-row-win','tp-row-loss','tp-row-push');
+      row.classList.add(`tp-row-${rc}`);
+    }
+    const label = res === 'W' ? 'WIN' : res === 'L' ? 'LOSS' : 'PUSH';
+    _showToast(`O/U ${total} → ${label}`, res === 'W' ? 'success' : 'info');
+    // Refresh O/U tracker summary if visible
+    const trkSec = document.getElementById('section-tracker');
+    if (trkSec && trkSec.style.display !== 'none') {
+      apiFetch('/api/matchup-picks/history').then(d => renderOUTrackerTable(d.picks, d.summary)).catch(() => {});
+    }
+  } catch (e) {
+    btn.disabled    = false;
+    btn.textContent = 'LOG';
+    input.disabled  = false;
+    _showToast('Error: ' + e.message, 'error');
+  }
+}
+
+function editMatchupResult(btn, game_id, current_total) {
+  // Replace the settled pill with a pre-filled input for re-logging
+  const row = btn.closest('.tp-log-row');
+  if (!row) return;
+  row.innerHTML = `
+    <input type="text" inputmode="decimal" class="tp-ks-input"
+           placeholder="Total" data-gameid="${game_id}"
+           value="${current_total}" style="width:60px">
+    <button class="tp-log-btn" onclick="submitMatchupResult(this)">OK</button>`;
+  // Focus and select existing value for quick editing
+  const inp = row.querySelector('input');
+  if (inp) { inp.focus(); inp.select(); }
 }
 
 async function submitTodaysPick(btn) {
@@ -774,8 +1563,10 @@ async function submitTodaysPick(btn) {
     const rl  = res === 'W' ? 'WIN'  : res === 'L' ? 'LOSS'  : 'PUSH';
 
     const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    const pill = `<span class="tp-result-pill ${rc}">${icon} ${actualKs}K</span>`;
+
     const resultEl = document.getElementById(`tp-result-${safeId}`);
-    if (resultEl) resultEl.innerHTML = `<span class="tp-result-pill ${rc}">${icon} ${actualKs}K</span>`;
+    if (resultEl) resultEl.innerHTML = pill;
 
     const row = document.getElementById(`tp-row-${safeId}`);
     if (row) {
@@ -783,7 +1574,27 @@ async function submitTodaysPick(btn) {
       row.classList.add(`tp-row-${rc}`);
     }
 
-    _showToast(`${name} — ${actualKs} Ks → ${rl}`, res === 'W' ? 'success' : 'info');
+    // Sync mobile card
+    const card = document.getElementById(`tpc-${safeId}`);
+    if (card) {
+      card.className = card.className.replace(/tp-card--(over|under|win|loss|push)/, `tp-card--${rc}`);
+      const foot = document.getElementById(`tpc-result-${safeId}`);
+      if (foot) foot.innerHTML = pill;
+    }
+
+    // Re-render the desktop cube so the PnL row appears immediately
+    const cube = document.getElementById(`tpcube-${safeId}`);
+    if (cube && _lastTodaysPicks) {
+      const idx = _lastTodaysPicks.findIndex(pp => pp.pitcher_name === name);
+      if (idx >= 0) {
+        const merged = { ...(_lastTodaysPicks[idx] || {}), ...result, actual_ks: actualKs };
+        _lastTodaysPicks[idx] = merged;
+        cube.outerHTML = _buildTpCubeCard(merged);
+      }
+    }
+
+    const pnlStr = result.pnl_pesos != null ? ` · ${money(result.pnl_pesos, true)}` : '';
+    _showToast(`${name} — ${actualKs} Ks → ${rl}${pnlStr}`, res === 'W' ? 'success' : 'info');
   } catch (e) {
     console.error(e);
     btn.disabled    = false;
@@ -855,23 +1666,40 @@ function toggleTopPicks(btn) {
 }
 
 // Cancel a pick (pitcher scratched or injured)
-async function cancelPick(btn) {
+async function cancelPick(btn, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  console.log('[cancelPick] clicked', btn);
   const row  = btn.closest('tr');
+  if (!row) { console.error('[cancelPick] no row found for btn', btn); return; }
   const name = row.dataset.pitcher;
+  if (!name) { console.error('[cancelPick] no data-pitcher on row', row); return; }
   const today = new Date().toLocaleDateString('en-CA');
+  console.log('[cancelPick] cancelling', name, 'on', today);
 
   btn.disabled = true;
   btn.textContent = '…';
 
   try {
-    await apiPost('/api/picks/cancel', { date: today, pitcher_name: name });
+    const res = await apiPost('/api/picks/cancel', { date: today, pitcher_name: name });
+    console.log('[cancelPick] success', res);
     // Reset row back to empty state (line-entry)
     const cells = row.querySelectorAll('td');
     cells[2].innerHTML = _klineEntry();
     cells[3].innerHTML = '<span style="color:var(--text-dim)">—</span>';
     cells[4].innerHTML = '<span class="pp-edge-pill none">—</span>';
     cells[5].innerHTML = _ciBar(null, null, null);
-    cells[8].innerHTML = '<button class="tp-log-btn" style="opacity:.4" disabled>—</button>';
+    // cells[6]=CONFIANZA, cells[7]=LINEUP, cells[8]=FORMA — leave untouched
+    cells[9].innerHTML = '<span style="color:var(--text-dim);font-size:11px">—</span>';
+    // Remove cherry badge from pitcher cell
+    const pitcherCell = cells[0].querySelector('.pp-pitcher-cell');
+    if (pitcherCell) {
+      const cherry = pitcherCell.querySelector('.pp-cherry-badge, .pp-cherry-spacer');
+      if (cherry) {
+        const spacer = document.createElement('span');
+        spacer.className = 'pp-cherry-spacer';
+        pitcherCell.replaceChild(spacer, cherry);
+      }
+    }
     row.classList.remove('pp-top-pick-row');
   } catch (e) {
     console.error(e);
@@ -881,15 +1709,47 @@ async function cancelPick(btn) {
   }
 }
 
-// Called when the → button in a K-line cell is clicked
+// Replace a settled k-line cell with the entry widget (pre-filled with current value)
+function editKLine(btn) {
+  const cell = btn.closest('td');
+  const currentVal = cell.querySelector('.pp-kline-val')?.textContent?.trim() || '';
+  cell.innerHTML = _klineEntry();
+  const input = cell.querySelector('.k-line-input');
+  if (currentVal) input.value = currentVal;
+  input.focus();
+}
+
+// Edit k-line from inside the nerd drawer (mobile)
+function editKLineNerd(safeId) {
+  const cell = document.getElementById('nerd-kline-cell');
+  if (!cell) return;
+  const currentVal = _pitcherStore[safeId]?.pick?.k_line != null
+    ? String(_pitcherStore[safeId].pick.k_line)
+    : '';
+  cell.innerHTML = `
+    <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">K LINE</div>
+    ${_klineEntry()}`;
+  const input = cell.querySelector('.k-line-input');
+  if (currentVal) input.value = currentVal;
+  input.focus();
+}
+
+// Called when the → button in a K-line cell is clicked (works for table row and mobile card)
 async function submitLine(btn) {
-  const row   = btn.closest('tr');
-  const name  = row.dataset.pitcher;
-  const team  = row.dataset.team;
-  const input = row.querySelector('.k-line-input');
-  const kLine = parseFloat(input.value);
+  // Works inside a <tr> (desktop) or a .pmc-card (mobile)
+  const container = btn.closest('tr') || btn.closest('[data-pitcher]');
+  const name  = container.dataset.pitcher;
+  const team  = container.dataset.team;
+  const input = container.querySelector('.k-line-input');
+  // Spanish Android keyboards send a comma for the decimal separator;
+  // parseFloat("4,5") returns 4, so "4.5" would save as 4.0. Normalize
+  // commas to dots before parsing so both separators work on mobile.
+  const raw   = (input.value || '').replace(',', '.').trim();
+  const kLine = parseFloat(raw);
 
   if (isNaN(kLine) || kLine <= 0) { input.focus(); return; }
+  // Echo the cleaned value back so the user sees what was parsed
+  input.value = String(kLine);
 
   btn.disabled    = true;
   btn.textContent = '…';
@@ -897,7 +1757,36 @@ async function submitLine(btn) {
 
   try {
     const pick = await apiPost('/api/picks/lines', { pitcher_name: name, team, k_line: kLine });
-    _applyPickToRow(row, pick);
+    // Update desktop row
+    const safeId = name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    const row = document.getElementById(`prop-row-${safeId}`);
+    if (row) _applyPickToRow(row, pick);
+    // Update mobile card line cell directly
+    const mobileLineEl = document.getElementById(`pmc-line-${safeId}`);
+    if (mobileLineEl) mobileLineEl.innerHTML = `<span class="pmc-line-val">${num(pick.k_line, 1)}</span>`;
+    // Update pitcher store
+    if (_pitcherStore[safeId]) {
+      _pitcherStore[safeId].pick = pick;
+      _pitcherStore[safeId].rec  = pick.recommendation || 'SKIP';
+      _pitcherStore[safeId].edgeCell = _edgePill(pick.edge);
+      _pitcherStore[safeId].ciCell   = _ciBar(pick.ci_low, pick.ci_high, pick.model_proj);
+    }
+    // Keep cube view in sync so switching to enhanced doesn't show stale state
+    _lastPropsPicksMap[name.toLowerCase()] = pick;
+    const cubeCard = document.querySelector(`#props-cubes-grid [data-pitcher="${name}"]`);
+    if (cubeCard) {
+      const idx = _lastPropsPitchers.findIndex(x => x.name === name);
+      const p   = idx >= 0 ? _lastPropsPitchers[idx] : { name, team, pitcher_id: null };
+      cubeCard.outerHTML = _buildCubeCard(p, pick);
+    }
+    if (pick.recommendation === 'OVER' || pick.recommendation === 'UNDER') {
+      _showToast(`${name} → ${pick.recommendation} ${kLine} · guardado en el Tracker`, 'success');
+    }
+    // If nerd drawer is open for this pitcher, refresh it with updated data
+    const drawerEl = document.getElementById('pitcher-nerd-drawer');
+    if (drawerEl && drawerEl.classList.contains('open') && drawerEl.dataset.pitcher === name) {
+      openPitcherNerd(safeId);
+    }
   } catch (e) {
     console.error(e);
     btn.disabled    = false;
@@ -932,7 +1821,7 @@ async function submitResult(btn) {
     const res = result.result || '';
     const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : res === 'P' ? 'push' : 'pending';
     const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
-    row.querySelectorAll('td')[8].innerHTML =
+    row.querySelectorAll('td')[9].innerHTML =
       `<span class="tp-result-pill ${rc}">${icon} ${actualKs}K</span>`;
     const label = res === 'W' ? 'WIN' : res === 'L' ? 'LOSS' : res === 'P' ? 'PUSH' : '?';
     _showToast(`${name} — ${actualKs} Ks → ${label}`, res === 'W' ? 'success' : 'info');
@@ -965,27 +1854,40 @@ async function logFromTracker(btn) {
       pitcher_name: pitcherName,
       actual_ks:    actualKs,
     });
-    const res = result.result || '';
-    const rc  = res === 'W' ? 'win' : res === 'L' ? 'loss' : res === 'P' ? 'push' : 'pending';
-    const td  = btn.closest('td');
-    td.innerHTML = `${actualKs} Ks &nbsp;<span class="result-badge ${rc}">${res || '?'}</span>`;
+    const res   = result.result || '';
+    const label = res === 'W' ? 'WIN' : res === 'L' ? 'LOSS' : res === 'P' ? 'PUSH' : '?';
+    const pnl   = result.pnl_pesos != null ? ` · ${money(result.pnl_pesos, true)}` : '';
+    _showToast(`${pitcherName} — ${actualKs} Ks → ${label}${pnl}`, res === 'W' ? 'success' : 'info');
+    // Full reload so cards, bankroll totals, chart, and calibration all refresh
+    // (cached _trackerKPicks would otherwise still show pending state).
+    // Preserve current day index so the user stays on the day they just logged.
+    const keepIdx = _trackerDayIdx;
+    await loadTracker();
+    if (_trackerDays && _trackerDays.length && keepIdx < _trackerDays.length) {
+      _trackerDayIdx = keepIdx;
+      _renderTrackerDay(_trackerDayIdx);
+    }
   } catch (e) {
     console.error(e);
     btn.disabled    = false;
     btn.textContent = 'LOG';
     input.disabled  = false;
     input.style.borderColor = 'var(--red)';
+    _showToast(`Error: ${e.message}`, 'error');
   }
 }
 
-// Inline editor for correcting a settled tracker result
+// Inline editor for correcting a settled tracker result.
+// Works in both the legacy <td>-based tracker table AND the current card layout
+// (div-based). We look for the closest settled-result container.
 function editTrackerResult(btn) {
-  const td           = btn.closest('td');
+  const host = btn.closest('td') || btn.parentElement;  // <td> (legacy) or card footer div
   const pitcherName  = btn.dataset.pitcher;
   const date         = btn.dataset.date;
   const currentKs    = btn.dataset.ks;
+  if (!host) return;
 
-  td.innerHTML = `
+  host.innerHTML = `
     <div style="display:flex;align-items:center;gap:5px">
       <input type="text" inputmode="decimal" class="result-ks-input tp-ks-input"
              value="${currentKs}" placeholder="Ks"
@@ -994,7 +1896,7 @@ function editTrackerResult(btn) {
       <button class="tp-log-btn" style="background:var(--bg3);color:var(--text-muted)"
               onclick="loadTracker()">✕</button>
     </div>`;
-  td.querySelector('input').focus();
+  host.querySelector('input').focus();
 }
 
 async function saveTrackerEdit(btn) {
@@ -1016,18 +1918,9 @@ async function saveTrackerEdit(btn) {
       actual_ks:    actualKs,
     });
     const res = result.result || '';
-    const rc  = res === 'W' ? 'win' : res === 'L' ? 'loss' : res === 'P' ? 'push' : 'pending';
-    const td  = btn.closest('td');
-    td.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px">
-        ${actualKs} Ks &nbsp;<span class="result-badge ${rc}">${res || '?'}</span>
-        <button class="tracker-edit-btn" title="Corregir resultado"
-                data-pitcher="${pitcherName}" data-date="${date}" data-ks="${actualKs}"
-                onclick="editTrackerResult(this)">✎</button>
-      </div>`;
     const label = res === 'W' ? 'WIN' : res === 'L' ? 'LOSS' : res === 'P' ? 'PUSH' : '?';
     _showToast(`${pitcherName} corregido → ${actualKs} Ks (${label})`, 'success');
-    // Reload summary stats
+    // Reload tracker — cleaner than DOM patching across two layouts
     loadTracker();
   } catch (e) {
     console.error(e);
@@ -1044,7 +1937,7 @@ function _applyPickToRow(row, pick) {
   const rec   = pick.recommendation || 'SKIP';
 
   // col 2 – K LINE
-  cells[2].innerHTML = `<strong class="pp-kline-val">${num(pick.k_line, 1)}</strong>`;
+  cells[2].innerHTML = `<div class="pp-kline-set"><strong class="pp-kline-val">${num(pick.k_line, 1)}</strong><button class="pp-kline-edit-btn" onclick="editKLine(this)" title="Cambiar línea">✎</button></div>`;
 
   // col 3 – MODEL
   const dirClass = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : 'skip';
@@ -1083,30 +1976,52 @@ function _applyPickToRow(row, pick) {
   // col 5 – CI
   cells[5].innerHTML = _ciBar(pick.ci_low, pick.ci_high, pick.model_proj);
 
-  // col 8 – RESULT
+  // col 7 – LINEUP badge
+  cells[7].innerHTML = pick.lineup_confirmed
+    ? '<span class="pp-lineup-badge">LINEUP</span>'
+    : '<span style="color:var(--text-dim);font-size:11px">—</span>';
+
+  // col 9 – RESULT  (col 8 is FORMA — leave it alone)
   if (rec !== 'SKIP') {
-    cells[8].innerHTML = `
+    cells[9].innerHTML = `
       <div class="tp-log-row">
+        <button type="button" class="pp-cancel-btn" onclick="cancelPick(this,event)" title="Undo pick">&#8630;</button>
         <input type="text" inputmode="decimal" class="result-ks-input tp-ks-input" placeholder="Ks">
         <button class="tp-log-btn" onclick="submitResult(this)">LOG</button>
-        <button class="pp-cancel-btn" onclick="cancelPick(this)" title="Undo pick">&#8630;</button>
       </div>`;
   } else {
-    cells[8].innerHTML = `
+    cells[9].innerHTML = `
       <div style="display:flex;gap:5px;align-items:center">
-        <button class="tp-log-btn" style="opacity:.4" disabled>SKIP</button>
-        <button class="pp-cancel-btn" onclick="cancelPick(this)" title="Undo pick">&#8630;</button>
+        <button type="button" class="pp-cancel-btn" onclick="cancelPick(this,event)" title="Undo pick">&#8630;</button>
+        <span style="font-size:11px;color:var(--text-dim)">SKIP</span>
       </div>`;
   }
 
   // Mark as top pick row if warranted
   const isTop = (rec === 'OVER' || rec === 'UNDER') && (pick.confidence || 0) >= 4;
   row.classList.toggle('pp-top-pick-row', isTop);
+
+  // Sync mobile card line cell
+  const safeId = row.id.replace('prop-row-', '');
+  const mobileLineEl = document.getElementById(`pmc-line-${safeId}`);
+  if (mobileLineEl) {
+    mobileLineEl.innerHTML = `<span class="pmc-line-val">${num(pick.k_line, 1)}</span>`;
+  }
+  // Update pitcher store for nerd drawer
+  if (_pitcherStore[safeId]) {
+    _pitcherStore[safeId].pick = pick;
+    _pitcherStore[safeId].rec  = rec;
+    _pitcherStore[safeId].edgeCell = _edgePill(pick.edge);
+    _pitcherStore[safeId].ciCell   = _ciBar(pick.ci_low, pick.ci_high, pick.model_proj);
+    _pitcherStore[safeId].confPct  = ((_pitcherStore[safeId].p.confidence_level || 1) * 20);
+  }
 }
 
 // ── BETTING TRACKER ────────────────────────────────────────────────────────────
 
 let trackerChart = null;
+let _allPicks = [];
+let _chartRange = 'all';
 
 async function triggerRetrain() {
   const btn  = document.getElementById('retrain-btn');
@@ -1148,24 +2063,634 @@ async function triggerRetrain() {
   }
 }
 
+// ── Tracker pagination state ────────────────────────────────────────────────
+let _trackerKPicks  = [];   // all K-prop picks (filtered, no SKIP)
+let _trackerOUPicks = [];   // all O/U picks
+let _trackerDays    = [];   // sorted unique dates, newest first
+let _trackerDayIdx  = 0;    // current page index
+
 async function loadTracker() {
-  loading('tracker-tbody', 'Loading pick history…');
+  const dayCards = document.getElementById('trk-day-cards');
+  if (dayCards) dayCards.innerHTML = '<div class="loading-cell" style="padding:32px 0;text-align:center">Cargando…</div>';
   try {
-    const { picks, summary } = await apiFetch('/api/picks/history');
+    const [{ picks, summary }, ouData] = await Promise.all([
+      apiFetch('/api/picks/history'),
+      apiFetch('/api/matchup-picks/history').catch(() => ({ picks: [], summary: {} })),
+    ]);
     renderPicksSummary(summary);
-    renderPicksTable(picks);
+    _renderOUSummaryStrip(ouData.summary || {});
+
+    // Store globally for pagination
+    _trackerKPicks  = picks.filter(p => p.recommendation !== 'SKIP');
+    _trackerOUPicks = ouData.picks || [];
+
+    // Build sorted unique date list across both pick types
+    const daySet = new Set([
+      ..._trackerKPicks.map(p => p.date),
+      ..._trackerOUPicks.map(p => p.date),
+    ]);
+    _trackerDays   = [...daySet].filter(Boolean).sort((a, b) => b.localeCompare(a));
+    _trackerDayIdx = 0;
+
+    // Show nav if more than one day
+    const nav = document.getElementById('trk-day-nav');
+    if (nav) nav.style.display = _trackerDays.length > 0 ? 'flex' : 'none';
+
+    _renderTrackerDay(_trackerDayIdx);
+
+    _allPicks   = picks;
+    _chartRange = 'all';
+    document.querySelectorAll('#chartRangeBtns .crb').forEach(b => {
+      b.classList.toggle('crb--active', b.dataset.range === 'all');
+    });
     renderPicksChart(picks);
+
+    // Bundle A #12 — calibration panel (Brier + reliability bins)
+    loadCalibration().catch(e => console.warn('calibration load:', e));
+    // Auto-P&L — bankroll card (unit size + totals)
+    loadBankroll().catch(e => console.warn('bankroll load:', e));
+    loadOddsQuota().catch(e => console.warn('odds quota load:', e));
   } catch (e) {
     console.error(e);
-    errRow('tracker-tbody', `Error: ${e.message}`);
+    if (dayCards) dayCards.innerHTML = `<div class="loading-cell" style="padding:32px 0;text-align:center;color:var(--red)">Error: ${e.message}</div>`;
+  }
+
+  // Show next scheduled retrain
+  try {
+    const sched = await apiFetch('/api/model/retrain/schedule');
+    const el = document.getElementById('retrain-schedule-text');
+    if (el) {
+      if (sched.next_run) {
+        const dt  = new Date(sched.next_run);
+        const fmt = dt.toLocaleDateString('es-AR', { weekday: 'long', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        el.textContent = `Próximo reentrenamiento automático: ${fmt} ART`;
+      } else {
+        el.textContent = 'Reentrenamiento automático: no programado';
+      }
+    }
+  } catch (_) { /* non-critical */ }
+}
+
+function trackerNavDay(delta) {
+  const next = _trackerDayIdx + delta;
+  if (next < 0 || next >= _trackerDays.length) return;
+  _trackerDayIdx = next;
+  _renderTrackerDay(_trackerDayIdx);
+}
+
+function _renderTrackerDay(idx) {
+  const container = document.getElementById('trk-day-cards');
+  const labelEl   = document.getElementById('trk-day-label');
+  const prevBtn   = document.getElementById('trk-prev');
+  const nextBtn   = document.getElementById('trk-next');
+  if (!container) return;
+
+  if (!_trackerDays.length) {
+    container.innerHTML = '<div class="loading-cell" style="padding:32px 0;text-align:center">Sin picks registrados aún.</div>';
+    if (labelEl) labelEl.textContent = '—';
+    return;
+  }
+
+  const day = _trackerDays[idx];
+
+  // Count unsettled picks for THIS day and flag older days that still have pendings
+  const kDayAll     = _trackerKPicks.filter(p => p.date === day);
+  const pendingToday = kDayAll.filter(p => p.actual_ks == null).length;
+  const olderPending = _trackerKPicks.filter(p => p.date < day && p.actual_ks == null).length;
+
+  // Nav label — format date nicely + pending-count badge
+  if (labelEl) {
+    const d   = new Date(day + 'T12:00:00');
+    const fmt = d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    let label = fmt.charAt(0).toUpperCase() + fmt.slice(1);
+    if (pendingToday > 0) {
+      label += ` · <span style="color:var(--red-light);font-weight:700">${pendingToday} pendiente${pendingToday > 1 ? 's' : ''}</span>`;
+    }
+    if (olderPending > 0 && idx < _trackerDays.length - 1) {
+      label += ` <span style="color:var(--text-dim);font-size:10px;letter-spacing:1px;margin-left:6px">← ${olderPending} más</span>`;
+    }
+    labelEl.innerHTML = label;
+  }
+  if (prevBtn) prevBtn.disabled = idx >= _trackerDays.length - 1;
+  if (nextBtn) nextBtn.disabled = idx <= 0;
+
+  const kDay  = _trackerKPicks.filter(p => p.date === day);
+  const ouDay = _trackerOUPicks.filter(p => p.date === day);
+  const allDay = [...kDay, ...ouDay];
+
+  let html = '';
+
+  if (!allDay.length) {
+    html = '<div class="loading-cell" style="padding:32px 0;text-align:center">Sin picks para este día.</div>';
+    container.innerHTML = html;
+    return;
+  }
+
+  // Day header: formatted date + total P/L
+  const d      = new Date(day + 'T12:00:00');
+  const dayNum = d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }).toUpperCase();
+  const wkday  = d.toLocaleDateString('es-AR', { weekday: 'long' });
+  const wkCap  = wkday.charAt(0).toUpperCase() + wkday.slice(1);
+
+  const settledPL  = allDay.filter(p => p.pnl_pesos != null).reduce((s, p) => s + p.pnl_pesos, 0);
+  const hasPL      = allDay.some(p => p.pnl_pesos != null);
+  const plCls      = settledPL > 0 ? 'ok' : settledPL < 0 ? 'loss' : '';
+  const plStr      = hasPL ? (settledPL >= 0 ? '+' : '') + money(settledPL) : '—';
+  const pendingCount = allDay.filter(p => p.actual_ks == null && p.result == null).length;
+
+  html += `<div class="day-group">`;
+  html += `<div class="day-head">
+    <div class="day-date">${dayNum} <span>${wkCap}</span></div>
+    <div class="day-pl">
+      <span>${allDay.length} apuesta${allDay.length !== 1 ? 's' : ''}${pendingCount > 0 ? ` · <span style="color:var(--red-light)">${pendingCount} pend.</span>` : ''}</span>
+      <span class="total ${plCls}">${plStr}</span>
+    </div>
+  </div>`;
+
+  // K-prop rows
+  html += kDay.map(p => _trkKPropCard(p)).join('');
+  // O/U rows
+  html += ouDay.map(p => _trkOUCard(p)).join('');
+
+  html += `</div>`;
+
+  container.innerHTML = html;
+}
+
+function _trkKPropCard(p) {
+  const name    = p.pitcher_name || '—';
+  const safeId  = name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+  const rec     = p.recommendation || 'SKIP';
+  const recCls  = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : 'skip';
+  const oddsStr = p.odds_decimal != null ? num(p.odds_decimal, 2) : '—';
+  const kLine   = p.k_line != null ? num(p.k_line, 1) : '—';
+  const matchup = `${p.team || '?'} vs ${p.opponent || '?'}`;
+  const casino  = p.casino || '—';
+
+  const settled = p.actual_ks != null && p.result;
+  let resultHtml, payoutHtml;
+
+  if (settled) {
+    const rc   = p.result === 'W' ? 'win' : p.result === 'L' ? 'loss' : 'push';
+    const icon = p.result === 'W' ? '✓' : p.result === 'L' ? '✕' : '·';
+    const pnlCls = p.pnl_pesos != null ? (p.pnl_pesos > 0 ? 'ok' : p.pnl_pesos < 0 ? 'loss' : '') : 'dim';
+    const pnlStr = p.pnl_pesos != null ? (p.pnl_pesos >= 0 ? '+' : '') + money(p.pnl_pesos) : '—';
+    resultHtml = `
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="result-pill ${rc}">${icon} ${p.actual_ks}K</span>
+        <button class="tracker-edit-btn" title="Corregir"
+                data-pitcher="${name}" data-date="${p.date}" data-ks="${p.actual_ks}"
+                onclick="editTrackerResult(this)">✎</button>
+      </div>`;
+    payoutHtml = `<span class="bet-payout ${pnlCls}">${pnlStr}</span>`;
+  } else {
+    resultHtml = `
+      <div class="tp-log-row">
+        <input type="text" inputmode="decimal" class="result-ks-input tp-ks-input"
+               placeholder="Ks" data-pitcher="${name}" data-date="${p.date}">
+        <button class="tp-log-btn" onclick="logFromTracker(this)">LOG</button>
+      </div>`;
+    payoutHtml = `<span class="bet-payout dim">—</span>`;
+  }
+
+  return `
+    <div class="bet-row" id="trkc-${safeId}">
+      <div class="bet-pitcher">
+        <span class="bet-name">${name}</span>
+        <span class="bet-line"><span class="dir ${recCls}">${rec}</span> ${kLine} K · ${matchup}</span>
+      </div>
+      <div class="bet-cells">
+        <div class="bet-cell"><span class="lbl">Cuota</span><span class="val">${oddsStr}</span></div>
+        <div class="bet-cell"><span class="lbl">Proy.</span><span class="val">${p.model_proj != null ? num(p.model_proj, 1) : '—'}</span></div>
+        <div class="bet-cell"><span class="lbl">Casino</span><span class="val">${casino}</span></div>
+      </div>
+      <div class="bet-result" id="trkc-foot-${safeId}">${resultHtml}</div>
+      ${payoutHtml}
+    </div>`;
+}
+
+function _trkOUCard(p) {
+  const dir     = p.direction || '—';
+  const dirCls  = dir === 'OVER' ? 'over' : dir === 'UNDER' ? 'under' : '';
+  const edgePct = p.edge_pct != null ? p.edge_pct * 100 : null;
+  const edgeSign = edgePct != null && edgePct >= 0 ? '+' : '';
+  const settled  = !!p.result;
+  const matchup  = `${p.away_team || '?'} @ ${p.home_team || '?'}`;
+
+  let wxNote = '';
+  if (p.weather_factor != null && p.weather_roof !== 'dome') {
+    const wPct  = (p.weather_factor - 1) * 100;
+    const wSign = wPct >= 0 ? '+' : '';
+    wxNote = ` · runs ${wSign}${wPct.toFixed(1)}%`;
+  }
+
+  let resultHtml, payoutHtml;
+  if (settled) {
+    const rc   = p.result === 'W' ? 'win' : p.result === 'L' ? 'loss' : 'push';
+    const icon = p.result === 'W' ? '✓' : p.result === 'L' ? '✕' : '·';
+    const pnlCls = p.pnl_pesos != null ? (p.pnl_pesos > 0 ? 'ok' : p.pnl_pesos < 0 ? 'loss' : '') : 'dim';
+    const pnlStr = p.pnl_pesos != null ? (p.pnl_pesos >= 0 ? '+' : '') + money(p.pnl_pesos) : '—';
+    resultHtml = `
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="result-pill ${rc}">${icon} ${p.actual_total}</span>
+        <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${p.game_id}, ${p.actual_total})" title="Editar">✏</button>
+      </div>`;
+    payoutHtml = `<span class="bet-payout ${pnlCls}">${pnlStr}</span>`;
+  } else {
+    resultHtml = `
+      <div class="tp-log-row">
+        <input type="text" inputmode="decimal" class="tp-ks-input"
+               placeholder="Total" data-gameid="${p.game_id}" style="width:52px">
+        <button class="tp-log-btn" onclick="submitMatchupResult(this)">LOG</button>
+      </div>`;
+    payoutHtml = `<span class="bet-payout dim">—</span>`;
+  }
+
+  return `
+    <div class="bet-row">
+      <div class="bet-pitcher">
+        <span class="bet-name">${matchup}</span>
+        <span class="bet-line"><span class="dir ${dirCls}">${dir}</span> ${num(p.ou_line, 1)} runs · ${p.away_pitcher || '?'} / ${p.home_pitcher || '?'}${wxNote}</span>
+      </div>
+      <div class="bet-cells">
+        <div class="bet-cell"><span class="lbl">Línea</span><span class="val">${num(p.ou_line, 1)}</span></div>
+        <div class="bet-cell"><span class="lbl">Sim</span><span class="val">${num(p.avg_total, 1)}</span></div>
+        <div class="bet-cell"><span class="lbl">Edge</span><span class="val">${edgePct != null ? `${edgeSign}${edgePct.toFixed(1)}%` : '—'}</span></div>
+      </div>
+      <div class="bet-result">${resultHtml}</div>
+      ${payoutHtml}
+    </div>`;
+}
+
+function _renderOUSummaryStrip(summary) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('ou-record',  summary.record   || '0-0-0');
+  set('ou-hitrate', summary.hit_rate != null ? (summary.hit_rate * 100).toFixed(1) + '%' : '—');
+  set('ou-pending', (summary.total != null && summary.settled != null)
+      ? (summary.total - summary.settled).toString() : '—');
+  set('ou-avgedge', summary.avg_edge != null
+      ? (summary.avg_edge >= 0 ? '+' : '') + summary.avg_edge.toFixed(1) + '%' : '—');
+}
+
+// ── Bundle A #12 — Brier + reliability diagram ─────────────────────────────
+async function loadCalibration() {
+  const section = document.getElementById('calibration-section');
+  if (!section) return;
+  try {
+    const data = await apiFetch('/api/picks/calibration');
+    if (!data || data.n === 0) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+
+    // Header n-count
+    const nEl = document.getElementById('calib-n');
+    if (nEl) nEl.textContent = `(${data.n} picks)`;
+
+    // Brier big number + color class
+    const brierEl = document.getElementById('calib-brier-val');
+    if (brierEl) {
+      brierEl.textContent = data.brier.toFixed(3);
+      brierEl.classList.remove('b-good', 'b-neu', 'b-bad');
+      brierEl.classList.add(
+        data.brier < 0.18 ? 'b-good' :
+        data.brier < 0.22 ? 'b-neu'  :
+                            'b-bad'
+      );
+    }
+
+    const interpEl = document.getElementById('calib-interp');
+    if (interpEl) interpEl.textContent = data.interpretation || '';
+
+    // Platt + Isotonic + active method (Tier 1 #2)
+    renderCalibrationCard(data);
+    renderActiveMethodChip(data);
+
+    // Reliability bars: dual-bar per bucket (predicted vs actual).
+    // Tier 1 #4 — hide bins with n<10 (statistically unreliable; the 75-80%
+    // bin showing "20% real" with n=5 was misleading the reading).
+    const MIN_BIN_N = 10;
+    const barsEl = document.getElementById('calib-bars');
+    if (barsEl) {
+      const allBins  = data.bins || [];
+      const bigBins  = allBins.filter(b => b.n >= MIN_BIN_N);
+      const hiddenN  = allBins.length - bigBins.length;
+      if (!bigBins.length) {
+        barsEl.innerHTML = `<div class="calib-empty">Sin buckets con n ≥ ${MIN_BIN_N}. Esperá a que se acumulen más picks settled.</div>`;
+      } else {
+        const rowsHtml = bigBins.map(b => {
+          const label = `${Math.round(b.range_low*100)}-${Math.round(b.range_high*100)}%`;
+          const predPct   = (b.avg_predicted * 100).toFixed(1);
+          const actualPct = (b.avg_actual    * 100).toFixed(1);
+          const gapPct    = (b.gap            * 100);
+          const gapTxt    = (gapPct >= 0 ? '+' : '') + gapPct.toFixed(1) + 'pp';
+          const gapCls    = Math.abs(gapPct) < 5 ? 'gap-ok' : gapPct < 0 ? 'gap-under' : 'gap-over';
+          return `
+            <div class="calib-bar-row">
+              <div class="calib-bar-label">${label}<span class="calib-bar-n">n=${b.n}</span></div>
+              <div class="calib-bar-pair">
+                <div class="calib-bar calib-bar-pred" style="width:${predPct}%"   title="Predicho ${predPct}%">${predPct}%</div>
+                <div class="calib-bar calib-bar-actual ${gapCls}" style="width:${actualPct}%" title="Real ${actualPct}%">${actualPct}%</div>
+              </div>
+              <div class="calib-bar-gap ${gapCls}">${gapTxt}</div>
+            </div>`;
+        }).join('');
+        const footnote = hiddenN > 0
+          ? `<div class="calib-hidden-note">${hiddenN} bin${hiddenN > 1 ? 's' : ''} oculto${hiddenN > 1 ? 's' : ''} por n &lt; ${MIN_BIN_N} (ruido estadístico).</div>`
+          : '';
+        barsEl.innerHTML = rowsHtml + footnote;
+      }
+    }
+  } catch (e) {
+    console.warn('loadCalibration failed:', e);
+    section.style.display = 'none';
+  }
+}
+
+// Tier 1 #2 — Renders the calibration card showing whichever method is active
+// (Platt or Isotonic). Header label, params, and Brier metrics all swap based
+// on data.active_method. The "off" case (no calibration applied) shows a
+// neutral state. Reuses the existing `.calib-platt-*` CSS classes.
+function renderCalibrationCard(data) {
+  const labelEl  = document.getElementById('calib-platt-label');
+  const statusEl = document.getElementById('calib-platt-status');
+  const bodyEl   = document.getElementById('calib-platt-body');
+  const btnEl    = document.getElementById('calib-platt-btn');
+  if (!statusEl || !bodyEl || !btnEl) return;
+
+  const active   = data.active_method || (data.platt ? 'platt' : 'off');
+  const platt    = data.platt;
+  const iso      = data.isotonic;
+
+  // Pick the params bag matching the active method
+  const params = active === 'isotonic' ? iso
+               : active === 'platt'    ? platt
+               : null;
+
+  // Header label swaps per method
+  if (labelEl) {
+    labelEl.textContent = active === 'isotonic' ? 'Isotonic Regression'
+                        : active === 'platt'    ? 'Platt Scaling'
+                        : 'Calibración';
+  }
+
+  if (!params) {
+    statusEl.textContent = active === 'off' ? 'Sin calibrar (forzado off)' : 'Sin calibrar';
+    statusEl.className = 'calib-platt-status s-off';
+    bodyEl.innerHTML = `
+      <p class="calib-platt-desc">
+        Auto-selecciona Platt (sigmoide) o Isotonic (monotónico flexible) según
+        menor Brier. Ninguno está fitteado todavía — necesitás ≥30 picks settled.
+      </p>
+    `;
+    btnEl.textContent = 'Calibrar ahora';
+    return;
+  }
+
+  const fittedDate = params.fitted_at ? new Date(params.fitted_at) : null;
+  const daysAgo = fittedDate ? Math.max(0, Math.floor((Date.now() - fittedDate.getTime()) / 86400000)) : null;
+  const whenTxt = daysAgo === null ? '—' :
+                  daysAgo === 0    ? 'hoy' :
+                  daysAgo === 1    ? 'hace 1 día' :
+                                     `hace ${daysAgo} días`;
+
+  statusEl.textContent = `Activo · ${whenTxt}`;
+  statusEl.className = 'calib-platt-status s-on';
+
+  const brierBefore = params.brier_before != null ? params.brier_before.toFixed(4) : '—';
+  const brierAfter  = params.brier_after  != null ? params.brier_after.toFixed(4)  : '—';
+  const delta = (params.brier_before != null && params.brier_after != null)
+    ? (params.brier_before - params.brier_after)
+    : null;
+  const deltaTxt = delta != null
+    ? ((delta > 0 ? 'mejora ' : 'empeora ') + (Math.abs(delta) * 1000).toFixed(1) + '/1000')
+    : '';
+
+  // Render params depending on method.
+  let paramsHtml;
+  if (active === 'isotonic') {
+    const bp = params.n_breakpoints ?? '?';
+    paramsHtml = `
+      <div class="calib-platt-params">
+        <div class="calib-platt-param"><span class="calib-platt-k">breakpoints</span><span class="calib-platt-v">${bp}</span></div>
+        <div class="calib-platt-param"><span class="calib-platt-k">n</span><span class="calib-platt-v">${params.n_samples}</span></div>
+      </div>`;
+  } else {
+    paramsHtml = `
+      <div class="calib-platt-params">
+        <div class="calib-platt-param"><span class="calib-platt-k">A</span><span class="calib-platt-v">${(params.A >= 0 ? '+' : '') + params.A.toFixed(4)}</span></div>
+        <div class="calib-platt-param"><span class="calib-platt-k">B</span><span class="calib-platt-v">${(params.B >= 0 ? '+' : '') + params.B.toFixed(4)}</span></div>
+        <div class="calib-platt-param"><span class="calib-platt-k">n</span><span class="calib-platt-v">${params.n_samples}</span></div>
+      </div>`;
+  }
+
+  bodyEl.innerHTML = `
+    ${paramsHtml}
+    <div class="calib-platt-brier">
+      <span>Brier: <b>${brierBefore}</b> → <b>${brierAfter}</b></span>
+      ${delta != null ? `<span class="calib-platt-delta ${delta > 0 ? 'd-good' : 'd-bad'}">${deltaTxt}</span>` : ''}
+    </div>
+  `;
+  btnEl.textContent = 'Recalibrar ahora';
+}
+
+// Tier 1 #2 — UI chip showing which calibration is active (Platt vs Isotonic).
+// Drops in next to the Platt card when both are fitted; the auto-selector
+// picks the one with lower brier_after.
+function renderActiveMethodChip(data) {
+  const host = document.getElementById('calib-platt-status');
+  if (!host) return;
+  // Remove any old method indicator we appended last cycle
+  const old = document.getElementById('calib-method-chip');
+  if (old) old.remove();
+
+  const active   = data.active_method;
+  const setting  = data.method_setting;
+  const platt    = data.platt;
+  const iso      = data.isotonic;
+  if (!active) return;
+
+  // Decide what chip to show
+  let label, cls, title;
+  if (active === 'off') {
+    label = 'Sin calibrar';
+    cls   = 'cm-off';
+    title = 'No hay calibración activa.';
+  } else if (active === 'isotonic') {
+    label = 'Isotonic activa';
+    cls   = 'cm-iso';
+    const bp = iso ? iso.n_breakpoints : '?';
+    const ba = iso ? iso.brier_after : '—';
+    const bp2 = platt ? platt.brier_after : '—';
+    title = `Isotonic ganó por Brier (${ba} vs Platt ${bp2}). ${bp} breakpoints.`;
+  } else {
+    label = 'Platt activa';
+    cls   = 'cm-platt';
+    const ba = platt ? platt.brier_after : '—';
+    const bb = iso ? iso.brier_after : '—';
+    title = `Platt ganó por Brier (${ba} vs Isotonic ${bb}).`;
+  }
+  const settingTxt = setting === 'auto'
+    ? '(auto)'
+    : setting === 'off' ? '(forzado off)' : `(forzado ${setting})`;
+
+  const chip = document.createElement('span');
+  chip.id        = 'calib-method-chip';
+  chip.className = `calib-method-chip ${cls}`;
+  chip.title     = title;
+  chip.innerHTML = `${label} <span class="cm-setting">${settingTxt}</span>`;
+  host.parentElement.appendChild(chip);
+}
+
+async function recalibratePlatt() {
+  const btn = document.getElementById('calib-platt-btn');
+  const msg = document.getElementById('calib-platt-msg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Ajustando…'; }
+  if (msg) { msg.textContent = ''; msg.className = 'calib-platt-msg'; }
+  try {
+    const r = await fetch(API + '/api/model/calibrate', { method: 'POST' });
+    if (!r.ok) {
+      let detail = r.statusText;
+      try { const j = await r.json(); if (j && j.detail) detail = j.detail; } catch(_) {}
+      throw new Error(detail);
+    }
+    const res = await r.json();
+    if (msg) {
+      msg.textContent = `Ajustado sobre ${res.platt.n_samples} picks · recomputados ${res.recomputed_rows} rows.`;
+      msg.className = 'calib-platt-msg m-ok';
+    }
+    // Reload calibration so UI + new p_over values refresh
+    await loadCalibration();
+    // Also refresh pick cards since p_over changed
+    if (typeof loadPicks === 'function') loadPicks();
+  } catch (e) {
+    if (msg) {
+      msg.textContent = 'Error: ' + (e && e.message ? e.message : String(e));
+      msg.className = 'calib-platt-msg m-err';
+    }
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+// Tanda 1 — Odds API quota indicator. Pulled alongside bankroll on the
+// Tracker page so the user always knows how many of the 500/mo free-tier
+// requests are left without leaving the app.
+async function loadOddsQuota() {
+  const host = document.getElementById('odds-quota-chip');
+  if (!host) return;
+  try {
+    const data = await apiFetch('/api/odds/quota');
+    if (!data || !data.configured) {
+      host.style.display = 'none';
+      return;
+    }
+    host.style.display = '';
+    const used = data.used != null ? data.used : '—';
+    const remaining = data.remaining != null ? data.remaining : '—';
+    let cls = 'oqc-ok';
+    if (typeof remaining === 'number' && remaining < 50) cls = 'oqc-warn';
+    if (typeof remaining === 'number' && remaining < 10) cls = 'oqc-crit';
+    host.className = `odds-quota-chip ${cls}`;
+    host.innerHTML = `
+      <span class="oqc-lbl">Odds API</span>
+      <span class="oqc-val">${remaining} restantes</span>
+      <span class="oqc-sub">(${used} usados)</span>
+    `;
+  } catch (_) {
+    host.style.display = 'none';
+  }
+}
+
+// ── Auto-P&L — bankroll card ────────────────────────────────────────────────
+async function loadBankroll() {
+  try {
+    const data = await apiFetch('/api/settings/bankroll');
+    const bInp = document.getElementById('bankroll-total-input');
+    const uInp = document.getElementById('bankroll-unit-input');
+    const cInp = document.getElementById('bankroll-cap-input');
+    const evInp = document.getElementById('bankroll-minev-input');
+    const msInp = document.getElementById('bankroll-minstake-input');
+    if (bInp) bInp.value = Math.round(data.bankroll_pesos  || 100000);
+    if (uInp) uInp.value = Math.round(data.unit_size_pesos || 1000);
+    if (cInp) cInp.value = ((data.max_stake_fraction || 0.03) * 100).toFixed(1);
+    if (evInp) evInp.value = ((data.min_ev_pct ?? 0.05) * 100).toFixed(1);
+    if (msInp) msInp.value = Math.round(data.min_stake_pesos ?? 2000);
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('bankroll-staked', money(data.staked_pesos != null ? (data.staked_pesos - (data.staked_open_pesos || 0)) : null));
+    set('bankroll-open',   money(data.staked_open_pesos));
+    const roiEl = document.getElementById('bankroll-roi');
+    if (roiEl) {
+      if (data.pnl_roi_pct != null) {
+        const sign = data.pnl_roi_pct > 0 ? '+' : '';
+        roiEl.textContent = `${sign}${data.pnl_roi_pct.toFixed(1)}%`;
+        roiEl.classList.remove('green', 'red', 'neu');
+        roiEl.classList.add(data.pnl_roi_pct > 0 ? 'green' : data.pnl_roi_pct < 0 ? 'red' : 'neu');
+      } else {
+        roiEl.textContent = '—';
+      }
+    }
+  } catch (e) {
+    console.warn('loadBankroll failed:', e);
+  }
+}
+
+async function saveBankrollUnit() {
+  const bInp  = document.getElementById('bankroll-total-input');
+  const uInp  = document.getElementById('bankroll-unit-input');
+  const cInp  = document.getElementById('bankroll-cap-input');
+  const evInp = document.getElementById('bankroll-minev-input');
+  const msInp = document.getElementById('bankroll-minstake-input');
+  const msg   = document.getElementById('bankroll-msg');
+
+  const bVal      = bInp  ? parseFloat(bInp.value)  : NaN;
+  const uVal      = uInp  ? parseFloat(uInp.value)  : NaN;
+  const cValPct   = cInp  ? parseFloat(cInp.value)  : NaN;  // user-facing %, converted below
+  const evValPct  = evInp ? parseFloat(evInp.value) : NaN;  // user-facing %, converted below
+  const minStake  = msInp ? parseFloat(msInp.value) : NaN;
+
+  if (!(bVal > 0) || !(uVal > 0) || !(cValPct > 0) || !(evValPct >= 0) || !(minStake >= 0)) {
+    if (msg) { msg.textContent = 'Revisá los valores (banca/unidad/cap > 0, EV-mín y stake-mín ≥ 0).'; msg.className = 'bankroll-msg m-err'; }
+    return;
+  }
+  try {
+    const r = await fetch(API + '/api/settings/bankroll', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bankroll_pesos:     bVal,
+        unit_size_pesos:    uVal,
+        max_stake_fraction: cValPct / 100,
+        min_ev_pct:         evValPct / 100,
+        min_stake_pesos:    minStake,
+      }),
+    });
+    if (!r.ok) {
+      let detail = r.statusText;
+      try { const j = await r.json(); if (j && j.detail) detail = j.detail; } catch(_) {}
+      throw new Error(detail);
+    }
+    const res = await r.json();
+    if (msg) {
+      const dem = res.demoted ? ` · ${res.demoted} degradados a SKIP` : '';
+      msg.textContent = `Guardado · banca ${money(res.bankroll_pesos)} · ${res.stake_updated} stakes, ${res.pnl_updated} P&L recalculados${dem}.`;
+      msg.className = 'bankroll-msg m-ok';
+    }
+    // Refresh summary + pick cards so new stake/pnl values + demotions appear
+    loadTracker();
+    if (typeof loadPicks === 'function') loadPicks();
+  } catch (e) {
+    if (msg) { msg.textContent = 'Error: ' + (e.message || String(e)); msg.className = 'bankroll-msg m-err'; }
   }
 }
 
 function renderPicksSummary(s) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  const roi    = s.roi_pct  != null ? (s.roi_pct  > 0 ? '+' : '') + s.roi_pct.toFixed(1)  + '%' : '—';
-  const edge   = s.avg_edge != null ? (s.avg_edge > 0 ? '+' : '') + s.avg_edge.toFixed(2) + 'K' : '—';
-  const hr     = s.hit_rate != null ? (s.hit_rate * 100).toFixed(1) + '%' : '—';
+  const roi  = s.roi_pct  != null ? (s.roi_pct  > 0 ? '+' : '') + s.roi_pct.toFixed(1)  + '%' : '—';
+  const edge = s.avg_edge != null ? (s.avg_edge > 0 ? '+' : '') + s.avg_edge.toFixed(2) + 'K' : '—';
+  const hr   = s.hit_rate != null ? (s.hit_rate * 100).toFixed(1) + '%' : '—';
 
   // Summary bar
   set('picks-record',  s.record   || '0-0-0');
@@ -1173,125 +2698,151 @@ function renderPicksSummary(s) {
   set('picks-roi',     roi);
   set('picks-avgedge', edge);
 
-  // Calibration card (brier box)
+  // Auto-P&L tile
+  const pnlEl = document.getElementById('picks-pnl-pesos');
+  if (pnlEl) {
+    if (s.pnl_pesos != null) {
+      pnlEl.textContent = money(s.pnl_pesos, true);
+      pnlEl.classList.remove('red', 'green', 'neu');
+      pnlEl.classList.add(s.pnl_pesos > 0 ? 'green' : s.pnl_pesos < 0 ? 'red' : 'neu');
+    } else {
+      pnlEl.textContent = '—';
+    }
+  }
+
+  // Calibration card
   set('stat-roi',    roi);
   set('stat-wins',   s.record ? s.record.split('-')[0] : '0');
   set('stat-losses', s.record ? s.record.split('-')[1] : '0');
   set('stat-clv',    edge);
+
+  // Quality badge based on ROI
+  const qualityEl = document.getElementById('stat-quality');
+  if (qualityEl && s.roi_pct != null) {
+    const r = s.roi_pct;
+    let cls, label;
+    if (r >= 10)      { cls = 'excellent'; label = 'Excelente'; }
+    else if (r >= 3)  { cls = 'good';      label = 'Bueno';     }
+    else if (r >= 0)  { cls = 'neutral';   label = 'Neutral';   }
+    else              { cls = 'poor';      label = 'Bajo';      }
+    qualityEl.className = `brier-badge ${cls}`;
+    qualityEl.textContent = label;
+  }
 }
 
-function renderPicksTable(picks) {
-  const tbody = document.getElementById('tracker-tbody');
-  if (!tbody) return;
+// Legacy stubs — rendering now handled by _renderTrackerDay
+function renderPicksTable()      { /* replaced by _renderTrackerDay */ }
+function renderOUTrackerTable()  { /* replaced by _renderTrackerDay */ }
 
-  if (!picks.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="loading-cell">No picks yet. Submit K lines from Pitcher Props.</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = picks.map(p => {
-    const edge = p.edge != null ? parseFloat(p.edge) : null;
-    const edgeCell = edge != null
-      ? `<span class="${edge >= 0 ? 'edge-pos' : 'edge-neg'}">${edge >= 0 ? '+' : ''}${edge.toFixed(2)}</span>`
-      : '—';
-
-    const rec = (p.recommendation || '').toLowerCase();
-    const recCell = p.recommendation
-      ? `<span class="rec-badge ${rec}">${p.recommendation}</span>`
-      : '—';
-
-    let resultCell;
-    const res = p.result;
-    if (res && res !== 'SKIP') {
-      const rc = res === 'W' ? 'win' : res === 'L' ? 'loss' : 'push';
-      resultCell = `
-        <div style="display:flex;align-items:center;gap:6px">
-          ${p.actual_ks != null ? p.actual_ks + ' Ks &nbsp;' : ''}<span class="result-badge ${rc}">${res}</span>
-          <button class="tracker-edit-btn" title="Corregir resultado"
-                  data-pitcher="${p.pitcher_name}" data-date="${p.date}" data-ks="${p.actual_ks ?? ''}"
-                  onclick="editTrackerResult(this)">✎</button>
-        </div>`;
-    } else if (res === 'SKIP') {
-      resultCell = `${p.actual_ks != null ? p.actual_ks + ' Ks &nbsp;' : ''}<span class="result-badge pending">SKIP</span>`;
-    } else {
-      // Pending — show inline log entry so user can enter result after midnight
-      resultCell = `
-        <div class="result-entry">
-          <input type="text" inputmode="decimal" class="result-ks-input" placeholder="Ks"
-                 data-pitcher="${p.pitcher_name}" data-date="${p.date}">
-          <button class="pp-analyze-btn" onclick="logFromTracker(this)">LOG</button>
-        </div>`;
-    }
-
-    const ci = (p.ci_low != null && p.ci_high != null)
-      ? `[${p.ci_low}–${p.ci_high}]`
-      : '—';
-
-    return `
-      <tr>
-        <td><div class="game-cell">${p.pitcher_name}<div class="game-date">${p.date}</div></div></td>
-        <td>${p.team  || '—'}</td>
-        <td>${p.opponent || '—'}</td>
-        <td>${p.k_line    != null ? p.k_line    : '—'}</td>
-        <td>${p.model_proj != null ? p.model_proj : '—'}</td>
-        <td>${edgeCell}</td>
-        <td>${recCell}</td>
-        <td style="font-size:12px;color:var(--text-muted)">${ci}</td>
-        <td>${p.confidence != null ? p.confidence + '/5' : '—'}</td>
-        <td>${resultCell}</td>
-      </tr>
-    `;
-  }).join('');
+function setChartRange(range) {
+  _chartRange = range;
+  document.querySelectorAll('#chartRangeBtns .crb').forEach(b => {
+    b.classList.toggle('crb--active', b.dataset.range === range);
+  });
+  renderPicksChart(_allPicks);
 }
 
 function renderPicksChart(picks) {
   const ctx = document.getElementById('trackerChart');
   if (!ctx) return;
 
-  // Settled, non-SKIP picks in ascending date order
+  // Date cutoff for selected range
+  let cutoff = null;
+  if (_chartRange !== 'all') {
+    const days = { '7d': 7, '1m': 30, '3m': 90, '6m': 180, '1y': 365 }[_chartRange];
+    cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+  }
+
+  // Settled, non-SKIP picks in ascending date order, filtered by range
   const settled = [...picks]
     .filter(p => p.result && p.result !== 'SKIP' && p.result !== 'P')
-    .reverse(); // history API returns DESC
+    .reverse() // history API returns DESC
+    .filter(p => {
+      if (!cutoff) return true;
+      const d = new Date(p.date);
+      return d >= cutoff;
+    });
 
   let cumProfit = 0;
-  const labels = [], roiData = [];
+  const labels = [], unitsData = [];
 
-  settled.forEach((p, i) => {
-    cumProfit += p.result === 'W' ? (100 / 110) : -1;
+  settled.forEach(p => {
+    const pnl = p.result === 'W' ? (100 / 110) : -1;
+    cumProfit += pnl;
     labels.push(p.date);
-    roiData.push(parseFloat((cumProfit / (i + 1) * 100).toFixed(2)));
+    unitsData.push(parseFloat(cumProfit.toFixed(2)));
   });
 
   if (trackerChart) trackerChart.destroy();
 
   if (!labels.length) {
-    // Nothing settled yet — show empty state inside canvas area
     trackerChart = null;
     return;
   }
+
+  const grad = ctx.getContext('2d').createLinearGradient(0, 0, 0, ctx.height);
+  grad.addColorStop(0,   'rgba(74,222,128,0.18)');
+  grad.addColorStop(0.6, 'rgba(74,222,128,0.04)');
+  grad.addColorStop(1,   'rgba(74,222,128,0)');
 
   trackerChart = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
-      datasets: [{
-        label: 'ROI %',
-        data: roiData,
-        borderColor: '#e03040',
-        backgroundColor: 'rgba(224,48,64,0.08)',
-        tension: 0.4, fill: true,
-        pointBackgroundColor: '#e03040', pointRadius: 3,
-      }],
+      datasets: [
+        {
+          label: 'Unidades acumuladas',
+          data: unitsData,
+          borderColor: '#4ade80',
+          backgroundColor: grad,
+          tension: 0.35,
+          fill: true,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: '#4ade80',
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+          borderWidth: 2,
+        },
+      ],
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#888', font: { size: 11 } } },
-        tooltip: { mode: 'index', intersect: false },
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1a1e',
+          borderColor: '#2a2a30',
+          borderWidth: 1,
+          titleColor: '#8a8a92',
+          bodyColor: '#f5f5f7',
+          bodyFont: { family: "'Bebas Neue'", size: 18 },
+          titleFont: { family: "'DM Sans'", size: 11 },
+          padding: 12,
+          displayColors: false,
+          callbacks: {
+            title: items => items[0].label,
+            label: item => {
+              const v = item.parsed.y;
+              return (v >= 0 ? '+' : '') + v.toFixed(2) + 'u';
+            },
+          },
+        },
       },
       scales: {
-        x: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y: { ticks: { color: '#888', font: { size: 11 }, callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+        x: {
+          grid:  { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+          ticks: { color: '#4a4a50', font: { family: "'DM Sans'", size: 10 }, maxTicksLimit: 8 },
+          border: { display: false },
+        },
+        y: {
+          grid:  { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+          ticks: { color: '#4a4a50', font: { family: "'DM Sans'", size: 10 }, callback: v => (v >= 0 ? '+' : '') + v + 'u' },
+          border: { display: false },
+        },
       },
     },
   });
@@ -1304,7 +2855,7 @@ async function submitBet(e) {
   const form = e.target;
   const btn  = form.querySelector('button[type="submit"]');
   btn.disabled = true;
-  btn.textContent = 'Saving…';
+  btn.textContent = 'Guardando…';
 
   const payload = {
     date:         form.bet_date.value,
@@ -1322,7 +2873,7 @@ async function submitBet(e) {
     form.reset();
     await loadTracker(); // refresh table + chart
   } catch (err) {
-    alert('Error saving bet: ' + err.message);
+    alert('Error al guardar apuesta: ' + err.message);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Add Bet';
@@ -1384,4 +2935,879 @@ function initOverviewChart() {
     },
     options: chartOpts(),
   });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ENHANCED VIEW · CUBE-BASED RENDERING
+// ════════════════════════════════════════════════════════════════════════════
+
+// Cached data so the toggle can re-render without re-fetching.
+let _lastPropsPitchers = [];
+let _lastPropsPicksMap = {};
+let _lastTodaysPicks   = [];
+
+// ── localStorage-backed view mode (classic | enhanced) ─────────────────────
+function _getViewMode(key) {
+  try { return localStorage.getItem(key) || 'classic'; } catch (_) { return 'classic'; }
+}
+function _setViewMode(key, mode) {
+  try { localStorage.setItem(key, mode); } catch (_) {}
+}
+
+// ── Shared cube-card fragment helpers ──────────────────────────────────────
+// Both _buildCubeCard (editable props view) and _buildTpCubeCard (read-only
+// today's-picks view) share avatar/matchup/projection/stake/pnl subtrees.
+// Keeping them here makes the two builders behave identically when new
+// columns (park badge, stake pesos, pnl) are added to picks.
+
+function _cubeAvatarHtml(name, pitcherId) {
+  const color    = _avatarColor(name);
+  const initials = _initials(name);
+  const photoUrl = _headshotUrl(pitcherId);
+  return photoUrl
+    ? `<img src="${photoUrl}" class="cube-avatar-img" alt="${name}"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+       <div class="cube-avatar-fallback" style="background:${color};display:none">${initials}</div>`
+    : `<div class="cube-avatar-fallback" style="background:${color}">${initials}</div>`;
+}
+
+function _cubeMatchupHtml(team, opponent) {
+  const teamLogo = _teamLogoUrl(team);
+  const oppLogo  = _teamLogoUrl(opponent);
+  const teamImg  = teamLogo ? `<img src="${teamLogo}" alt="${team}" onerror="this.style.display='none'">` : `<span>${team||''}</span>`;
+  const oppImg   = oppLogo  ? `<img src="${oppLogo}"  alt="${opponent}" onerror="this.style.display='none'">` : `<span>${opponent||''}</span>`;
+  return `<div class="cube-matchup">${teamImg}<span class="cube-vs">vs</span>${oppImg}</div>`;
+}
+
+// Right-side pill: calibrated P(OVER) preferred, raw edge fallback.
+function _cubeRightPill(pOver, edge) {
+  if (pOver != null) {
+    const favored = pOver >= 0.5 ? 'OVER' : 'UNDER';
+    const pct     = Math.round((favored === 'OVER' ? pOver : 1 - pOver) * 100);
+    const cls     = pct >= 60 ? 'pos' : pct <= 45 ? 'neg' : 'neu';
+    const edgeLbl = edge != null ? (edge >= 0 ? '+' : '') + num(edge, 1) : '—';
+    return `<span class="cube-edge ${cls}" title="Edge ${edgeLbl} K">${pct}% ${favored}</span>`;
+  }
+  if (edge != null) {
+    return `<span class="cube-edge ${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : ''}${num(edge, 1)}</span>`;
+  }
+  return '';
+}
+
+// Bundle A #7 — park K-factor badge. Only emitted by the backend for fresh
+// projections, so historical DB picks quietly skip it.
+function _cubeParkBadge(parkDelta, parkFactor) {
+  if (parkDelta == null || parkFactor == null || Math.abs(parkDelta) < 0.05) return '';
+  const sign = parkDelta > 0 ? '+' : '';
+  const cls  = parkDelta > 0 ? 'park-pos' : 'park-neg';
+  return `<span class="cube-park-badge ${cls}" title="Factor K del parque: ${parkFactor} (100 = neutro)">PARK ${sign}${parkDelta.toFixed(1)}K</span>`;
+}
+
+function _cubeProjRow(projVal, pOver, edge, parkDelta, parkFactor) {
+  if (projVal == null) return '';
+  return `<div class="cube-proj-row">
+            <span>Proy.</span>
+            <span class="cube-proj-val">${num(projVal, 1)}</span>
+            ${_cubeParkBadge(parkDelta, parkFactor)}
+            ${_cubeRightPill(pOver, edge)}
+          </div>`;
+}
+
+// Tanda 1 — market data row: best book + consensus fair price across N books.
+// Renders nothing when no API data is on the pick (manual entry path).
+function _cubeMarketRow(pick) {
+  const best = pick && pick.best_book_casino;
+  const bestOdds = pick && pick.best_book_odds;
+  const pConsensus = pick && pick.p_over_market;
+  const nBooks = pick && pick.n_books_market;
+  if (!best && pConsensus == null) return '';
+
+  // Direction-relative consensus probability (we display the side actually picked)
+  const rec = pick.recommendation;
+  let consensusPct = null;
+  if (pConsensus != null) {
+    const p = rec === 'UNDER' ? (1 - pConsensus) : pConsensus;
+    consensusPct = (p * 100).toFixed(1);
+  }
+  const evMarket = pick.ev_market_pct;
+  const evMarketCls = evMarket == null ? 'mk-neu'
+                    : evMarket >= 0.05  ? 'mk-pos'
+                    : evMarket >= 0     ? 'mk-warn'
+                    :                     'mk-neg';
+  const evMarketDisp = evMarket != null
+    ? `${evMarket >= 0 ? '+' : ''}${(evMarket * 100).toFixed(1)}%`
+    : '—';
+
+  const bestChip = best
+    ? `<span class="cube-mk-chip cube-mk-best" title="Mejor cuota disponible para ${rec || ''}">
+         <span class="cube-mk-lbl">★ Mejor</span>
+         <span class="cube-mk-val">${best}</span>
+         <span class="cube-mk-odds">${bestOdds != null ? num(bestOdds, 2) : '—'}</span>
+       </span>`
+    : '';
+
+  const consensusChip = (consensusPct != null)
+    ? `<span class="cube-mk-chip" title="Consenso del mercado de-vigeado, ponderado por sharpness · ${nBooks || 0} libros">
+         <span class="cube-mk-lbl">Mercado</span>
+         <span class="cube-mk-val">${consensusPct}% ${rec || ''}</span>
+         <span class="cube-mk-n">n=${nBooks || 0}</span>
+       </span>`
+    : '';
+
+  const evMarketChip = evMarket != null
+    ? `<span class="cube-mk-chip cube-mk-ev ${evMarketCls}" title="EV calculado contra el consenso del mercado (vs EV vs modelo)">
+         <span class="cube-mk-lbl">EV mkt</span>
+         <span class="cube-mk-val">${evMarketDisp}</span>
+       </span>`
+    : '';
+
+  return `<div class="cube-market-row">${bestChip}${consensusChip}${evMarketChip}</div>`;
+}
+
+// Bundle A #3 — EV / Quarter-Kelly / stake in pesos (when bankroll unit is set).
+// kellyUnits is misnamed — it's actually the kelly fraction-of-bankroll
+// (e.g. 0.007 = 0.7% of bankroll). We display it as a % so the value is
+// directly readable ("0.7% banca") instead of the cryptic "0.01u".
+function _cubeStakeRow(evPct, kellyUnits, stakePesos) {
+  if (evPct == null || kellyUnits == null) return '';
+  const evPctDisp = (evPct * 100).toFixed(1);
+  const evSign    = evPct >= 0 ? '+' : '';
+  const evCls     = evPct >= 0.02 ? 'ev-pos'
+                  : evPct >= 0     ? 'ev-neu'
+                  : 'ev-neg';
+  // kellyUnits stores the fraction (0.007 = 0.7% of bankroll). Display as %.
+  const kellyPct  = kellyUnits * 100;
+  const kellyDisp = kellyUnits > 0
+    ? `${kellyPct < 1 ? kellyPct.toFixed(2) : kellyPct.toFixed(1)}%`
+    : 'skip';
+  // money() already returns "$3.600" — don't add another $ label.
+  const stakeMoney = stakePesos != null && stakePesos > 0
+    ? `<span class="cube-stake-sep">·</span>
+       <span class="cube-stake-label">Apuesta</span>
+       <span class="cube-stake-val cube-stake-money">${money(stakePesos)}</span>`
+    : '';
+  return `
+    <div class="cube-stake ${evCls}" title="EV por unidad · Quarter-Kelly como % de banca · Stake en pesos (capado al tope %)">
+      <span class="cube-stake-label">EV</span>
+      <span class="cube-stake-val">${evSign}${evPctDisp}%</span>
+      <span class="cube-stake-sep">·</span>
+      <span class="cube-stake-label">Kelly</span>
+      <span class="cube-stake-val">${kellyDisp}</span>
+      ${stakeMoney}
+    </div>`;
+}
+
+// Auto-P&L row — realized profit/loss in pesos (only when pick is settled).
+function _cubePnlRow(pnlPesos, result) {
+  if (pnlPesos == null || !result) return '';
+  const cls = result === 'W' ? 'pnl-win'
+            : result === 'L' ? 'pnl-loss'
+            : 'pnl-push';
+  const label = result === 'W' ? 'Ganaste' : result === 'L' ? 'Perdiste' : 'Empate';
+  return `
+    <div class="cube-pnl ${cls}">
+      <span class="cube-pnl-label">${label}</span>
+      <span class="cube-pnl-val">${money(pnlPesos, true)}</span>
+    </div>`;
+}
+
+// Settled-result pill shared by both action rows.
+function _cubeResultPill(actualKs, result) {
+  const rc   = result === 'W' ? 'win' : result === 'L' ? 'loss' : 'push';
+  const icon = result === 'W' ? '✓'   : result === 'L' ? '✕'    : '·';
+  return `<span class="tp-result-pill ${rc}">${icon} ${actualKs}K</span>`;
+}
+
+// ── Build a single Pitcher-Props cube ──────────────────────────────────────
+function _buildCubeCard(p, pick) {
+  const name   = p.name;
+  const safeId = name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+  const rec    = pick ? (pick.recommendation || 'SKIP') : 'SKIP';
+  const isHot  = rec === 'OVER' || rec === 'UNDER';
+  // Chip semantics:
+  //   • Before pick:  DATOS N/5  (signal completeness — how many features we have)
+  //   • After  pick:  CONF  N/5  (model confidence incl. tree-variance proxy)
+  const confLabel = (pick && pick.confidence != null)
+    ? `CONF ${pick.confidence}/5`
+    : `DATOS ${p.confidence_level || 1}/5`;
+
+  const cherryHtml = isHot
+    ? `<img src="cherry.png" class="cube-cherry" alt="${rec}" title="${rec}">`
+    : '';
+  const dirBadge = isHot
+    ? `<span class="cube-dir-badge">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span>`
+    : '';
+
+  // K-LINE cell — either a settled value or an entry form
+  const klineCell = pick
+    ? `<div class="cube-cell">
+         <div class="cube-cell-label">Línea de Ponches</div>
+         <div class="cube-cell-val">
+           ${num(pick.k_line, 1)}
+           <button class="cube-cell-edit" onclick="editCubeKLine(this)" title="Cambiar línea">✎</button>
+         </div>
+       </div>`
+    : `<div class="cube-cell cube-kline-cell">
+         <div class="cube-cell-label">Línea de Ponches</div>
+         <input type="text" inputmode="decimal" class="cube-cell-input cube-kline-input" placeholder="5.5"
+                onfocus="this.closest('.cube-cell').classList.add('open')"
+                onblur="setTimeout(()=>{const c=this.closest('.cube-cell');if(c&&!c.contains(document.activeElement))c.classList.remove('open')},250)"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();submitCubeLine(this.closest('.cube-card'))}">
+         <div class="cube-kline-chips">
+           ${_KLINE_PRESETS.map(v =>
+             `<button type="button" class="cube-kline-chip"
+                      onpointerdown="event.preventDefault();_pickCubeLine(this,${v})"
+                      ontouchstart="event.preventDefault();_pickCubeLine(this,${v})"
+                      onclick="event.preventDefault()">${v}</button>`
+           ).join('')}
+         </div>
+       </div>`;
+
+  // ODDS cell — always editable; pre-filled when pick exists and has odds.
+  // Submits on Enter, Tab/blur, or any field exit. Escape reverts to original.
+  const oddsVal = pick && pick.odds_decimal != null ? num(pick.odds_decimal, 2) : '';
+  const oddsCell = `
+    <div class="cube-cell">
+      <div class="cube-cell-label">Cuota</div>
+      <input type="text" inputmode="decimal" class="cube-cell-input cube-odds-input"
+             placeholder="1.91" value="${oddsVal}" data-orig-odds="${oddsVal}"
+             onblur="submitCubeOdds(this)"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}else if(event.key==='Escape'){event.preventDefault();this.value=this.dataset.origOdds||'';this.blur()}">
+    </div>`;
+
+  // Model projection + probability/edge pill — shown whenever we have a projection,
+  // not only after a pick is logged (empty cubes preview the model's call).
+  const projVal = pick && pick.model_proj != null ? pick.model_proj
+                : (p.model_projection ?? null);
+  const edgeVal = pick && pick.edge    != null ? pick.edge    : (p.edge_pct ?? null);
+  const pOver   = pick && pick.p_over  != null ? pick.p_over  : (p.p_over   ?? null);
+  const projRow = _cubeProjRow(projVal, pOver, edgeVal, p.park_k_delta, p.park_k_factor);
+
+  // Casino / "Mejor cuota" — editable.
+  const casinoStr = pick && pick.casino ? pick.casino : '';
+  const casinoRow = `
+    <div class="cube-casino">
+      <span class="cube-casino-label">Mejor cuota</span>
+      <span class="cube-casino-name" id="cube-casino-${safeId}">${casinoStr || '—'}</span>
+      <button class="cube-casino-edit" onclick="editCubeCasino(this)" title="Editar casino">✎</button>
+    </div>`;
+
+  const marketRow = pick ? _cubeMarketRow(pick) : '';
+  const stakeRow  = pick ? _cubeStakeRow(pick.ev_pct, pick.kelly_units, pick.stake_pesos) : '';
+  const pnlRow    = pick ? _cubePnlRow(pick.pnl_pesos, pick.result) : '';
+
+  // Actions row (result / cancel)
+  let actions = '';
+  if (pick && pick.actual_ks != null && pick.result) {
+    actions = `<div class="cube-actions">${_cubeResultPill(pick.actual_ks, pick.result)}</div>`;
+  } else if (pick && rec !== 'SKIP') {
+    actions = `
+      <div class="cube-actions">
+        <button type="button" class="cube-cancel-btn" onclick="cancelCubePick(this,event)" title="Deshacer pick">↷</button>
+        <input type="text" inputmode="decimal" class="result-ks-input tp-ks-input cube-ks-input" placeholder="Ks"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();submitCubeResult(this.nextElementSibling)}">
+        <button class="tp-log-btn" onclick="submitCubeResult(this)">LOG</button>
+      </div>`;
+  } else if (pick) {
+    actions = `
+      <div class="cube-actions">
+        <button type="button" class="cube-cancel-btn" onclick="cancelCubePick(this,event)" title="Deshacer">↷</button>
+        <span style="flex:1;text-align:center;font-size:11px;color:var(--text-dim);align-self:center">SKIP</span>
+      </div>`;
+  }
+
+  const overCls = rec === 'OVER' ? 'cube--over' : rec === 'UNDER' ? 'cube--under' : '';
+
+  return `
+    <div class="cube-card ${overCls}" id="cube-${safeId}" data-pitcher="${name}" data-team="${p.team || ''}" data-safeid="${safeId}">
+      ${dirBadge}
+      <span class="cube-conf-chip">${confLabel}</span>
+      <div class="cube-avatar-wrap">
+        ${cherryHtml}
+        ${_cubeAvatarHtml(name, p.pitcher_id)}
+      </div>
+      <div class="cube-name">${name}</div>
+      ${_cubeMatchupHtml(p.team, p.opponent)}
+      ${projRow}
+      <div class="cube-cells">
+        ${klineCell}
+        ${oddsCell}
+      </div>
+      ${casinoRow}
+      ${marketRow}
+      ${stakeRow}
+      ${pnlRow}
+      ${actions}
+    </div>`;
+}
+
+function renderPropsCubes(pitchers, picksMap = {}) {
+  const grid = document.getElementById('props-cubes-grid');
+  if (!grid) return;
+  _lastPropsPitchers = pitchers;
+  _lastPropsPicksMap = picksMap;
+  if (!pitchers.length) {
+    grid.innerHTML = '<div class="cube-empty">No hay pitchers en el slate de hoy.</div>';
+    return;
+  }
+  // Sort: actionable (OVER/UNDER) first, then remaining by confidence
+  const ordered = pitchers.slice().sort((a, b) => {
+    const pa = picksMap[a.name.toLowerCase()];
+    const pb = picksMap[b.name.toLowerCase()];
+    const aHot = pa && (pa.recommendation === 'OVER' || pa.recommendation === 'UNDER') ? 1 : 0;
+    const bHot = pb && (pb.recommendation === 'OVER' || pb.recommendation === 'UNDER') ? 1 : 0;
+    if (aHot !== bHot) return bHot - aHot;
+    return (b.confidence_level || 0) - (a.confidence_level || 0);
+  });
+  grid.innerHTML = ordered.map(p => _buildCubeCard(p, picksMap[p.name.toLowerCase()])).join('');
+}
+
+// ── Cube actions ───────────────────────────────────────────────────────────
+
+function _pickCubeLine(chip, val) {
+  const card  = chip.closest('.cube-card');
+  const input = card.querySelector('.cube-kline-input');
+  if (input) input.value = val;
+  submitCubeLine(card);
+}
+
+async function submitCubeLine(cardOrBtn) {
+  const card  = cardOrBtn.classList && cardOrBtn.classList.contains('cube-card')
+                ? cardOrBtn : cardOrBtn.closest('.cube-card');
+  if (!card) return;
+  const name  = card.dataset.pitcher;
+  const team  = card.dataset.team;
+  const input = card.querySelector('.cube-kline-input');
+  if (!input) return;
+  const raw   = (input.value || '').replace(',', '.').trim();
+  const kLine = parseFloat(raw);
+  if (isNaN(kLine) || kLine <= 0) { input.focus(); return; }
+  input.disabled = true;
+
+  try {
+    const pick = await apiPost('/api/picks/lines', { pitcher_name: name, team, k_line: kLine });
+    // Sync into master maps
+    _lastPropsPicksMap[name.toLowerCase()] = pick;
+    // Re-render just this cube
+    const idx = _lastPropsPitchers.findIndex(x => x.name === name);
+    const p   = idx >= 0 ? _lastPropsPitchers[idx] : { name, team, pitcher_id: null };
+    card.outerHTML = _buildCubeCard(p, pick);
+    // Also keep classic table in sync
+    const row = document.getElementById(`prop-row-${card.dataset.safeid}`);
+    if (row) _applyPickToRow(row, pick);
+    if (pick.recommendation === 'OVER' || pick.recommendation === 'UNDER') {
+      _showToast(`${name} → ${pick.recommendation} ${kLine} · guardado`, 'success');
+    }
+  } catch (e) {
+    console.error(e);
+    input.disabled = false;
+    input.style.borderColor = 'var(--red)';
+    _showToast(`Error: ${e.message}`, 'error');
+  }
+}
+
+async function submitCubeOdds(input) {
+  const card = input.closest('.cube-card');
+  if (!card) return;
+  const name = card.dataset.pitcher;
+  const raw  = (input.value || '').replace(',', '.').trim();
+  const existing = _lastPropsPicksMap[name.toLowerCase()];
+
+  // No pick yet — give feedback instead of silent no-op
+  if (!existing) {
+    if (raw) _showToast('Primero cargá la línea (K-Line)', 'info');
+    return;
+  }
+  // Empty blur — keep the pre-existing odds, nothing to do
+  if (!raw) return;
+
+  const odds = parseFloat(raw);
+  if (isNaN(odds) || odds <= 1) {
+    input.style.borderColor = 'var(--red)';
+    _showToast('Cuota inválida (debe ser decimal > 1)', 'error');
+    return;
+  }
+  // Same value — no-op so an Enter→blur doesn't re-submit
+  if (existing.odds_decimal != null && Math.abs(existing.odds_decimal - odds) < 0.0001) return;
+
+  // Guard against double-submits from overlapping blur/Enter events
+  if (input.dataset.submitting === '1') return;
+  input.dataset.submitting = '1';
+  input.disabled = true;
+  input.style.borderColor = '';
+
+  try {
+    const pick = await apiPost('/api/picks/lines', {
+      pitcher_name: name,
+      team:         card.dataset.team,
+      k_line:       existing.k_line,
+      odds_decimal: odds,
+    });
+    _lastPropsPicksMap[name.toLowerCase()] = pick;
+
+    // Re-render the cube so the freshly computed EV / Kelly / stake rows show up
+    const idx = _lastPropsPitchers.findIndex(x => x.name === name);
+    const p   = idx >= 0 ? _lastPropsPitchers[idx] : { name, team: card.dataset.team, pitcher_id: null };
+    card.outerHTML = _buildCubeCard(p, pick);
+    // Classic table sync too
+    const row = document.getElementById(`prop-row-${card.dataset.safeid}`);
+    if (row) _applyPickToRow(row, pick);
+
+    const evTxt = pick.ev_pct != null ? ` · EV ${(pick.ev_pct*100).toFixed(1)}%` : '';
+    const stkTxt = pick.stake_pesos ? ` · ${money(pick.stake_pesos)}` : '';
+    _showToast(`${name} @ ${odds.toFixed(2)}${evTxt}${stkTxt}`, 'success');
+  } catch (e) {
+    console.error(e);
+    input.disabled = false;
+    input.dataset.submitting = '0';
+    input.style.borderColor = 'var(--red)';
+    _showToast(`Error: ${e.message}`, 'error');
+  }
+}
+
+function editCubeCasino(btn) {
+  const card = btn.closest('.cube-card');
+  const name = card.dataset.pitcher;
+  const safeId = card.dataset.safeid;
+  const nameEl = document.getElementById(`cube-casino-${safeId}`);
+  const current = nameEl && nameEl.textContent !== '—' ? nameEl.textContent : '';
+  const val = prompt('¿Casino con mejor cuota?', current);
+  if (val == null) return;
+  const casino = val.trim();
+  const existing = _lastPropsPicksMap[name.toLowerCase()];
+  if (!existing) {
+    _showToast('Primero ingresá la línea de K', 'info');
+    return;
+  }
+  apiPost('/api/picks/lines', {
+    pitcher_name: name,
+    team:         card.dataset.team,
+    k_line:       existing.k_line,
+    casino:       casino || null,
+  }).then(pick => {
+    _lastPropsPicksMap[name.toLowerCase()] = pick;
+    if (nameEl) nameEl.textContent = casino || '—';
+  }).catch(e => {
+    console.error(e);
+    _showToast(`Error: ${e.message}`, 'error');
+  });
+}
+
+function editCubeKLine(btn) {
+  const card = btn.closest('.cube-card');
+  const name = card.dataset.pitcher;
+  const existing = _lastPropsPicksMap[name.toLowerCase()];
+  // Rebuild cube without pick so entry form reappears
+  const p = _lastPropsPitchers.find(x => x.name === name);
+  if (!p) return;
+  // Temporarily treat as no-pick while editing
+  card.outerHTML = _buildCubeCard(p, null);
+  const fresh = document.getElementById(`cube-${card.dataset.safeid}`);
+  if (fresh && existing) {
+    const input = fresh.querySelector('.cube-kline-input');
+    if (input) { input.value = existing.k_line; input.focus(); input.closest('.cube-cell').classList.add('open'); }
+  }
+}
+
+async function submitCubeResult(btn) {
+  const card   = btn.closest('.cube-card');
+  const name   = card.dataset.pitcher;
+  const input  = card.querySelector('.cube-ks-input');
+  const actual = parseFloat((input.value || '').replace(',', '.'));
+  if (isNaN(actual) || actual < 0) { input.focus(); return; }
+
+  btn.disabled = true;
+  btn.textContent = '…';
+  input.disabled = true;
+
+  const today = new Date().toLocaleDateString('en-CA');
+  try {
+    const result = await apiPost('/api/picks/result', {
+      date: today, pitcher_name: name, actual_ks: actual,
+    });
+    // Update stored pick + re-render this cube
+    const stored = _lastPropsPicksMap[name.toLowerCase()] || {};
+    stored.actual_ks = actual;
+    stored.result    = result.result;
+    _lastPropsPicksMap[name.toLowerCase()] = stored;
+    const p = _lastPropsPitchers.find(x => x.name === name);
+    card.outerHTML = _buildCubeCard(p || { name, team: card.dataset.team }, stored);
+
+    const res   = result.result || '';
+    const label = res === 'W' ? 'WIN' : res === 'L' ? 'LOSS' : res === 'P' ? 'PUSH' : '?';
+    _showToast(`${name} — ${actual} Ks → ${label}`, res === 'W' ? 'success' : 'info');
+
+    // Keep classic table in sync (if present)
+    const row = document.getElementById(`prop-row-${card.dataset.safeid}`);
+    if (row) {
+      const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : res === 'P' ? 'push' : 'pending';
+      const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+      const cells = row.querySelectorAll('td');
+      if (cells[9]) cells[9].innerHTML = `<span class="tp-result-pill ${rc}">${icon} ${actual}K</span>`;
+    }
+  } catch (e) {
+    console.error(e);
+    btn.disabled = false;
+    btn.textContent = 'LOG';
+    input.disabled = false;
+    _showToast(`Error: ${e.message}`, 'error');
+  }
+}
+
+async function cancelCubePick(btn, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const card = btn.closest('.cube-card');
+  if (!card) return;
+  const name = card.dataset.pitcher;
+  btn.disabled = true;
+  btn.textContent = '…';
+  const today = new Date().toLocaleDateString('en-CA');
+  try {
+    await apiPost('/api/picks/cancel', { date: today, pitcher_name: name });
+    delete _lastPropsPicksMap[name.toLowerCase()];
+    const p = _lastPropsPitchers.find(x => x.name === name);
+    if (p) card.outerHTML = _buildCubeCard(p, null);
+    // Keep classic table in sync
+    const row = document.getElementById(`prop-row-${card.dataset.safeid}`);
+    if (row) {
+      const cells = row.querySelectorAll('td');
+      cells[2].innerHTML = _klineEntry();
+      cells[3].innerHTML = '<span style="color:var(--text-dim)">—</span>';
+      cells[4].innerHTML = '<span class="pp-edge-pill none">—</span>';
+      cells[5].innerHTML = _ciBar(null, null, null);
+      cells[9].innerHTML = '<span style="color:var(--text-dim);font-size:11px">—</span>';
+      const pitcherCell = cells[0].querySelector('.pp-pitcher-cell');
+      if (pitcherCell) {
+        const cherry = pitcherCell.querySelector('.pp-cherry-badge, .pp-cherry-spacer');
+        if (cherry) {
+          const spacer = document.createElement('span');
+          spacer.className = 'pp-cherry-spacer';
+          pitcherCell.replaceChild(spacer, cherry);
+        }
+      }
+      row.classList.remove('pp-top-pick-row');
+    }
+  } catch (e) {
+    console.error(e);
+    btn.disabled = false;
+    btn.textContent = '↷';
+  }
+}
+
+// ── Today's-Picks cube (OVER/UNDER only; read-only line, editable result) ──
+function _buildTpCubeCard(pick) {
+  const name   = pick.pitcher_name;
+  const safeId = name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+  const rec    = pick.recommendation;
+
+  const oddsStr   = pick.odds_decimal != null ? num(pick.odds_decimal, 2) : '—';
+  const casinoStr = pick.casino || '';
+  const confLabel = pick.confidence != null ? `CONF ${pick.confidence}/5` : '';
+
+  const actions = (pick.actual_ks != null && pick.result)
+    ? `<div class="cube-actions">${_cubeResultPill(pick.actual_ks, pick.result)}</div>`
+    : `<div class="cube-actions">
+         <input type="text" inputmode="decimal" class="tp-ks-input cube-ks-input"
+                placeholder="Ks" data-pitcher="${name}" data-safeid="${safeId}"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();submitTodaysPick(this.nextElementSibling)}">
+         <button class="tp-log-btn" onclick="submitTodaysPick(this)">LOG</button>
+       </div>`;
+
+  const projRow   = _cubeProjRow(pick.model_proj, pick.p_over, pick.edge, pick.park_k_delta, pick.park_k_factor);
+  const marketRow = _cubeMarketRow(pick);
+  const stakeRow  = _cubeStakeRow(pick.ev_pct, pick.kelly_units, pick.stake_pesos);
+  const pnlRow    = _cubePnlRow(pick.pnl_pesos, pick.result);
+
+  return `
+    <div class="cube-card cube--${rec.toLowerCase()}" id="tpcube-${safeId}" data-pitcher="${name}" data-safeid="${safeId}">
+      <span class="cube-dir-badge">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span>
+      ${confLabel ? `<span class="cube-conf-chip">${confLabel}</span>` : ''}
+      <div class="cube-avatar-wrap">
+        <img src="cherry.png" class="cube-cherry" alt="${rec}">
+        ${_cubeAvatarHtml(name, pick.pitcher_id)}
+      </div>
+      <div class="cube-name">${name}</div>
+      ${_cubeMatchupHtml(pick.team, pick.opponent)}
+      ${projRow}
+      <div class="cube-cells">
+        <div class="cube-cell">
+          <div class="cube-cell-label">Línea de Ponches</div>
+          <div class="cube-cell-val">${num(pick.k_line, 1)}</div>
+        </div>
+        <div class="cube-cell">
+          <div class="cube-cell-label">Cuota</div>
+          <div class="cube-cell-val">${oddsStr}</div>
+        </div>
+      </div>
+      <div class="cube-casino">
+        <span class="cube-casino-label">Mejor cuota</span>
+        <span class="cube-casino-name">${casinoStr || '—'}</span>
+      </div>
+      ${marketRow}
+      ${stakeRow}
+      ${pnlRow}
+      ${actions}
+    </div>`;
+}
+
+function renderTodaysCubes(picks) {
+  const grid = document.getElementById('tp-cubes-grid');
+  if (!grid) return;
+  _lastTodaysPicks = picks;
+  const actionable = picks.filter(p => p.recommendation === 'OVER' || p.recommendation === 'UNDER');
+  // Always refresh the summary so empty-state handling propagates (e.g., when
+  // the slate clears, the previous summary card hides).
+  renderCasinoDepositSummary(actionable);
+  if (!actionable.length) {
+    grid.innerHTML = '<div class="cube-empty">Sin picks accionables aún.</div>';
+    return;
+  }
+  grid.innerHTML = actionable.map(_buildTpCubeCard).join('');
+}
+
+// Sums today's recommended stakes by casino so the user knows how much to
+// fund each sportsbook before placing the slate. Picks without a casino set
+// (`casino` null/empty) get bucketed into "Sin asignar" so they're visible
+// but flagged. Settled picks (W/L/P) are excluded — money is already moved.
+function renderCasinoDepositSummary(picks) {
+  const card     = document.getElementById('casino-deposit-card');
+  const rowsEl   = document.getElementById('cdc-rows');
+  const totalEl  = document.getElementById('cdc-total-val');
+  const footerEl = document.getElementById('cdc-footer');
+  if (!card || !rowsEl || !totalEl) return;
+
+  // Only unsettled picks with a positive stake count (logged W/L means money
+  // has already moved). SKIPs naturally fall out — they have stake_pesos null.
+  const open = (picks || []).filter(p =>
+    !p.result &&
+    p.stake_pesos != null && p.stake_pesos > 0 &&
+    (p.recommendation === 'OVER' || p.recommendation === 'UNDER')
+  );
+
+  if (!open.length) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+
+  // Group: { casinoLabel: { total, n_picks, picks: [...], hasOdds: bool } }
+  const groups = new Map();
+  let unassignedN = 0;
+  for (const p of open) {
+    const key = (p.casino || '').trim() || '__UNASSIGNED__';
+    if (key === '__UNASSIGNED__') unassignedN++;
+    const g = groups.get(key) || { total: 0, n_picks: 0, picks: [], hasOdds: false };
+    g.total += Number(p.stake_pesos) || 0;
+    g.n_picks += 1;
+    g.picks.push(p);
+    if (p.odds_decimal != null) g.hasOdds = true;
+    groups.set(key, g);
+  }
+
+  // Sort: assigned casinos by total desc, "unassigned" always last
+  const entries = [...groups.entries()].sort((a, b) => {
+    if (a[0] === '__UNASSIGNED__') return 1;
+    if (b[0] === '__UNASSIGNED__') return -1;
+    return b[1].total - a[1].total;
+  });
+
+  const grandTotal = open.reduce((sum, p) => sum + (Number(p.stake_pesos) || 0), 0);
+  totalEl.textContent = money(grandTotal);
+
+  rowsEl.innerHTML = entries.map(([key, g]) => {
+    const isUnassigned = key === '__UNASSIGNED__';
+    const label = isUnassigned ? 'Sin casino asignado' : key;
+    const cls   = isUnassigned ? 'cdc-row cdc-row--warn' : 'cdc-row';
+    const pickList = g.picks.map(p => {
+      const dir = p.recommendation === 'OVER' ? '▲' : '▼';
+      const odds = p.odds_decimal != null ? num(p.odds_decimal, 2) : '—';
+      return `<span class="cdc-pick-chip" title="${p.pitcher_name} · ${dir} ${num(p.k_line, 1)} · ${odds}">
+        ${dir} ${p.pitcher_name.split(' ').pop()} <span class="cdc-pick-stake">${money(p.stake_pesos)}</span>
+      </span>`;
+    }).join('');
+    return `
+      <div class="${cls}">
+        <div class="cdc-row-head">
+          <div class="cdc-row-name">${label}</div>
+          <div class="cdc-row-meta">
+            <span class="cdc-row-n">${g.n_picks} pick${g.n_picks > 1 ? 's' : ''}</span>
+            <b class="cdc-row-total">${money(g.total)}</b>
+          </div>
+        </div>
+        <div class="cdc-row-picks">${pickList}</div>
+      </div>`;
+  }).join('');
+
+  if (unassignedN > 0) {
+    footerEl.innerHTML = `
+      <span class="cdc-warn-icon">⚠</span>
+      ${unassignedN} pick${unassignedN > 1 ? 's' : ''} sin casino asignado.
+      Cargá el casino con "Mejor cuota" en cada cubo para que sumen acá.
+    `;
+    footerEl.style.display = '';
+  } else {
+    footerEl.style.display = 'none';
+    footerEl.innerHTML = '';
+  }
+}
+
+// ── View-toggle handlers ───────────────────────────────────────────────────
+function togglePropsView() {
+  const current = _getViewMode('pp-view-mode');
+  const next    = current === 'enhanced' ? 'classic' : 'enhanced';
+  _setViewMode('pp-view-mode', next);
+  _applyPropsViewMode(next);
+}
+
+function _applyPropsViewMode(mode) {
+  const btn       = document.getElementById('pp-view-toggle');
+  const cubeGrid  = document.getElementById('props-cubes-grid');
+  const mobileCards = document.getElementById('props-mobile-cards');
+  const tableWrap = document.querySelector('#section-pitcher-props .pp-table-wrap');
+  if (!btn || !cubeGrid) return;
+  if (mode === 'enhanced') {
+    btn.classList.add('active');
+    cubeGrid.style.display  = '';
+    if (tableWrap)  tableWrap.style.display   = 'none';
+    if (mobileCards) mobileCards.style.display = 'none';
+    // Render now that it's visible
+    renderPropsCubes(_lastPropsPitchers, _lastPropsPicksMap);
+  } else {
+    btn.classList.remove('active');
+    cubeGrid.style.display  = 'none';
+    if (tableWrap)  tableWrap.style.display   = '';
+    if (mobileCards) mobileCards.style.display = '';
+  }
+}
+
+function toggleTodaysView() {
+  const current = _getViewMode('tp-view-mode');
+  const next    = current === 'enhanced' ? 'classic' : 'enhanced';
+  _setViewMode('tp-view-mode', next);
+  _applyTodaysViewMode(next);
+}
+
+function _applyTodaysViewMode(mode) {
+  const btn       = document.getElementById('tp-view-toggle');
+  const cubeGrid  = document.getElementById('tp-cubes-grid');
+  const cardsGrid = document.getElementById('tp-cards-grid');
+  const tableWrap = document.querySelector('#section-todays-picks .tp-table-wrap');
+  if (!btn || !cubeGrid) return;
+  if (mode === 'enhanced') {
+    btn.classList.add('active');
+    cubeGrid.style.display = '';
+    if (tableWrap)  tableWrap.style.display  = 'none';
+    if (cardsGrid)  cardsGrid.style.display  = 'none';
+    renderTodaysCubes(_lastTodaysPicks);
+  } else {
+    btn.classList.remove('active');
+    cubeGrid.style.display = 'none';
+    if (tableWrap)  tableWrap.style.display  = '';
+    if (cardsGrid)  cardsGrid.style.display  = '';
+  }
+}
+
+// ── Hook: always populate cubes whenever data reloads ──────────────────────
+// Wrap the existing renderers so both classic + enhanced stay in sync.
+(function _hookCubeRenderers() {
+  const origRenderProps = typeof renderPropsTable === 'function' ? renderPropsTable : null;
+  if (origRenderProps) {
+    window.renderPropsTable = function (pitchers, picksMap) {
+      _lastPropsPitchers = pitchers || [];
+      _lastPropsPicksMap = picksMap || {};
+      origRenderProps(pitchers, picksMap);
+      renderPropsCubes(_lastPropsPitchers, _lastPropsPicksMap);
+    };
+  }
+  const origLoadTodays = typeof loadTodaysPicks === 'function' ? loadTodaysPicks : null;
+  if (origLoadTodays) {
+    window.loadTodaysPicks = async function () {
+      await origLoadTodays();
+      // After the classic table renders, populate cubes from the fresh data.
+      try {
+        const picks = await apiFetch('/api/picks/today').catch(() => []);
+        renderTodaysCubes(picks);
+      } catch (_) {}
+    };
+  }
+})();
+
+// ── Restore saved view modes on DOM ready ──────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Apply saved view modes on first paint (delay so the app sections exist)
+  setTimeout(() => {
+    _applyPropsViewMode(_getViewMode('pp-view-mode'));
+    _applyTodaysViewMode(_getViewMode('tp-view-mode'));
+  }, 0);
+
+  // Default date picker for retro pick form → yesterday (most common use case)
+  const rpDate = document.querySelector('#retro-pick-form [name="rp_date"]');
+  if (rpDate && !rpDate.value) {
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    rpDate.value = y.toLocaleDateString('en-CA');
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// RETRO PITCHER-PICK FORM (Tracker page)
+// ══════════════════════════════════════════════════════════════════════════
+
+function toggleRetroForm() {
+  const form = document.getElementById('retro-pick-form');
+  const btn  = document.getElementById('retro-toggle-btn');
+  if (!form) return;
+  const isOpen = form.style.display !== 'none';
+  form.style.display = isOpen ? 'none' : '';
+  if (btn) btn.textContent = isOpen ? '+ nuevo' : '× cerrar';
+}
+
+async function submitRetroPick(ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const btn  = form.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+
+  const f = new FormData(form);
+  const payload = {
+    date:           f.get('rp_date'),
+    pitcher_name:   (f.get('rp_pitcher') || '').trim(),
+    team:           (f.get('rp_team') || '').trim().toUpperCase(),
+    opponent:       (f.get('rp_opp')  || '').trim().toUpperCase(),
+    k_line:         parseFloat(f.get('rp_kline')),
+    recommendation: f.get('rp_rec'),
+    actual_ks:      f.get('rp_actual') ? parseFloat(f.get('rp_actual')) : null,
+    odds_decimal:   f.get('rp_odds')   ? parseFloat(f.get('rp_odds'))   : null,
+    casino:         (f.get('rp_casino') || '').trim() || null,
+    units:          f.get('rp_units')  ? parseFloat(f.get('rp_units'))  : 1.0,
+    notes:          (f.get('rp_notes') || '').trim() || null,
+  };
+
+  // Basic client validation
+  if (!payload.date || !payload.pitcher_name || !payload.team || isNaN(payload.k_line) || !payload.recommendation) {
+    _showToast('Completá fecha, pitcher, equipo, k-línea y pick', 'error');
+    btn.disabled = false; btn.textContent = 'Guardar';
+    return;
+  }
+
+  try {
+    const res = await apiPost('/api/picks/manual', payload);
+    const resultLabel = res.result === 'W' ? 'WIN'
+                      : res.result === 'L' ? 'LOSS'
+                      : res.result === 'P' ? 'PUSH'
+                      : 'pendiente';
+    _showToast(`${payload.pitcher_name} — ${payload.date} → ${resultLabel}`, res.result === 'W' ? 'success' : 'info');
+    form.reset();
+    // Reset date picker to yesterday after submit
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    form.querySelector('[name="rp_date"]').value = y.toLocaleDateString('en-CA');
+    // Refresh tracker UI so new pick shows up
+    if (typeof loadTracker === 'function') await loadTracker();
+  } catch (e) {
+    console.error(e);
+    _showToast(`Error: ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guardar';
+  }
 }

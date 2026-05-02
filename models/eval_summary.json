@@ -1,9 +1,9 @@
 {
-  "cv_mae": 1.7715,
-  "holdout_mae": 1.7286,
-  "train_rows": 7266,
-  "test_rows": 3529,
-  "n_features": 32,
+  "cv_mae": 1.7571,
+  "holdout_mae": 1.6947,
+  "train_rows": 10795,
+  "test_rows": 3586,
+  "n_features": 34,
   "feature_cols": [
     "csw_pct_L15",
     "swstr_pct_L15",
@@ -19,6 +19,8 @@
     "pitch_limit_flag",
     "implied_max_batters",
     "opp_k_pct_vs_hand",
+    "opp_k_pct_lineup",
+    "lineup_confirmed",
     "opp_chase_pct",
     "opp_contact_pct",
     "opp_swstr_pct",
@@ -40,9 +42,9 @@
   ],
   "top_features": [
     "stuff_plus",
-    "csw_x_opp_k",
     "k9_season",
-    "cumulative_pitches_7d",
-    "opp_k_pct_vs_hand"
+    "opp_k_pct_lineup",
+    "csw_x_opp_k",
+    "cumulative_pitches_7d"
   ]
 }

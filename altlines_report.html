@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AltLines — Top Edge Finder</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3;
+    --muted:#8b949e; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --accent:#58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+  header { padding:20px 24px 8px; }
+  h1 { margin:0 0 4px; font-size:20px; letter-spacing:.5px; }
+  .sub { color:var(--muted); font-size:12px; }
+  .controls { display:flex; flex-wrap:wrap; gap:10px; padding:14px 24px;
+              background:var(--panel); border-bottom:1px solid var(--line);
+              position:sticky; top:0; z-index:5; }
+  .controls label { color:var(--muted); font-size:11px; text-transform:uppercase;
+                    letter-spacing:.5px; display:flex; flex-direction:column; gap:3px; }
+  input, select { background:#0d1117; color:var(--text); border:1px solid var(--line);
+                  border-radius:6px; padding:5px 8px; font-size:13px; min-width:90px; }
+  input:focus, select:focus { outline:1px solid var(--accent); }
+  .stats { display:flex; gap:24px; padding:12px 24px; color:var(--muted); font-size:12px; }
+  .stats b { color:var(--text); }
+  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+  th, td { padding:8px 12px; text-align:right; white-space:nowrap;
+           border-bottom:1px solid var(--line); }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2),
+  th:last-child, td:last-child { text-align:left; }
+  thead th { position:sticky; top:0; background:#11161d; cursor:pointer;
+             color:var(--muted); font-size:11px; text-transform:uppercase;
+             letter-spacing:.5px; user-select:none; }
+  thead th:hover { color:var(--text); }
+  tbody tr:hover { background:#1b2230; }
+  td.ev-strong { color:var(--green); font-weight:600; }
+  td.ev-ok { color:var(--amber); }
+  .pill { font-size:10px; padding:2px 7px; border-radius:10px; border:1px solid var(--line); }
+  .p-BOOM-BUST { color:var(--red); border-color:#5a2222; }
+  .p-VOLATILE { color:var(--amber); border-color:#4a3a12; }
+  .p-STEADY { color:var(--muted); }
+  .side-OVER { color:var(--green); } .side-UNDER { color:var(--accent); }
+  .wrap { overflow-x:auto; }
+  footer { padding:16px 24px; color:var(--muted); font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AltLines — Top Edge Finder</h1>
+  <div class="sub">5 priced opportunities · best EV 259.0% · simulated P vs de-vigged market P</div>
+</header>
+<div class="controls">
+  <label>Search<input id="q" placeholder="player / team"></label>
+  <label>Market<select id="market"><option value="">all</option></select></label>
+  <label>Profile<select id="profile"><option value="">all</option></select></label>
+  <label>Side<select id="side"><option value="">all</option>
+    <option value="OVER">OVER</option><option value="UNDER">UNDER</option></select></label>
+  <label>Min EV %<input id="minev" type="number" value="0" step="0.5" style="width:80px"></label>
+  <label>Min P_model<select id="minp">
+    <option value="0">0%</option><option value="0.05">5%</option>
+    <option value="0.10">10%</option><option value="0.20">20%</option>
+  </select></label>
+</div>
+<div class="stats" id="stats"></div>
+<div class="wrap">
+<table>
+  <thead><tr id="head"></tr></thead>
+  <tbody id="body"></tbody>
+</table>
+</div>
+<footer>AltLines · simulated P vs de-vigged market P · EV per 1 unit staked ·
+click headers to sort. Educational analytics, not betting advice.</footer>
+
+<script>
+const DATA = [{"player_id": "SYN-0008", "player": "Kai Hale", "team": "BOS", "market": "points", "market_label": "Points", "side": "OVER", "point": 30.5, "main_line": 15.5, "profile": "BOOM-BUST", "sim_mean": 19.61, "sim_median": 17.86, "sim_skew": 1.247, "sim_cv": 0.538, "book": "betano", "decimal_odds": 27.33, "p_model": 0.1313, "p_fair": 0.0356, "p_curve": 0.0406, "discrepancy": 0.0957, "curve_ratio": 3.238, "ev": 2.5898, "ev_pct": 258.98, "kelly": 0.0984, "stake_units": 0.07, "fair_odds": 6.61, "vig": 0.0267}, {"player_id": "SYN-0004", "player": "Kai Osei", "team": "DET", "market": "points", "market_label": "Points", "side": "OVER", "point": 27.5, "main_line": 12.5, "profile": "BOOM-BUST", "sim_mean": 15.56, "sim_median": 13.93, "sim_skew": 1.284, "sim_cv": 0.698, "book": "betano", "decimal_odds": 27.33, "p_model": 0.1214, "p_fair": 0.0356, "p_curve": 0.0406, "discrepancy": 0.0858, "curve_ratio": 2.993, "ev": 2.3179, "ev_pct": 231.79, "kelly": 0.088, "stake_units": 0.07, "fair_odds": 7.24, "vig": 0.0267}, {"player_id": "SYN-0004", "player": "Kai Osei", "team": "DET", "market": "rebounds", "market_label": "Rebounds", "side": "OVER", "point": 8.5, "main_line": 4.5, "profile": "VOLATILE", "sim_mean": 6.33, "sim_median": 5.71, "sim_skew": 0.749, "sim_cv": 0.561, "book": "betano", "decimal_odds": 10.93, "p_model": 0.2792, "p_fair": 0.0846, "p_curve": 0.0912, "discrepancy": 0.1947, "curve_ratio": 3.062, "ev": 2.0522, "ev_pct": 205.22, "kelly": 0.2067, "stake_units": 0.16, "fair_odds": 2.58, "vig": 0.0816}, {"player_id": "SYN-0003", "player": "Kai Bianchi", "team": "DET", "market": "pra", "market_label": "Pts+Reb+Ast", "side": "OVER", "point": 47.5, "main_line": 32.5, "profile": "STEADY", "sim_mean": 35.68, "sim_median": 36.86, "sim_skew": 0.035, "sim_cv": 0.435, "book": "betano", "decimal_odds": 13.69, "p_model": 0.1903, "p_fair": 0.0687, "p_curve": 0.0746, "discrepancy": 0.1215, "curve_ratio": 2.55, "ev": 1.6045, "ev_pct": 160.45, "kelly": 0.1264, "stake_units": 0.09, "fair_odds": 4.26, "vig": 0.0631}, {"player_id": "SYN-0003", "player": "Kai Bianchi", "team": "DET", "market": "threes", "market_label": "Three-Pointers Made", "side": "UNDER", "point": 0.5, "main_line": 2.5, "profile": "BOOM-BUST", "sim_mean": 1.87, "sim_median": 1.07, "sim_skew": 1.01, "sim_cv": 0.852, "book": "betano", "decimal_odds": 12.0, "p_model": 0.2134, "p_fair": 0.0776, "p_curve": 0.0839, "discrepancy": 0.1357, "curve_ratio": 2.543, "ev": 1.5602, "ev_pct": 156.02, "kelly": 0.1418, "stake_units": 0.11, "fair_odds": 3.69, "vig": 0.0734}];
+const COLS = [
+  ["player","Player","s"], ["team","Team","s"], ["market_label","Market","s"],
+  ["side","Side","s"], ["point","Line","f"], ["book","Book","s"],
+  ["decimal_odds","Odds","f"], ["p_model","P_model","p"],
+  ["p_fair","P_fair","p"], ["discrepancy","Edge","p"], ["ev_pct","EV%","f"],
+  ["curve_ratio","Curve×","f"], ["stake_units","Stake","f"],
+  ["profile","Profile","pill"]
+];
+let sortCol = "ev_pct", sortDir = -1;
+
+function fillSelect(id, key) {
+  const vals = [...new Set(DATA.map(r => r[key]).filter(v => v !== null && v !== ""))].sort();
+  const el = document.getElementById(id);
+  vals.forEach(v => { const o = document.createElement("option"); o.value = v; o.textContent = v; el.appendChild(o); });
+}
+
+function fmt(v, kind) {
+  if (v === null || v === undefined) return "–";
+  if (kind === "p") return (v * 100).toFixed(1) + "%";
+  if (kind === "f") return (typeof v === "number") ? v.toFixed(2) : v;
+  return v;
+}
+
+function render() {
+  const q = document.getElementById("q").value.toLowerCase();
+  const mk = document.getElementById("market").value;
+  const pf = document.getElementById("profile").value;
+  const sd = document.getElementById("side").value;
+  const minev = parseFloat(document.getElementById("minev").value || "0");
+  const minp = parseFloat(document.getElementById("minp").value || "0");
+
+  let rows = DATA.filter(r =>
+    (!q || (r.player + " " + (r.team||"")).toLowerCase().includes(q)) &&
+    (!mk || r.market === mk) && (!pf || r.profile === pf) && (!sd || r.side === sd) &&
+    (r.ev_pct ?? -999) >= minev && (r.p_model ?? 0) >= minp
+  );
+  rows.sort((a, b) => {
+    const x = a[sortCol], y = b[sortCol];
+    if (x === null) return 1; if (y === null) return -1;
+    return (x > y ? 1 : x < y ? -1 : 0) * sortDir;
+  });
+
+  document.getElementById("head").innerHTML = COLS
+    .map(([k, label]) => `<th data-k="${k}">${label}${sortCol===k ? (sortDir<0?" ▾":" ▴"):""}</th>`).join("");
+  document.querySelectorAll("#head th").forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (sortCol === k) sortDir *= -1; else { sortCol = k; sortDir = (th.dataset.k === "ev_pct" ? -1 : 1); }
+    render();
+  });
+
+  document.getElementById("body").innerHTML = rows.map(r => {
+    const cls = (r.ev_pct >= 15) ? "ev-strong" : (r.ev_pct > 0 ? "ev-ok" : "");
+    return "<tr>" + COLS.map(([k, , kind]) => {
+      if (kind === "pill") return `<td><span class="pill p-${r[k]}">${r[k]}</span></td>`;
+      if (k === "side") return `<td class="side-${r[k]}">${r[k]}</td>`;
+      if (k === "ev_pct") return `<td class="${cls}">${fmt(r[k], kind)}</td>`;
+      return `<td>${fmt(r[k], kind)}</td>`;
+    }).join("") + "</tr>";
+  }).join("");
+
+  const totalEv = rows.reduce((s, r) => s + (r.ev_pct || 0), 0);
+  document.getElementById("stats").innerHTML =
+    `Showing <b>${rows.length}</b> of ${DATA.length} priced lines · ` +
+    `mean EV <b>${rows.length ? (totalEv/rows.length).toFixed(1) : "0.0"}%</b> · ` +
+    `cut: min EV ${minev}% · min P_model ${(minp*100).toFixed(0)}%`;
+}
+
+["q","market","profile","side","minev","minp"].forEach(id =>
+  document.getElementById(id).addEventListener("input", render));
+["market","profile"].forEach(id => fillSelect(id, id === "market" ? "market" : "profile"));
+render();
+</script>
+</body>
+</html>

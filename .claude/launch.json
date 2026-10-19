@@ -5,15 +5,52 @@
     {
       "name": "Frontend",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-c", "import os,http.server,socketserver; p=int(os.environ.get('PORT',4000)); socketserver.TCPServer.allow_reuse_address=True; socketserver.TCPServer(('',p),http.server.SimpleHTTPRequestHandler).serve_forever()"],
+      "runtimeArgs": [
+        "-c",
+        "import os,http.server,socketserver; p=int(os.environ.get('PORT',4000)); socketserver.TCPServer.allow_reuse_address=True; socketserver.TCPServer(('',p),http.server.SimpleHTTPRequestHandler).serve_forever()"
+      ],
       "port": 4000,
       "autoPort": true
     },
     {
       "name": "Backend (FastAPI)",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8003"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "backend.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8003"
+      ],
       "port": 8003
+    },
+    {
+      "name": "Backend 8002 (app)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "backend.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8002"
+      ],
+      "port": 8002
+    },
+    {
+      "name": "Frontend 5500 (app)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "5500",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 5500
     }
   ]
 }

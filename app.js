@@ -1,4 +1,7 @@
-const API = `http://${window.location.hostname}:8002`;
+// Base URL del backend. `window.location.hostname` viene VACÍO cuando la página
+// se abre con doble clic (file://), lo que producía URLs del tipo "http://:8002"
+// y rompía todos los fetch. Si no hay hostname, asumimos localhost.
+const API = `http://${window.location.hostname || 'localhost'}:8002`;
 
 // ── MLB team abbreviation → numeric ID (for logo CDN) ─────────────────────────
 const _TEAM_ID = {
@@ -124,6 +127,7 @@ function showSection(name, el) {
   if (name === 'overview') loadOverview();
   if (name === 'todays-picks') loadTodaysPicks();
   if (name === 'matchup-tool') loadMatchupTool();
+  if (name === 'altlines') loadAltLines();
 }
 
 // ── MATCHUP TOOL ──────────────────────────────────────────────────────────────
@@ -2574,6 +2578,82 @@ async function recalibratePlatt() {
   }
 }
 
+// Tanda 1 bonus — auto-generate the whole slate from market data.
+// One click pulls consensus K-line + best-price odds for every probable
+// starter today and creates picks. Skips pitchers that already have a
+// pick (preserves user edits).
+async function autoGenerateTodayPicks() {
+  const btn   = document.getElementById('auto-gen-btn');
+  const out   = document.getElementById('auto-gen-result');
+  const force = window.event && window.event.shiftKey; // Shift-click = force regenerate
+  if (!btn) return;
+  const prev = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="auto-gen-icon">⏳</span><span class="auto-gen-label">Generando…</span>';
+  if (out) {
+    out.style.display = 'block';
+    out.className     = 'auto-gen-result agr-loading';
+    out.textContent   = 'Buscando líneas en el mercado…';
+  }
+  try {
+    const url = `${API}/api/picks/lines/auto-generate${force ? '?force=true' : ''}`;
+    const r   = await fetch(url, { method: 'POST' });
+    if (!r.ok) {
+      let detail = r.statusText;
+      try { const j = await r.json(); if (j && j.detail) detail = j.detail; } catch(_) {}
+      throw new Error(detail);
+    }
+    const data = await r.json();
+    const ng   = data.n_generated || 0;
+    const ns   = data.n_skipped   || 0;
+
+    let summary;
+    if (ng === 0 && ns === 0) {
+      summary = 'No hay starters confirmados para hoy.';
+    } else {
+      const overs  = (data.generated || []).filter(g => g.rec === 'OVER').length;
+      const unders = (data.generated || []).filter(g => g.rec === 'UNDER').length;
+      const skips  = (data.generated || []).filter(g => g.rec === 'SKIP').length;
+      summary = `<b>✓ ${ng} picks generados</b> (${overs} OVER · ${unders} UNDER · ${skips} SKIP)`;
+      if (ns > 0) summary += ` · ${ns} salteados`;
+    }
+
+    // Optional drill-down for skipped pitchers (collapsed by default)
+    let detail = '';
+    if (ns > 0) {
+      const items = (data.skipped || []).slice(0, 12).map(s =>
+        `<li><span class="agr-name">${s.pitcher_name}</span><span class="agr-reason">${s.reason}</span></li>`
+      ).join('');
+      detail = `
+        <details class="agr-details">
+          <summary>Ver ${ns} salteados</summary>
+          <ul class="agr-skipped">${items}</ul>
+        </details>`;
+    }
+
+    if (out) {
+      out.className = 'auto-gen-result ' + (ng > 0 ? 'agr-success' : 'agr-warn');
+      out.innerHTML = `<div class="agr-summary">${summary}</div>${detail}`;
+    }
+    _showToast(`${ng} picks generados`, ng > 0 ? 'success' : 'info');
+
+    // Refresh the pitcher props grid so new picks show
+    if (typeof loadPicks === 'function') loadPicks();
+    // Also refresh the quota chip since we burned some calls
+    if (typeof loadOddsQuota === 'function') loadOddsQuota();
+  } catch (e) {
+    console.error(e);
+    if (out) {
+      out.className = 'auto-gen-result agr-error';
+      out.textContent = `Error: ${e.message || 'No se pudo generar el slate'}`;
+    }
+    _showToast(`Error: ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = prev;
+  }
+}
+
 // Tanda 1 — Odds API quota indicator. Pulled alongside bankroll on the
 // Tracker page so the user always knows how many of the 500/mo free-tier
 // requests are left without leaving the app.
@@ -2617,6 +2697,8 @@ async function loadBankroll() {
     if (cInp) cInp.value = ((data.max_stake_fraction || 0.03) * 100).toFixed(1);
     if (evInp) evInp.value = ((data.min_ev_pct ?? 0.05) * 100).toFixed(1);
     if (msInp) msInp.value = Math.round(data.min_stake_pesos ?? 2000);
+    const ubInp = document.getElementById('bankroll-userbooks-input');
+    if (ubInp) ubInp.value = data.user_books || '';
 
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     set('bankroll-staked', money(data.staked_pesos != null ? (data.staked_pesos - (data.staked_open_pesos || 0)) : null));
@@ -2643,6 +2725,7 @@ async function saveBankrollUnit() {
   const cInp  = document.getElementById('bankroll-cap-input');
   const evInp = document.getElementById('bankroll-minev-input');
   const msInp = document.getElementById('bankroll-minstake-input');
+  const ubInp = document.getElementById('bankroll-userbooks-input');
   const msg   = document.getElementById('bankroll-msg');
 
   const bVal      = bInp  ? parseFloat(bInp.value)  : NaN;
@@ -2650,6 +2733,7 @@ async function saveBankrollUnit() {
   const cValPct   = cInp  ? parseFloat(cInp.value)  : NaN;  // user-facing %, converted below
   const evValPct  = evInp ? parseFloat(evInp.value) : NaN;  // user-facing %, converted below
   const minStake  = msInp ? parseFloat(msInp.value) : NaN;
+  const userBooks = ubInp ? (ubInp.value || '').trim() : '';
 
   if (!(bVal > 0) || !(uVal > 0) || !(cValPct > 0) || !(evValPct >= 0) || !(minStake >= 0)) {
     if (msg) { msg.textContent = 'Revisá los valores (banca/unidad/cap > 0, EV-mín y stake-mín ≥ 0).'; msg.className = 'bankroll-msg m-err'; }
@@ -2665,6 +2749,7 @@ async function saveBankrollUnit() {
         max_stake_fraction: cValPct / 100,
         min_ev_pct:         evValPct / 100,
         min_stake_pesos:    minStake,
+        user_books:         userBooks,
       }),
     });
     if (!r.ok) {
@@ -3013,17 +3098,28 @@ function _cubeProjRow(projVal, pOver, edge, parkDelta, parkFactor) {
           </div>`;
 }
 
-// Tanda 1 — market data row: best book + consensus fair price across N books.
-// Renders nothing when no API data is on the pick (manual entry path).
+// Tanda 1 — market data row: user's actual cuota (when entered) + market reference.
+// Three states:
+//   1) user has manually entered cuota+casino → "★ Tuya {casino} {cuota}"
+//   2) no user cuota yet, market reference exists → "⏳ Cargá tu cuota ↓" + "↗ Ref"
+//   3) Sin nada → no renderiza
+//
+// Note: pick.casino/odds_decimal are the SOURCE OF TRUTH for "what the user
+// chose to bet at". Auto-generate no longer auto-fills these (auto_fill_odds=False),
+// so they're only set by manual entry.
 function _cubeMarketRow(pick) {
-  const best = pick && pick.best_book_casino;
-  const bestOdds = pick && pick.best_book_odds;
-  const pConsensus = pick && pick.p_over_market;
-  const nBooks = pick && pick.n_books_market;
-  if (!best && pConsensus == null) return '';
+  const userCasino  = pick && pick.casino;
+  const userOdds    = pick && pick.odds_decimal;
+  const hasUserBet  = !!(userCasino && userOdds && userOdds > 1);
+  const marketBest  = pick && pick.market_best_casino;
+  const marketOdds  = pick && pick.market_best_odds;
+  const pConsensus  = pick && pick.p_over_market;
+  const nBooks      = pick && pick.n_books_market;
+  if (!hasUserBet && !marketBest && pConsensus == null) return '';
 
-  // Direction-relative consensus probability (we display the side actually picked)
   const rec = pick.recommendation;
+
+  // Direction-relative consensus probability
   let consensusPct = null;
   if (pConsensus != null) {
     const p = rec === 'UNDER' ? (1 - pConsensus) : pConsensus;
@@ -3038,13 +3134,43 @@ function _cubeMarketRow(pick) {
     ? `${evMarket >= 0 ? '+' : ''}${(evMarket * 100).toFixed(1)}%`
     : '—';
 
-  const bestChip = best
-    ? `<span class="cube-mk-chip cube-mk-best" title="Mejor cuota disponible para ${rec || ''}">
-         <span class="cube-mk-lbl">★ Mejor</span>
-         <span class="cube-mk-val">${best}</span>
-         <span class="cube-mk-odds">${bestOdds != null ? num(bestOdds, 2) : '—'}</span>
-       </span>`
-    : '';
+  let userBestChip = '';
+  let marketBestChip = '';
+
+  if (hasUserBet) {
+    // State 1: user has manually entered their cuota
+    userBestChip = `
+      <span class="cube-mk-chip cube-mk-best" title="Tu cuota cargada">
+        <span class="cube-mk-lbl">★ Tuya</span>
+        <span class="cube-mk-val">${userCasino}</span>
+        <span class="cube-mk-odds">${num(userOdds, 2)}</span>
+      </span>`;
+    // Show market chip ONLY when market beats user by >1%
+    const showMarket = marketBest && marketOdds != null
+      && (userCasino !== marketBest && userOdds != null && marketOdds > userOdds + 0.01);
+    if (showMarket) {
+      const missedPct = ((marketOdds - userOdds) / userOdds * 100).toFixed(1);
+      marketBestChip = `
+        <span class="cube-mk-chip cube-mk-market" title="Mejor cuota en TODO el mercado · estás dejando ${missedPct}% en la mesa">
+          <span class="cube-mk-lbl">↗ Mkt</span>
+          <span class="cube-mk-val">${marketBest}</span>
+          <span class="cube-mk-odds">${num(marketOdds, 2)}</span>
+        </span>`;
+    }
+  } else if (marketBest && marketOdds != null) {
+    // State 2: no user cuota yet — show waiting + market reference
+    userBestChip = `
+      <span class="cube-mk-chip cube-mk-nobook" title="Cargá la cuota que viste en bet365/Betano abajo. La app valida con simulación.">
+        <span class="cube-mk-lbl">⏳ Cargá</span>
+        <span class="cube-mk-val">tu cuota ↓</span>
+      </span>`;
+    marketBestChip = `
+      <span class="cube-mk-chip cube-mk-market" title="Cuota óptima del mercado global — referencia para comparar">
+        <span class="cube-mk-lbl">↗ Óptima</span>
+        <span class="cube-mk-val">${marketBest}</span>
+        <span class="cube-mk-odds">${num(marketOdds, 2)}</span>
+      </span>`;
+  }
 
   const consensusChip = (consensusPct != null)
     ? `<span class="cube-mk-chip" title="Consenso del mercado de-vigeado, ponderado por sharpness · ${nBooks || 0} libros">
@@ -3061,7 +3187,263 @@ function _cubeMarketRow(pick) {
        </span>`
     : '';
 
-  return `<div class="cube-market-row">${bestChip}${consensusChip}${evMarketChip}</div>`;
+  return `<div class="cube-market-row">${userBestChip}${marketBestChip}${consensusChip}${evMarketChip}</div>`;
+}
+
+// Tanda 1 — manual-odds entry block. Renders below the market row when:
+//   • The pick is open (not settled W/L/P)
+//   • Recommendation is OVER or UNDER (skip pure-SKIP picks)
+//   • The user hasn't entered their cuota yet (pick.casino + odds_decimal null)
+// User pastes the cuota they see in their actual book; submitManualOdds()
+// hits /api/picks/evaluate-bet which runs the simulation and renders the
+// verdict panel (replacing this entry form).
+function _cubeManualEntryRow(pick) {
+  if (!pick || pick.actual_ks != null || pick.result) return '';
+  if (pick.recommendation === 'SKIP') return '';
+  // Render when user hasn't manually entered their cuota yet
+  const hasUserBet = !!(pick.casino && pick.odds_decimal && pick.odds_decimal > 1);
+  if (hasUserBet) return '';
+
+  const safeId = (pick.pitcher_name || '').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+  return `
+    <div class="cube-manual-entry" data-pitcher="${pick.pitcher_name}" data-team="${pick.team || ''}" data-kline="${pick.k_line}" data-rec="${pick.recommendation || ''}">
+      <div class="cme-title">¿Qué cuota viste en tu casino?</div>
+      <div class="cme-fields">
+        <input type="text" class="cme-odds" id="cme-odds-${safeId}"
+               placeholder="1.85 ó -129" inputmode="decimal" autocomplete="off">
+        <input type="text" class="cme-casino" id="cme-casino-${safeId}"
+               placeholder="bet365" autocomplete="off">
+        <button class="cme-eval-btn" onclick="submitManualOdds(this)">Evaluar</button>
+      </div>
+      <div class="cme-hint">Aceptá decimal (1.85) o American (-129 / +175). El veredicto sale después de evaluar.</div>
+    </div>`;
+}
+
+// Convert American odds (-129 / +175) → decimal (1.78 / 2.75).
+// Returns null on invalid input. Decimals pass through unchanged.
+function _toDecimalOdds(raw) {
+  const s = (raw || '').toString().trim().replace(',', '.');
+  if (!s) return null;
+  // Decimal: positive number > 1 (e.g., 1.85, 2.40)
+  const dec = parseFloat(s);
+  if (!isFinite(dec)) return null;
+  if (s.startsWith('+') || s.startsWith('-')) {
+    // American format
+    const am = dec; // already includes sign
+    if (am > 0) return Math.round((1 + am / 100) * 1000) / 1000;
+    if (am < 0) return Math.round((1 + 100 / Math.abs(am)) * 1000) / 1000;
+    return null;
+  }
+  // No sign — assume decimal, but reject obvious American positives like "175"
+  if (dec >= 100) {
+    // Treat as American positive
+    return Math.round((1 + dec / 100) * 1000) / 1000;
+  }
+  if (dec > 1.01 && dec < 100) return dec;
+  return null;
+}
+
+async function submitManualOdds(btn) {
+  const card = btn.closest('.cube-manual-entry');
+  if (!card) return;
+  const pitcher = card.dataset.pitcher;
+  const team    = card.dataset.team;
+  const kLine   = parseFloat(card.dataset.kline);
+  const oddsInp = card.querySelector('.cme-odds');
+  const casInp  = card.querySelector('.cme-casino');
+  const oddsRaw = oddsInp.value;
+  const casino  = (casInp.value || '').trim();
+
+  const oddsDec = _toDecimalOdds(oddsRaw);
+  if (!oddsDec || oddsDec <= 1) {
+    oddsInp.style.borderColor = 'var(--red)';
+    _showToast('Cuota inválida. Aceptá decimal (1.85) o American (-129).', 'error');
+    return;
+  }
+  if (!casino) {
+    casInp.style.borderColor = 'var(--red)';
+    _showToast('Falta el casino', 'error');
+    return;
+  }
+  if (!isFinite(kLine) || kLine <= 0) {
+    _showToast('Pick base sin línea de K', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  try {
+    // Step 1 — read-only validation: market reference + simulation
+    const evalResult = await apiPost('/api/picks/evaluate-bet', {
+      pitcher_name: pitcher,
+      team:         team,
+      k_line:       kLine,
+      odds_decimal: oddsDec,
+      casino:       casino,
+      n_sim_bets:   100,
+    });
+
+    // Step 2 — render the validation panel inside the cube (replaces the entry form)
+    _renderValidationPanel(card, evalResult);
+
+    // Step 3 — also persist via /api/picks/lines so the cube state syncs
+    // (so refresh shows star+cuota+EV instead of "Sin acceso")
+    await apiPost('/api/picks/lines', {
+      pitcher_name: pitcher,
+      team:         team,
+      k_line:       kLine,
+      odds_decimal: oddsDec,
+      casino:       casino,
+    });
+  } catch (e) {
+    console.error(e);
+    _showToast(`Error: ${e.message || 'no se pudo evaluar'}`, 'error');
+    btn.disabled    = false;
+    btn.textContent = 'Evaluar';
+  }
+}
+
+// Render the 3-section validation result panel: market reference, your bet,
+// simulation distribution, verdict. Replaces the input form within the cube.
+function _renderValidationPanel(hostEl, data) {
+  const m       = data.market || {};
+  const u       = data.user   || {};
+  const sim     = data.simulation;
+  const verdict = data.verdict;
+
+  // Verdict styling
+  const verdictCfg = {
+    'STRONG_BET': { cls: 'cvp-strong', icon: '✅', label: 'APOSTÁ FUERTE' },
+    'BET':        { cls: 'cvp-good',   icon: '✅', label: 'APOSTABLE' },
+    'MARGINAL':   { cls: 'cvp-marg',   icon: '🟡', label: 'MARGINAL' },
+    'NO':         { cls: 'cvp-no',     icon: '❌', label: 'NO APOSTAR' },
+  }[verdict] || { cls: 'cvp-marg', icon: '·', label: verdict || '—' };
+
+  const moneyFmt = (v) => v == null ? '—' : money(v, true);
+  const pct      = (v, d=1) => v == null ? '—' : `${v >= 0 ? '+' : ''}${(v*100).toFixed(d)}%`;
+  const num2     = (v)    => v == null ? '—' : Number(v).toFixed(2);
+  const num4     = (v)    => v == null ? '—' : Number(v).toFixed(4);
+  const ppDelta  = (v)    => v == null ? '—' : `${v >= 0 ? '+' : ''}${Number(v).toFixed(1)}pp`;
+
+  // Profit-band visual: shows where the median + 90% CI lands relative to break-even.
+  let simBlock = '';
+  if (sim) {
+    const p5 = sim.p5_pnl, p95 = sim.p95_pnl, med = sim.median_pnl, exp = sim.expected_pnl;
+    // Compute relative bar widths for a simple horizontal range bar centered at 0
+    const range = Math.max(Math.abs(p5), Math.abs(p95), 1);
+    const leftPct  = ((Math.min(p5, 0) + range) / (2 * range)) * 100;
+    const rightPct = ((Math.max(p95, 0) + range) / (2 * range)) * 100;
+    const medPct   = ((med + range) / (2 * range)) * 100;
+    const zeroPct  = (range / (2 * range)) * 100; // == 50%
+    const profitProb = sim.p_profit != null ? (sim.p_profit * 100).toFixed(1) : '—';
+    simBlock = `
+      <div class="cvp-section">
+        <div class="cvp-sec-title">SIMULACIÓN — ${sim.n_bets} apuestas a este edge</div>
+        <div class="cvp-sim-grid">
+          <div class="cvp-kv">
+            <span class="cvp-k">P(profit)</span>
+            <span class="cvp-v ${sim.p_profit > 0.5 ? 'cvp-pos' : 'cvp-neg'}">${profitProb}%</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">Profit esperado</span>
+            <span class="cvp-v ${exp > 0 ? 'cvp-pos' : 'cvp-neg'}">${moneyFmt(exp)}</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">Mediana</span>
+            <span class="cvp-v">${moneyFmt(med)}</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">Stake/apuesta</span>
+            <span class="cvp-v">${moneyFmt(sim.stake_pesos)}</span>
+          </div>
+        </div>
+        <div class="cvp-band-wrap">
+          <div class="cvp-band">
+            <div class="cvp-band-zero" style="left:${zeroPct}%"></div>
+            <div class="cvp-band-fill"
+                 style="left:${leftPct}%; width:${rightPct - leftPct}%"></div>
+            <div class="cvp-band-median" style="left:${medPct}%"></div>
+          </div>
+          <div class="cvp-band-labels">
+            <span class="cvp-band-lbl-left">Peor 5% ${moneyFmt(p5)}</span>
+            <span class="cvp-band-lbl-zero">$0</span>
+            <span class="cvp-band-lbl-right">Mejor 5% ${moneyFmt(p95)}</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  hostEl.outerHTML = `
+    <div class="cube-validation-panel ${verdictCfg.cls}">
+      <div class="cvp-section">
+        <div class="cvp-sec-title">MERCADO — referencia</div>
+        <div class="cvp-sim-grid">
+          <div class="cvp-kv">
+            <span class="cvp-k">Cuota óptima</span>
+            <span class="cvp-v cvp-money-fmt">${num2(m.best_odds)}</span>
+            <span class="cvp-sub">${m.best_casino || '—'}</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">Fair (sin vig)</span>
+            <span class="cvp-v">${num2(m.fair_price)}</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">P(${data.direction || ''}) consenso</span>
+            <span class="cvp-v">${m.p_consensus != null ? (m.p_consensus*100).toFixed(1) + '%' : '—'}</span>
+            <span class="cvp-sub">n=${m.n_books || 0}</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">Línea</span>
+            <span class="cvp-v">${data.k_line != null ? num(data.k_line, 1) : '—'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cvp-section">
+        <div class="cvp-sec-title">TU APUESTA</div>
+        <div class="cvp-sim-grid">
+          <div class="cvp-kv">
+            <span class="cvp-k">Tu cuota</span>
+            <span class="cvp-v">${num2(u.odds)}</span>
+            <span class="cvp-sub">${u.casino || '—'}</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">Edge sobre fair</span>
+            <span class="cvp-v ${u.edge_vs_fair_pp >= 0 ? 'cvp-pos' : 'cvp-neg'}">${ppDelta(u.edge_vs_fair_pp)}</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">EV por unidad</span>
+            <span class="cvp-v ${u.ev_pct >= 0 ? 'cvp-pos' : 'cvp-neg'}">${pct(u.ev_pct)}</span>
+          </div>
+          <div class="cvp-kv">
+            <span class="cvp-k">Stake (Kelly)</span>
+            <span class="cvp-v">${moneyFmt(u.stake_pesos)}</span>
+          </div>
+        </div>
+      </div>
+
+      ${simBlock}
+
+      <div class="cvp-verdict">
+        <span class="cvp-verdict-icon">${verdictCfg.icon}</span>
+        <span class="cvp-verdict-label">${verdictCfg.label}</span>
+        <span class="cvp-verdict-msg">${data.verdict_msg || ''}</span>
+      </div>
+
+      <div class="cvp-actions">
+        <button class="cvp-redo-btn" onclick="_resetValidationPanel(this)">Re-evaluar otra cuota</button>
+      </div>
+    </div>`;
+}
+
+// Reset the result panel back to the input form so user can try a different cuota
+// without reloading the page. We just re-render the cube from cached pick data.
+function _resetValidationPanel(btn) {
+  const panel = btn.closest('.cube-validation-panel');
+  if (!panel) return;
+  // Easiest: refresh the picks view so the cube re-renders with current state
+  if (typeof loadPicks === 'function') loadPicks();
+  if (typeof loadTodaysPicks === 'function') loadTodaysPicks();
 }
 
 // Bundle A #3 — EV / Quarter-Kelly / stake in pesos (when bankroll unit is set).
@@ -3192,9 +3574,10 @@ function _buildCubeCard(p, pick) {
       <button class="cube-casino-edit" onclick="editCubeCasino(this)" title="Editar casino">✎</button>
     </div>`;
 
-  const marketRow = pick ? _cubeMarketRow(pick) : '';
-  const stakeRow  = pick ? _cubeStakeRow(pick.ev_pct, pick.kelly_units, pick.stake_pesos) : '';
-  const pnlRow    = pick ? _cubePnlRow(pick.pnl_pesos, pick.result) : '';
+  const marketRow      = pick ? _cubeMarketRow(pick)      : '';
+  const manualEntryRow = pick ? _cubeManualEntryRow(pick) : '';
+  const stakeRow       = pick ? _cubeStakeRow(pick.ev_pct, pick.kelly_units, pick.stake_pesos) : '';
+  const pnlRow         = pick ? _cubePnlRow(pick.pnl_pesos, pick.result) : '';
 
   // Actions row (result / cancel)
   let actions = '';
@@ -3235,6 +3618,7 @@ function _buildCubeCard(p, pick) {
       </div>
       ${casinoRow}
       ${marketRow}
+      ${manualEntryRow}
       ${stakeRow}
       ${pnlRow}
       ${actions}
@@ -3513,10 +3897,11 @@ function _buildTpCubeCard(pick) {
          <button class="tp-log-btn" onclick="submitTodaysPick(this)">LOG</button>
        </div>`;
 
-  const projRow   = _cubeProjRow(pick.model_proj, pick.p_over, pick.edge, pick.park_k_delta, pick.park_k_factor);
-  const marketRow = _cubeMarketRow(pick);
-  const stakeRow  = _cubeStakeRow(pick.ev_pct, pick.kelly_units, pick.stake_pesos);
-  const pnlRow    = _cubePnlRow(pick.pnl_pesos, pick.result);
+  const projRow        = _cubeProjRow(pick.model_proj, pick.p_over, pick.edge, pick.park_k_delta, pick.park_k_factor);
+  const marketRow      = _cubeMarketRow(pick);
+  const manualEntryRow = _cubeManualEntryRow(pick);
+  const stakeRow       = _cubeStakeRow(pick.ev_pct, pick.kelly_units, pick.stake_pesos);
+  const pnlRow         = _cubePnlRow(pick.pnl_pesos, pick.result);
 
   return `
     <div class="cube-card cube--${rec.toLowerCase()}" id="tpcube-${safeId}" data-pitcher="${name}" data-safeid="${safeId}">
@@ -3544,6 +3929,7 @@ function _buildTpCubeCard(pick) {
         <span class="cube-casino-name">${casinoStr || '—'}</span>
       </div>
       ${marketRow}
+      ${manualEntryRow}
       ${stakeRow}
       ${pnlRow}
       ${actions}
@@ -3811,3 +4197,891 @@ async function submitRetroPick(ev) {
     btn.textContent = 'Guardar';
   }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPORT TABS — MLB (modelo de ponches) vs NBA (motor AltLines)
+   ══════════════════════════════════════════════════════════════════════════
+   Todo lo de aquí abajo es aditivo y autónomo: no toca ninguna función del
+   modelo MLB. Las secciones y los ítems de navegación se separan por el
+   atributo data-sport (los que no lo llevan son MLB).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SPORT_DEFAULT_SECTION = { mlb: 'pitcher-props', nba: 'altlines' };
+
+function currentSport() {
+  return document.body.dataset.sport || 'mlb';
+}
+
+/**
+ * Cambia de deporte (pestaña MLB / NBA).
+ *  · marca la pestaña activa
+ *  · muestra solo los ítems de navegación del deporte
+ *  · abre la sección por defecto de ese deporte (showSection oculta el resto)
+ */
+function showSport(sport) {
+  document.body.dataset.sport = sport;
+
+  document.querySelectorAll('.sport-tab').forEach(t => {
+    const on = t.dataset.sport === sport;
+    t.classList.toggle('sport-tab--active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+
+  document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
+    const s = item.dataset.sport || 'mlb';
+    item.style.display = (s === sport) ? '' : 'none';
+  });
+
+  // Cierra el buscador de pitchers: no aplica en NBA
+  const searchWrap = document.getElementById('topbar-search-wrap');
+  if (searchWrap) searchWrap.style.display = (sport === 'nba') ? 'none' : '';
+
+  showSection(SPORT_DEFAULT_SECTION[sport] || 'pitcher-props', null);
+}
+
+// ── NBA · Alt Lines (motor AltLines: Monte Carlo de colas largas) ───────────
+
+// Estado del tablero visible: o un partido, o la liga entera fusionada.
+let _altLinesData = null;
+const _alFilters = { market: 'all', side: 'all', minEv: 0, search: '', touched: false };
+
+// ── Estado "por partido" ────────────────────────────────────────────────────
+// Simular la liga entera de una son ~15 s de CPU; un partido son ~3 s. La
+// elección no es cosmética: es lo que hace usable el motor. Y como el RNG se
+// siembra por (jugador, mercado), simular un partido devuelve EXACTAMENTE los
+// mismos números que el tablero global — sólo menos trabajo.
+const AL_VIDEO = {
+  webm: 'assets/altlines/sim-loop.webm',
+  mp4: 'assets/altlines/sim-loop.mp4',
+  poster: 'assets/altlines/sim-loop-poster.jpg',
+};
+// Respetamos a quien pidió menos movimiento: en ese caso no reproducimos video,
+// pero la tarjeta igual avisa que está simulando (con el pulso y el contador).
+const AL_MOTION_OK = !(window.matchMedia
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+const AL_N_ITER = 20000;
+
+let _alSlate = null;            // pizarra: calendario + props disponibles
+let _alGameResults = {};        // game_id -> payload del motor
+let _alSelected = null;         // game_id abierto en el detalle
+let _alLeague = null;           // tablero fusionado de todos los simulados
+let _alScope = 'game';          // 'game' | 'league'
+let _alDate = null;             // fecha pedida (null = la de hoy)
+let _alSimAll = false;          // "Simular todos" en curso
+let _alBusy = false;            // hay una simulación en vuelo (evita dobles clicks)
+// 'demo' = datos sintéticos (gratis) · 'live' = ESPN + The Odds API (gasta créditos)
+let _alSource = (() => {
+  try { return localStorage.getItem('al-source') === 'live' ? 'live' : 'demo'; }
+  catch (_) { return 'demo'; }
+})();
+
+/**
+ * El brief pide "el top 5% de discrepancias", no las 138 líneas.
+ * Por defecto abrimos el tablero EXACTAMENTE en el top reportado por el motor
+ * (EV mínimo = el peor EV de la lista ya filtrada) y dejamos que el usuario
+ * baje el umbral para explorar el resto.
+ */
+function _alTopEv() {
+  const evs = ((_altLinesData && _altLinesData.edges) || [])
+    .map(r => Number(r.ev_pct)).filter(Number.isFinite);
+  return evs.length ? Math.floor(Math.min(...evs)) : 0;
+}
+
+function _alDefaultFilters() {
+  if (_alFilters.touched) return;
+  _alFilters.minEv = _alTopEv();
+}
+
+function altLinesQuick(mode) {
+  _alFilters.touched = true;
+  _alFilters.minEv = (mode === 'all') ? 0 : _alTopEv();
+  const inp = document.getElementById('al-f-ev');
+  if (inp) inp.value = _alFilters.minEv;
+  renderAltLinesTable();
+}
+
+const _alEsc = (s) => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const _alNum = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
+
+async function loadAltLines() {
+  const sec = document.getElementById('section-altlines');
+  if (!sec) return;
+
+  // El esqueleto se construye una sola vez: la grilla de partidos reemplaza a
+  // los videos, y rehacer el innerHTML en cada click los reiniciaría.
+  if (!sec.dataset.built) {
+    sec.innerHTML = _alShellHtml();
+    sec.dataset.built = '1';
+  }
+  await loadSlate();
+}
+
+function _alShellHtml() {
+  return `
+    <div class="al-header">
+      <div class="al-title">ALT <span class="al-title-accent">LINES</span> · NBA</div>
+      <div class="al-sub">Monte Carlo de colas largas sobre props extremos — el libro ancla en la <em>mediana</em>
+        y cotiza las colas con una curva simétrica genérica. Aquí reconstruimos la distribución completa
+        (media, sesgo y varianza reales) y comparamos. <strong>Elegí un partido</strong>: se simula sólo ese.</div>
+    </div>
+
+    <div class="al-slate">
+      <div class="al-slate-head">
+        <div class="al-slate-title">Pizarra <span class="al-slate-sub" id="al-slate-meta"></span></div>
+        <div class="al-date-nav">
+          <button class="al-date-btn" title="Día anterior" onclick="altLinesShiftDate(-1)">‹</button>
+          <span class="al-date" id="al-date">—</span>
+          <button class="al-date-btn" title="Día siguiente" onclick="altLinesShiftDate(1)">›</button>
+          <button class="al-date-btn al-date-btn--today" onclick="altLinesToday()">Hoy</button>
+        </div>
+        <div class="al-slate-actions">
+          <div class="al-source" role="group" aria-label="Origen de los datos">
+            <button class="al-source-btn" data-src="demo" onclick="altLinesSource('demo')"
+                    title="Jugadores y cuotas sintéticos: gratis, para ver el motor funcionar">Demo</button>
+            <button class="al-source-btn" data-src="live" onclick="altLinesSource('live')"
+                    title="Logs reales (ESPN) + bandejas Alt reales de cada casa (The Odds API). Gasta créditos.">Real</button>
+          </div>
+          <button class="al-sim-all" id="al-sim-all" onclick="simulateAllGames()">Simular todos</button>
+        </div>
+      </div>
+      <div class="al-games" id="al-games">
+        <div class="al-status">Consultando el calendario NBA…</div>
+      </div>
+    </div>
+
+    <div id="al-detail"></div>
+    <div class="al-status" id="al-status" hidden></div>`;
+}
+
+async function loadSlate(date = _alDate, opts = {}) {
+  const wrap = document.getElementById('al-games');
+  if (wrap) wrap.innerHTML = `<div class="al-status">Consultando el calendario NBA…</div>`;
+  try {
+    const q = new URLSearchParams();
+    if (date) q.set('date', date);
+    if (opts.refresh) q.set('refresh', 'true');
+    // La flecha que tocó el usuario: si el día pedido no tiene partidos, el
+    // backend busca en ESA dirección (y no en la contraria, que haría que "‹"
+    // pareciera roto en los huecos del calendario).
+    if (opts.direction) q.set('direction', String(opts.direction));
+    q.set('source', _alSource);
+    const res = await fetch(`${API}/api/altlines/slate?${q}`);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const j = await res.json(); if (j && j.detail) detail = j.detail; } catch (_) { }
+      throw new Error(detail);
+    }
+    _alSlate = await res.json();
+    // El backend puede haber corrido la fecha al día más cercano con partidos.
+    _alDate = _alSlate.date;
+    if (_alSelected && !(_alSlate.games || []).some(g => g.game_id === _alSelected)) {
+      _alSelected = null;
+    }
+    renderSlate();
+    renderAltLines();
+  } catch (e) {
+    console.error('AltLines slate fetch failed', e);
+    const el = document.getElementById('al-games');
+    if (el) {
+      el.innerHTML = `<div class="al-status al-status--error">
+        No se pudo leer el calendario NBA: <strong>${_alEsc(e.message)}</strong><br>
+        ${_alFetchHint()}<br>
+        Backend esperado en <code>${_alEsc(API)}</code>.</div>`;
+    }
+  }
+}
+
+function altLinesShiftDate(delta) {
+  const base = _alDate ? new Date(`${_alDate}T12:00:00`) : new Date();
+  base.setDate(base.getDate() + delta);
+  const iso = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`;
+  _alDate = iso;
+  loadSlate(iso, { direction: delta < 0 ? -1 : 1 });
+}
+
+function altLinesToday() {
+  _alDate = null;
+  loadSlate(null);
+}
+
+// ── Pizarra: una tarjeta por partido, con su mini video ─────────────────────
+
+function _alTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '—'
+    : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function _alStatusLabel(g) {
+  const st = String((g && g.status) || '');
+  // El estado llega de ESPN en inglés; lo decimos en castellano y, si el
+  // partido ya arrancó, conservamos el detalle del propio calendario.
+  const english = { Scheduled: 'Programado', 'In Progress': 'En vivo', Final: 'Final' };
+  if (english[st]) return english[st];
+  if (g && g.state === 'post') return 'Final';
+  if (g && g.state === 'in') return st || 'En vivo';
+  return st || 'Programado';
+}
+
+function _alTeamChip(t) {
+  const logo = (t && t.logo)
+    ? `<img src="${_alEsc(t.logo)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+    : '';
+  return `<span class="al-game-team">${logo}<span class="al-game-tri">${_alEsc((t && t.tricode) || '—')}</span></span>`;
+}
+
+// Mejor EV que puede llegar al tablero (excluye las líneas con nivel dudoso).
+function _alBestEv(res) {
+  const rows = ((res && res.all_edges) || []).filter(r => r.level_ok !== false);
+  return rows.length ? Math.max(...rows.map(r => Number(r.ev_pct))) : null;
+}
+
+function _alGameCardHtml(g) {
+  const pr = g.props || {};
+  const res = _alGameResults[g.game_id];
+  const state = res ? 'done' : (pr.has_props ? 'idle' : 'noprops');
+  const best = _alBestEv(res);
+  const interactive = pr.has_props
+    ? `onclick="simulateGame('${_alEsc(g.game_id)}')"
+       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();simulateGame('${_alEsc(g.game_id)}');}"`
+    : 'aria-disabled="true"';
+  return `
+    <article class="al-game" data-gid="${_alEsc(g.game_id)}" data-state="${state}"
+             role="button" tabindex="${pr.has_props ? 0 : -1}" ${interactive}>
+      <div class="al-game-media">
+        <video class="al-game-video" muted loop playsinline preload="none"
+               poster="${AL_VIDEO.poster}">
+          <source src="${AL_VIDEO.webm}" type="video/webm">
+          <source src="${AL_VIDEO.mp4}" type="video/mp4">
+        </video>
+        <div class="al-game-veil"></div>
+        <div class="al-game-status">
+          <span class="al-game-dot"></span>
+          <span class="al-game-status-text">${state === 'done' ? 'SIMULADO'
+            : (pr.has_props ? 'SIMULAR' : 'SIN PROPS')}</span>
+          <span class="al-game-elapsed"></span>
+        </div>
+        <div class="al-game-ev" ${best === null ? 'hidden' : ''}>
+          ${best === null ? '' : `mejor EV ${best.toFixed(0)}%`}</div>
+      </div>
+      <div class="al-game-foot">
+        <div class="al-game-match">
+          ${_alTeamChip(g.away)}<span class="al-game-at">@</span>${_alTeamChip(g.home)}
+        </div>
+        <div class="al-game-when">${_alEsc(_alTime(g.tip_off))} · ${_alEsc(_alStatusLabel(g))}</div>
+        <div class="al-game-props">${_alSource === 'live'
+          ? (res ? `${(res.counts || {}).player_markets ?? '—'} props · ${(res.counts || {}).lines_priced ?? '—'} líneas reales`
+            : (pr.has_props ? `cuotas reales disponibles · ~${_alSlate.credits_per_game || 5} créditos`
+              : (g.state === 'post' ? 'partido terminado' : 'sin cuotas en The Odds API')))
+          : (pr.has_props
+            ? `${pr.players} jug · ${pr.player_markets} props · ${pr.lines} líneas`
+            : 'sin props cargados para este partido')}</div>
+        ${pr.has_props ? `<div class="al-game-est">≈ ${_alNum(g.est_seconds, 1)}s de Monte Carlo</div>` : ''}
+      </div>
+    </article>`;
+}
+
+function _alSlateMeta() {
+  if (!_alSlate) return '';
+  const src = _alSlate.slate_source === 'espn' ? 'calendario real (ESPN)'
+    : (_alSlate.slate_source === 'offline' ? 'calendario local (sin red)' : 'calendario local');
+  const shifted = _alSlate.auto_shifted
+    ? ` · pediste ${_alEsc(_alSlate.requested_date)} y no había partidos, te muestro el más cercano`
+    : '';
+  const props = `${_alSlate.games_with_props}/${_alSlate.n_games} con props`;
+  if (_alSlate.data_source === 'live') {
+    const q = _alQuota();
+    const left = q != null ? ` · quedan ${_alEsc(q)} créditos` : '';
+    const err = _alSlate.odds_error ? ` · <span class="al-neg">${_alEsc(_alSlate.odds_error)}</span>` : '';
+    return `${src}${shifted} · ${_alSlate.games_with_props}/${_alSlate.n_games} con cuotas reales${left}${err}`;
+  }
+  return `${src}${shifted} · ${props}`;
+}
+
+// Créditos que quedan en The Odds API: el dato más fresco entre la pizarra y
+// los partidos simulados (cada llamada paga devuelve el saldo en sus headers).
+function _alQuota() {
+  let best = null;
+  const take = (q) => { if (q && q.remaining != null && (!best || q.ts > best.ts)) best = q; };
+  take(_alSlate && _alSlate.quota);
+  Object.values(_alGameResults).forEach(r => take(r.live && r.live.quota));
+  return best ? best.remaining : null;
+}
+
+function altLinesSource(src) {
+  if (src === _alSource || _alSimAll || _alBusy) return;
+  _alSource = src;
+  try { localStorage.setItem('al-source', src); } catch (_) { }
+  _alGameResults = {};
+  _alLeague = null;
+  _alSelected = null;
+  _altLinesData = null;
+  _alFilters.touched = false;
+  const det = document.getElementById('al-detail');
+  if (det) det.innerHTML = '';
+  _alSyncSourceBtns();
+  loadSlate(_alDate);
+}
+
+function _alSyncSourceBtns() {
+  document.querySelectorAll('.al-source-btn').forEach(b => {
+    const on = b.dataset.src === _alSource;
+    b.classList.toggle('al-source-btn--on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+function renderSlate() {
+  const wrap = document.getElementById('al-games');
+  if (!wrap || !_alSlate) return;
+  const games = _alSlate.games || [];
+  wrap.innerHTML = games.length
+    ? games.map(_alGameCardHtml).join('')
+    : `<div class="al-status">No hay partidos en el calendario para esa fecha.</div>`;
+
+  const meta = document.getElementById('al-slate-meta');
+  if (meta) meta.innerHTML = _alSlateMeta();
+  const dateEl = document.getElementById('al-date');
+  if (dateEl) dateEl.textContent = _alSlate.date || '—';
+  _alSyncSourceBtns();
+  _alUpdateSimAllBtn();
+}
+
+function _alUpdateSimAllBtn() {
+  const btn = document.getElementById('al-sim-all');
+  if (!btn || !_alSlate) return;
+  const withProps = (_alSlate.games || []).filter(g => (g.props || {}).has_props);
+  const done = withProps.filter(g => _alGameResults[g.game_id]).length;
+  if (_alSimAll) {
+    btn.textContent = `Detener (${done}/${withProps.length})`;
+    btn.classList.add('al-sim-all--running');
+  } else {
+    btn.textContent = done === withProps.length && withProps.length
+      ? `Todos simulados (${done})`
+      : `Simular todos (${withProps.length})`;
+    btn.classList.remove('al-sim-all--running');
+  }
+  btn.disabled = !withProps.length;
+}
+
+// ── Video de la tarjeta ─────────────────────────────────────────────────────
+
+function _alCard(gid) {
+  return document.querySelector(`.al-game[data-gid="${_alEsc(gid)}"]`);
+}
+
+function _alPlayVideo(video) {
+  if (!video || !AL_MOTION_OK) return;
+  const attempt = () => {
+    try {
+      const p = video.play();
+      if (p && p.catch) p.catch(() => { /* autoplay bloqueado: no es fatal */ });
+    } catch (_) { /* noop */ }
+  };
+
+  // Con `preload="none"` y varios <source>, el navegador todavía está eligiendo
+  // la fuente cuando llega el primer play(): ese primer intento se aborta y la
+  // tarjeta se quedaría "simulando" sin imagen. Disparamos igual (para que
+  // arranque la carga) y reintentamos en cuanto haya datos.
+  if (video.readyState >= 2) { attempt(); return; }
+  attempt();
+  if (video.dataset.alPrimed) return;
+  video.dataset.alPrimed = '1';
+  const onData = () => {
+    video.removeEventListener('loadeddata', onData);
+    const card = video.closest('.al-game');
+    if (video.paused && card && card.dataset.state === 'simulating') attempt();
+  };
+  video.addEventListener('loadeddata', onData);
+}
+
+function _alStopVideo(video) {
+  if (!video) return;
+  try { video.pause(); video.currentTime = 0; } catch (_) { /* noop */ }
+}
+
+/**
+ * Cambia el estado visual de una tarjeta EN SITIO (sin re-renderizar la grilla)
+ * para no reiniciar los videos de las demás.
+ */
+function _alSetCardState(gid, state, msg) {
+  const card = _alCard(gid);
+  if (!card) return;
+  card.dataset.state = state;
+  const video = card.querySelector('.al-game-video');
+  const label = card.querySelector('.al-game-status-text');
+  const ev = card.querySelector('.al-game-ev');
+  const el = card.querySelector('.al-game-elapsed');
+
+  if (state === 'simulating') {
+    if (label) label.textContent = 'SIMULANDO…';
+    _alPlayVideo(video);
+  } else {
+    _alStopVideo(video);
+    if (label) {
+      label.textContent = state === 'done' ? 'SIMULADO'
+        : (state === 'error' ? 'ERROR' : 'SIMULAR');
+    }
+    if (el) el.textContent = '';
+  }
+  if (state === 'done' && ev) {
+    const r = _alGameResults[gid];
+    const best = _alBestEv(r);
+    if (best !== null) {
+      ev.hidden = false;
+      ev.textContent = `mejor EV ${best.toFixed(0)}%`;
+    }
+    const props = card.querySelector('.al-game-props');
+    if (props && r && _alSource === 'live') {
+      const c = r.counts || {};
+      props.textContent = `${c.player_markets ?? '—'} props · ${c.lines_priced ?? '—'} líneas reales`;
+    }
+  }
+  if (state === 'error' && ev) {
+    ev.hidden = false;
+    ev.textContent = msg || 'no se pudo simular';
+  }
+}
+
+// ── Simulación de un partido ────────────────────────────────────────────────
+
+async function simulateGame(gid, opts = {}) {
+  const done = _alGameResults[gid];
+  if (done) {                                   // ya simulado: sólo abrirlo
+    _alSelectGame(gid);
+    return done;
+  }
+  const card = _alCard(gid);
+  if (card && card.dataset.state === 'simulating') return null;
+
+  const t0 = Date.now();
+  _alSetCardState(gid, 'simulating');
+  const tick = setInterval(() => {
+    const el = card && card.querySelector('.al-game-elapsed');
+    if (el) el.textContent = `${((Date.now() - t0) / 1000).toFixed(0)}s`;
+  }, 250);
+
+  try {
+    const q = new URLSearchParams({ game: gid, n_iter: AL_N_ITER });
+    if (_alDate) q.set('date', _alDate);
+    if (opts.refresh) q.set('refresh', 'true');
+    q.set('source', _alSource);
+    const res = await fetch(`${API}/api/altlines/edges?${q}`);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const j = await res.json(); if (j && j.detail) detail = j.detail; } catch (_) { }
+      throw new Error(detail);
+    }
+    _alGameResults[gid] = await res.json();
+    _alLeague = null;                           // el tablero global quedó viejo
+    _alSetCardState(gid, 'done');
+    if (!opts.silent) _alSelectGame(gid);
+    return _alGameResults[gid];
+  } catch (e) {
+    console.error('AltLines game fetch failed', e);
+    _alSetCardState(gid, 'error', e.message);
+    if (!opts.silent) {
+      const st = document.getElementById('al-status');
+      if (st) {
+        st.hidden = false;
+        st.className = 'al-status al-status--error';
+        st.innerHTML = `No se pudo simular <code>${_alEsc(gid)}</code>:
+          <strong>${_alEsc(e.message)}</strong><br>${_alFetchHint()}`;
+      }
+    }
+    return null;
+  } finally {
+    clearInterval(tick);
+    _alUpdateSimAllBtn();
+  }
+}
+
+async function simulateAllGames() {
+  if (_alSimAll) { _alSimAll = false; _alUpdateSimAllBtn(); return; }
+  const pending = (_alSlate && _alSlate.games || [])
+    .filter(g => (g.props || {}).has_props && !_alGameResults[g.game_id]);
+  if (!pending.length) {
+    if (typeof _showToast === 'function') _showToast('Todos los partidos ya están simulados', 'ok');
+    _alLeague = null;
+    _alScope = 'league';
+    renderAltLines();
+    return;
+  }
+  if (_alSource === 'live') {
+    const cost = pending.length * (_alSlate.credits_per_game || 5);
+    const q = _alQuota();
+    const msg = `Esto consulta las cuotas reales de ${pending.length} partido(s): hasta ~${cost} créditos de The Odds API`
+      + (q != null ? ` (quedan ${q}).` : '.') + ' Los partidos consultados en los últimos 20 min no se vuelven a cobrar. ¿Seguir?';
+    if (!window.confirm(msg)) return;
+  }
+  _alSimAll = true;
+  _alUpdateSimAllBtn();
+  for (const g of pending) {
+    if (!_alSimAll) break;
+    await simulateGame(g.game_id, { silent: true });
+  }
+  _alSimAll = false;
+  _alUpdateSimAllBtn();
+  // Al terminar, mostramos el tablero de toda la liga fusionado.
+  _alLeague = null;
+  _alScope = 'league';
+  _alFilters.touched = false;
+  renderAltLines();
+  if (typeof _showToast === 'function') {
+    _showToast(`Simulados ${Object.keys(_alGameResults).length} partidos`, 'ok');
+  }
+}
+
+function _alSelectGame(gid) {
+  _alSelected = gid;
+  _alScope = 'game';
+  _alFilters.touched = false;
+  _altLinesData = _alGameResults[gid] || null;
+  _alDefaultFilters();
+  renderAltLines();
+}
+
+function altLinesScope(scope) {
+  _alScope = scope;
+  _alLeague = null;
+  _alFilters.touched = false;
+  if (scope === 'league') {
+    _altLinesData = _alMergeGames();
+  } else {
+    // Si nunca se "abrió" un partido (p. ej. se usó Simular todos), abrimos el
+    // primero que haya resultados: así "Partido" siempre muestra algo.
+    if (!_alSelected || !_alGameResults[_alSelected]) {
+      _alSelected = Object.keys(_alGameResults)[0] || null;
+    }
+    _altLinesData = _alSelected ? _alGameResults[_alSelected] : null;
+  }
+  _alDefaultFilters();
+  renderAltLines();
+}
+
+
+/**
+ * Diagnóstico del fallo de red más común: la página abierta con file://
+ * (doble clic) en vez de servida por HTTP. Ahí el hostname viene vacío.
+ */
+function _alFetchHint() {
+  if (!window.location.hostname) {
+    return `Estás abriendo <code>index.html</code> con doble clic (protocolo <code>file://</code>).
+      Algunos navegadores bloquean los pedidos al backend desde ahí: serví la carpeta
+      (<code>python -m http.server 5500</code> o el <code>start_cherrypick.bat</code>) y entrá por
+      <code>http://localhost:5500/index.html</code>.`;
+  }
+  return `Verificá que el backend esté corriendo: <code>python -m uvicorn main:app --port 8002</code>
+    ejecutado dentro de <code>backend\\</code>.`;
+}
+
+function _alApplyFilters(rows) {
+  return rows.filter(r => {
+    if (_alFilters.market !== 'all' && r.market !== _alFilters.market) return false;
+    if (_alFilters.side !== 'all' && String(r.side).toLowerCase() !== _alFilters.side) return false;
+    if (Number(r.ev_pct) < _alFilters.minEv) return false;
+    if (_alFilters.search) {
+      const hay = `${r.player} ${r.team} ${r.market_label}`.toLowerCase();
+      if (!hay.includes(_alFilters.search.toLowerCase())) return false;
+    }
+    return true;
+  });
+}
+
+function _alRowHtml(r) {
+  const prof = String(r.profile || '').toLowerCase();
+  const profClass = prof.includes('boom') ? 'al-badge--boom'
+    : prof.includes('volatile') ? 'al-badge--volatile' : 'al-badge--steady';
+  const sideClass = String(r.side).toUpperCase() === 'OVER' ? 'al-side--over' : 'al-side--under';
+  return `
+    <tr>
+      <td class="al-td-player">
+        <div class="al-player">${_alEsc(r.player)}</div>
+        <div class="al-team">${_alEsc(r.team || '')}</div>
+      </td>
+      <td>${_alEsc(r.market_label)}</td>
+      <td><span class="al-side ${sideClass}">${_alEsc(r.side)}</span> <strong>${_alNum(r.point, 1)}</strong></td>
+      <td class="al-td-num">${_alNum(r.decimal_odds)}</td>
+      <td class="al-td-num al-em">${(r.p_model * 100).toFixed(1)}%</td>
+      <td class="al-td-num">${(r.p_fair * 100).toFixed(1)}%</td>
+      <td class="al-td-num al-em">${_alNum(r.discrepancy * 100, 1)}%</td>
+      <td class="al-td-num ${Number(r.ev_pct) > 0 ? 'al-pos' : 'al-neg'}">${_alNum(r.ev_pct, 1)}%</td>
+      <td class="al-td-num">${_alNum(r.curve_ratio, 2)}×</td>
+      <td><span class="al-badge ${profClass}">${_alEsc(r.profile)}</span></td>
+      <td class="al-td-book">${_alEsc(r.book)}</td>
+      <td class="al-td-num">${_alNum(r.stake_units, 2)}u</td>
+    </tr>`;
+}
+
+// ── Detalle: el tablero del partido elegido (o de la liga fusionada) ────────
+
+function renderAltLines() {
+  const host = document.getElementById('al-detail');
+  if (!host) return;
+  // `_altLinesData` es SIEMPRE el tablero que se está viendo: la tabla, los KPIs
+  // y el filtro por defecto leen de ahí. Si no se reasigna también en el modo
+  // liga, la tabla sigue mostrando el partido anterior y los números no cierran.
+  if (_alScope === 'league') {
+    _alLeague = _alLeague || _alMergeGames();
+    _altLinesData = _alLeague;
+  }
+  const d = _altLinesData;
+  if (!d) {
+    host.innerHTML = `<div class="al-status">Elegí un partido de la pizarra
+      (o <strong>Simular todos</strong>) para ver el tablero de edges.</div>`;
+    return;
+  }
+  if (!_alFilters.touched) _alFilters.minEv = _alTopEv();
+  host.innerHTML = _alDetailHeaderHtml(d) + _alBoardHtml(d);
+  renderAltLinesTable();
+}
+
+function _alScopeTabs() {
+  const n = Object.keys(_alGameResults).length;
+  if (!n) return '';
+  return `<div class="al-scope">
+      <button class="al-scope-btn ${_alScope === 'game' ? 'al-scope-btn--on' : ''}"
+              onclick="altLinesScope('game')">Partido</button>
+      <button class="al-scope-btn ${_alScope === 'league' ? 'al-scope-btn--on' : ''}"
+              onclick="altLinesScope('league')">Liga (${n} simulados)</button>
+    </div>`;
+}
+
+function _alDetailHeaderHtml(d) {
+  const c = d.counts || {};
+  const g = d.game;
+  const title = g
+    ? `${_alEsc(g.away.tricode)} <span class="al-detail-at">@</span> ${_alEsc(g.home.tricode)}`
+    : 'Toda la liga';
+  const sub = g
+    ? `${_alEsc(_alTime(g.tip_off))} · ${_alEsc(_alStatusLabel(g))}${g.venue ? ' · ' + _alEsc(g.venue) : ''}`
+    : `${c.games || 0} partidos simulados`;
+  return `
+    <div class="al-detail-head">
+      <div class="al-detail-title">
+        <span class="al-detail-name">${title}</span>
+        <span class="al-detail-sub">${sub}</span>
+      </div>
+      ${_alScopeTabs()}
+      <div class="al-meta">
+        ${_alEsc(d.source === 'demo' ? 'datos DEMO (sintéticos)'
+          : (d.source === 'live' ? 'datos REALES (ESPN + The Odds API, mediana anclada al mercado)' : 'datos reales (CSV)'))} ·
+        ${d.source === 'live' && _alQuota() != null ? `quedan ${_alEsc(_alQuota())} créditos ·` : ''}
+        ${c.player_markets ?? '—'} jugador-mercado · ${c.lines_priced ?? '—'} líneas cotizadas ·
+        reportadas ${c.lines_reported ?? '—'} ·
+        ${_alNum(d.params && d.params.n_iter, 0)} iteraciones ·
+        ${_alNum(d.elapsed_s, 1)}s
+        ${d.cached ? '· en caché' : ''}
+        <button class="al-refresh" onclick="refreshAltLines()">Actualizar</button>
+      </div>
+    </div>`;
+}
+
+function _alBoardHtml(d) {
+  const c = d.counts || {};
+  const marketOpts = (d.markets || []).map(m =>
+    `<option value="${_alEsc(m.key)}" ${_alFilters.market === m.key ? 'selected' : ''}>
+      ${_alEsc(m.label)}</option>`).join('');
+
+  return `
+    <div class="al-kpis">
+      <div class="al-kpi"><div class="al-kpi-label">Jugador-mercado</div><div class="al-kpi-value">${c.player_markets ?? '—'}</div></div>
+      <div class="al-kpi"><div class="al-kpi-label">Líneas cotizadas</div><div class="al-kpi-value">${c.lines_priced ?? '—'}</div></div>
+      <div class="al-kpi"><div class="al-kpi-label">Top ${_alNum(d.params && d.params.top_pct, 0)}% reportado</div><div class="al-kpi-value">${c.lines_reported ?? '—'}</div></div>
+      <div class="al-kpi"><div class="al-kpi-label">Mejor EV</div><div class="al-kpi-value al-pos">${_alBestEv(d) !== null ? _alNum(_alBestEv(d), 0) + '%' : '—'}</div></div>
+      <div class="al-kpi"><div class="al-kpi-label">De-vig</div><div class="al-kpi-value al-kpi-value--sm">${_alEsc((d.params && d.params.devig_method) || '—')}</div></div>
+    </div>
+
+    <div class="al-controls">
+      <label class="al-ctl">Mercado
+        <select id="al-f-market" onchange="altLinesFilter('market', this.value)">
+          <option value="all">Todos</option>${marketOpts}
+        </select>
+      </label>
+      <label class="al-ctl">Lado
+        <select id="al-f-side" onchange="altLinesFilter('side', this.value)">
+          <option value="all">Ambos</option>
+          <option value="over">Over</option>
+          <option value="under">Under</option>
+        </select>
+      </label>
+      <label class="al-ctl">EV mínimo %
+        <input id="al-f-ev" type="number" step="5" min="0" value="${_alFilters.minEv}"
+               oninput="altLinesFilter('minEv', this.value)" />
+      </label>
+      <label class="al-ctl al-ctl--grow">Buscar jugador
+        <input id="al-f-search" type="text" placeholder="p. ej. Costa"
+               oninput="altLinesFilter('search', this.value)" />
+      </label>
+      <button class="al-quick" onclick="altLinesQuick('top')">Solo top 5%</button>
+      <button class="al-quick" onclick="altLinesQuick('all')">Ver todo</button>
+    </div>
+
+    <div class="al-panel">
+      <div class="al-panel-head">
+        <div class="al-panel-title">Tablero de edges</div>
+        <div class="al-panel-count" id="al-count"></div>
+      </div>
+      <div class="al-table-scroll">
+        <table class="al-table">
+          <thead>
+            <tr>
+              <th>Jugador</th><th>Mercado</th><th>Línea</th><th>Cuota</th>
+              <th title="Probabilidad según nuestra distribución simulada">P modelo</th>
+              <th title="Probabilidad implícita del libro, sin vig">P justa</th>
+              <th title="P modelo − P justa: cuán mal está el precio">Discrepancia</th>
+              <th title="EV por unidad apostada, neto de vig">EV</th>
+              <th title="P modelo ÷ curva simétrica que usa el libro">Curva</th>
+              <th>Perfil</th><th>Casa</th><th>Stake</th>
+            </tr>
+          </thead>
+          <tbody id="al-tbody"></tbody>
+        </table>
+      </div>
+      <div class="al-footnote">
+        <strong>Cómo leerlo:</strong> <em>P modelo</em> sale de ${_alNum(d.params && d.params.n_iter, 0)}
+        simulaciones por jugador-mercado;
+        <em>P justa</em> es la probabilidad del libro una vez quitado el margen (vig).
+        <em>Discrepancia</em> = la brecha que buscamos. <em>Curva</em> &gt; 1× significa que la curva
+        simétrica del libro infravalora esa cola. Se descartan automáticamente las cuotas por encima de
+        <strong>${_alNum((d.params && d.params.max_odds) || 50, 0)}</strong> (longshots impagables donde manda el error del modelo)
+        y el stake es <strong>Kelly fraccionado</strong> (25% del Kelly completo, tope 3u).
+      </div>
+    </div>
+
+    ${_alProfilesHtml(d.profiles)}`;
+}
+
+/**
+ * Fusiona los tableros de todos los partidos ya simulados.
+ *
+ * Ojo con la semántica: el "top 5%" se calcula sobre las líneas con EV > 0 del
+ * universo entero, igual que el backend en un run de liga completa. Como cada
+ * partido simulado trae TODAS sus líneas en `all_edges`, la unión reproduce
+ * exactamente el tablero global — sin pagar los ~15 s de un run de liga.
+ */
+function _alMergeGames() {
+  const parts = Object.values(_alGameResults);
+  if (!parts.length) return null;
+  const all = [].concat(...parts.map(p => p.all_edges || []));
+  all.sort((a, b) => b.ev_pct - a.ev_pct);
+  // Misma regla que el motor: las líneas donde modelo y mercado no coinciden
+  // en el nivel del jugador (level_ok = false) nunca entran al top.
+  const pos = all.filter(r => Number(r.ev_pct) > 0 && r.level_ok !== false);
+  const n = Math.max(1, Math.ceil(pos.length * 5 / 100));
+  const first = parts[0];
+  return {
+    source: first.source,
+    date: first.date,
+    slate_source: first.slate_source,
+    params: first.params,
+    markets: first.markets,
+    game: null,
+    cached: false,
+    elapsed_s: null,
+    counts: {
+      player_markets: parts.reduce((s, p) => s + (((p.counts || {}).player_markets) || 0), 0),
+      games_of_history: parts.reduce((s, p) => s + (((p.counts || {}).games_of_history) || 0), 0),
+      lines_priced: all.length,
+      lines_reported: Math.min(n, pos.length),
+      games: parts.length,
+    },
+    books: [...new Set(all.map(r => r.book))].sort(),
+    profiles: [].concat(...parts.map(p => p.profiles || []))
+      .sort((a, b) => b.mean_minus_median - a.mean_minus_median).slice(0, 12),
+    edges: pos.slice(0, n),
+    all_edges: all,
+  };
+}
+
+function _alProfilesHtml(profiles) {
+  if (!profiles || !profiles.length) return '';
+  const rows = profiles.map(p => `
+    <tr>
+      <td>${_alEsc(p.player_name)}</td>
+      <td>${_alEsc(p.market_label)}</td>
+      <td class="al-td-num">${_alNum(p.sim_mean, 1)}</td>
+      <td class="al-td-num">${_alNum(p.sim_median, 1)}</td>
+      <td class="al-td-num al-em">+${_alNum(p.mean_minus_median, 2)}</td>
+      <td class="al-td-num">${_alNum(p.sim_skew, 2)}</td>
+      <td class="al-td-num">${_alNum(p.sim_cv, 2)}</td>
+      <td>${_alEsc(p.profile)}</td>
+    </tr>`).join('');
+  return `
+    <div class="al-panel">
+      <div class="al-panel-head">
+        <div class="al-panel-title">Perfiles de distribución</div>
+        <div class="al-panel-count">media &gt; mediana ⇒ la curva del libro subestima la cola derecha</div>
+      </div>
+      <div class="al-table-scroll">
+        <table class="al-table">
+          <thead><tr>
+            <th>Jugador</th><th>Mercado</th><th>Media</th><th>Mediana</th>
+            <th>media−mediana</th><th>Sesgo</th><th>CV</th><th>Perfil</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function renderAltLinesTable() {
+  const d = _altLinesData;
+  const tbody = document.getElementById('al-tbody');
+  if (!d || !tbody) return;
+
+  const rows = _alApplyFilters(d.all_edges || []).sort((a, b) => b.ev_pct - a.ev_pct);
+  tbody.innerHTML = rows.length
+    ? rows.slice(0, 200).map(_alRowHtml).join('')
+    : `<tr><td colspan="12" class="loading-cell">Sin líneas que cumplan los filtros.</td></tr>`;
+
+  const cnt = document.getElementById('al-count');
+  if (cnt) cnt.textContent = `${rows.length} de ${(d.all_edges || []).length} líneas`;
+}
+
+function altLinesFilter(key, value) {
+  _alFilters.touched = true;
+  _alFilters[key] = (key === 'minEv') ? (Number(value) || 0) : value;
+  renderAltLinesTable();
+}
+
+async function refreshAltLines() {
+  // Refresh de verdad: se tira todo y se vuelve a pedir la pizarra (que a su
+  // vez reevalúa el calendario) más el partido que estaba abierto.
+  const keep = _alSelected;
+  if (_alSource === 'live' && keep && !window.confirm(
+      `Actualizar vuelve a pedir las cuotas reales de este partido (~${(_alSlate && _alSlate.credits_per_game) || 5} créditos). ¿Seguir?`)) {
+    return;
+  }
+  _alGameResults = {};
+  _alLeague = null;
+  _altLinesData = null;
+  _alFilters.touched = false;
+  await loadSlate(_alDate, { refresh: true });
+  if (keep && _alSlate && (_alSlate.games || []).some(g => g.game_id === keep)) {
+    await simulateGame(keep, { refresh: true });
+  }
+  if (typeof _showToast === 'function') _showToast('Pizarra y tablero actualizados', 'ok');
+}
+
+/* Estado inicial de las pestañas de deporte.
+   Deliberadamente NO llama a showSection: la app ya abre en "Análisis Pitchers"
+   por su cuenta y volver a invocarlo dispararía una segunda carga. Aquí solo
+   marcamos el deporte activo y ocultamos la navegación que no corresponde. */
+document.addEventListener('DOMContentLoaded', () => {
+  if (!document.body.dataset.sport) document.body.dataset.sport = 'mlb';
+  const sport = document.body.dataset.sport;
+  document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
+    const s = item.dataset.sport || 'mlb';
+    item.style.display = (s === sport) ? '' : 'none';
+  });
+  document.querySelectorAll('.sport-tab').forEach(t => {
+    const on = t.dataset.sport === sport;
+    t.classList.toggle('sport-tab--active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+});

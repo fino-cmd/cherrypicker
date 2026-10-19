@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=56" />
+  <link rel="stylesheet" href="styles.css?v=63" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -1083,6 +1083,20 @@
       <span><span class="logo-cherry">CHERRY</span><span class="logo-pick">PICK</span></span>
     </div>
 
+    <!-- ── SPORT TABS ── MLB (modelo de ponches) vs NBA (motor AltLines) ─────── -->
+    <div class="sport-tabs" role="tablist" aria-label="Deporte">
+      <button class="sport-tab sport-tab--active" id="sport-tab-mlb" role="tab"
+              aria-selected="true" data-sport="mlb" onclick="showSport('mlb')">
+        <span class="sport-tab-mark">MLB</span>
+        <span class="sport-tab-sub">Ponches</span>
+      </button>
+      <button class="sport-tab" id="sport-tab-nba" role="tab"
+              aria-selected="false" data-sport="nba" onclick="showSport('nba')">
+        <span class="sport-tab-mark">NBA</span>
+        <span class="sport-tab-sub">Alt Lines</span>
+      </button>
+    </div>
+
     <div class="topbar-actions">
       <!-- Search toggle -->
       <div class="topbar-search-wrap" id="topbar-search-wrap">
@@ -1132,6 +1146,13 @@
         <a href="#" class="nav-item" data-section="todays-picks" onclick="showSection('todays-picks',this)">
           <span class="nav-icon"><svg viewBox="0 0 18 18" width="16" fill="none"><path d="M9 2l1.8 3.6 4 .6-2.9 2.8.7 4L9 11l-3.6 1.9.7-4L3.2 6.2l4-.6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
           Picks de Hoy
+        </a>
+
+        <!-- ── NBA (AltLines) — only visible while the NBA tab is active ───── -->
+        <a href="#" class="nav-item nav-item--nba" data-sport="nba" data-section="altlines"
+           onclick="showSection('altlines',this)">
+          <span class="nav-icon"><svg viewBox="0 0 18 18" width="16" fill="none"><circle cx="9" cy="9" r="7.2" stroke="currentColor" stroke-width="1.4"/><path d="M1.8 9h14.4M9 1.8c2.4 2.2 3.6 4.6 3.6 7.2S11.4 15 9 16.2C6.6 15 5.4 12.6 5.4 9S6.6 3.6 9 1.8z" stroke="currentColor" stroke-width="1.1" fill="none" stroke-linecap="round"/></svg></span>
+          Alt Lines NBA
         </a>
       </nav>
       <div class="sb-bottom">
@@ -1208,14 +1229,22 @@
         <h2 class="pp-title">PONCHES <span class="pp-title-accent">PITCHERS</span></h2>
         <p class="pp-desc">Proyecciones K basadas en mix histórico, tasa de ponches del rival, factor de estadio y carga reciente. Elegí una línea y registrá el resultado.</p>
 
-        <!-- Enhanced-view toggle -->
+        <!-- Enhanced-view toggle + auto-generate slate -->
         <div class="view-toggle-wrap">
+          <button class="auto-gen-btn" id="auto-gen-btn" onclick="autoGenerateTodayPicks()"
+                  title="Trae líneas + mejor cuota de The Odds API y arma todos los picks del slate">
+            <span class="auto-gen-icon">🤖</span>
+            <span class="auto-gen-label">Auto-generar slate</span>
+          </button>
           <button class="view-toggle-btn" id="pp-view-toggle" onclick="togglePropsView()">
             <span class="view-toggle-dot"></span>
             <span class="view-toggle-label">Vista ampliada</span>
           </button>
         </div>
       </div>
+
+      <!-- Auto-generate result banner (hidden until first run) -->
+      <div class="auto-gen-result" id="auto-gen-result" style="display:none"></div>
 
       <!-- Enhanced view: cube grid (hidden by default) -->
       <div class="cube-grid" id="props-cubes-grid" style="display:none"></div>
@@ -1355,6 +1384,13 @@
               <span class="bankroll-currency">$</span>
               <input type="number" id="bankroll-minstake-input" min="0" step="500" value="2000">
               <span class="bankroll-unit-sfx">pesos</span>
+            </div>
+          </div>
+          <div class="bankroll-field bankroll-field--wide">
+            <label for="bankroll-userbooks-input" title="Casinos donde tenés cuenta. La 'mejor cuota' se filtra a estos. Vacío = busca en todo el mercado.">Mis casinos</label>
+            <div class="bankroll-input-wrap">
+              <input type="text" id="bankroll-userbooks-input" placeholder="bet365, betano" style="min-width:200px">
+              <span class="bankroll-unit-sfx">CSV de keys</span>
             </div>
           </div>
           <button type="button" class="bankroll-save-btn" onclick="saveBankrollUnit()">Guardar</button>
@@ -1590,6 +1626,13 @@
       <div class="tp-cards-grid" id="tp-cards-grid"></div>
     </section>
 
+    <!-- ── NBA — ALT LINES (AltLines engine) ──
+         Populated entirely from app.js (loadAltLines), same pattern as the
+         matchup tool section above. Nothing else in this file depends on it. -->
+    <section id="section-altlines" class="app-section" data-sport="nba" style="display:none">
+      <!-- populated by app.js -->
+    </section>
+
     </main>
   </div><!-- /.app-body -->
 
@@ -1626,7 +1669,7 @@
   <div class="nerd-drawer-scroll" id="pitcher-nerd-content"></div>
 </div>
 
-<script src="app.js?v=74"></script>
+<script src="app.js?v=81"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const d = document.getElementById('props-date');

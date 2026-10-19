@@ -202,13 +202,18 @@ def init_db():
         # ─ best_book_odds   : that book's price (auto-populated into casino/odds_decimal)
         # ─ market_event_id  : The Odds API's event UUID, used to refresh later
         for col_sql in (
-            "ALTER TABLE picks ADD COLUMN p_over_market    REAL",
-            "ALTER TABLE picks ADD COLUMN p_under_market   REAL",
-            "ALTER TABLE picks ADD COLUMN ev_market_pct    REAL",
-            "ALTER TABLE picks ADD COLUMN n_books_market   INTEGER",
-            "ALTER TABLE picks ADD COLUMN best_book_casino TEXT",
-            "ALTER TABLE picks ADD COLUMN best_book_odds   REAL",
-            "ALTER TABLE picks ADD COLUMN market_event_id  TEXT",
+            "ALTER TABLE picks ADD COLUMN p_over_market      REAL",
+            "ALTER TABLE picks ADD COLUMN p_under_market     REAL",
+            "ALTER TABLE picks ADD COLUMN ev_market_pct      REAL",
+            "ALTER TABLE picks ADD COLUMN n_books_market     INTEGER",
+            # best_book_* = the user's best executable price (from user_books filter)
+            "ALTER TABLE picks ADD COLUMN best_book_casino   TEXT",
+            "ALTER TABLE picks ADD COLUMN best_book_odds     REAL",
+            # market_best_* = the highest price across THE ENTIRE market (info only,
+            # surfaces "what could you have gotten" if you had access elsewhere)
+            "ALTER TABLE picks ADD COLUMN market_best_casino TEXT",
+            "ALTER TABLE picks ADD COLUMN market_best_odds   REAL",
+            "ALTER TABLE picks ADD COLUMN market_event_id    TEXT",
         ):
             try:
                 conn.execute(col_sql)
@@ -466,6 +471,17 @@ async def _warmup_cache():
         await _warmup_gamelogs(year)
     except Exception as e:
         logger.warning("Cache warmup failed: %s", e)
+    # Tanda 1 — Odds API warmup. One events fetch at startup populates the
+    # quota counter (so the UI chip shows real numbers before the first pick)
+    # AND warms the events cache for 1h, so the first pick of the day pays
+    # zero events-list calls.
+    if _oac is not None and _oac.is_configured():
+        try:
+            events = await _oac.fetch_events_today()
+            logger.info("Odds API warmup: %d events cached, quota %s",
+                        len(events), _oac.quota_state())
+        except Exception as e:
+            logger.warning("Odds API warmup failed: %s", e)
 
 @app.on_event("startup")
 async def startup():
@@ -2206,6 +2222,36 @@ def _min_stake_pesos(conn) -> float:
         return DEFAULT_MIN_STAKE_PESOS
 
 
+# ── Tanda 1 fix — user's actual sportsbooks ───────────────────────────────────
+# Without this filter, "best price" surfaces the highest odds across the
+# entire global market — useless if the user can't actually bet at FanDuel
+# from Argentina. Match the bet to what the user can really execute.
+def _user_books(conn) -> list[str]:
+    """Comma-separated list of casino_keys the user has accounts at.
+    Empty string → no filter (use whole market for best-price selection,
+    legacy behavior). Typical AR user: "bet365,betano".
+    Available keys: see odds_api_client.PROP_BOOK_WEIGHTS."""
+    raw = _get_setting(conn, "user_books", "")
+    if not raw:
+        return []
+    return [k.strip().lower() for k in str(raw).split(",") if k.strip()]
+
+
+def _odds_regions(conn) -> str:
+    """Which The Odds API regions to query. Defaults to all 4.
+    'us'  = FanDuel/DK/MGM/Caesars/BetRivers
+    'us2' = Bovada/BetOnline (offshore)
+    'eu'  = Pinnacle/Betano/Matchbook
+    'uk'  = bet365/Betfair Exchange/Paddy Power
+    Adding regions does NOT increase quota cost (one request per event)."""
+    raw = _get_setting(conn, "odds_regions", "us,us2,eu,uk")
+    cleaned = ",".join(
+        r.strip().lower() for r in str(raw).split(",")
+        if r.strip().lower() in {"us", "us2", "eu", "uk", "au"}
+    )
+    return cleaned or "us,us2,eu,uk"
+
+
 def _should_demote_to_skip(rec: Optional[str], ev_pct: Optional[float],
                             stake_pesos: Optional[float],
                             min_ev: float, min_stake: float) -> bool:
@@ -2764,6 +2810,12 @@ class LineInput(BaseModel):
     k_line:       float
     odds_decimal: Optional[float] = None
     casino:       Optional[str]   = None
+    # Tanda 1 — when True (default), submit_pick_line auto-populates odds and
+    # casino from the user's best_book if they didn't supply them. Set False
+    # to skip this and force manual entry (used by auto-generate so the user
+    # always validates each cuota personally — API prices can be stale by the
+    # time they actually open bet365/Betano).
+    auto_fill_odds: bool = True
 
 
 @app.post("/api/picks/lines", status_code=201)
@@ -2898,47 +2950,75 @@ async def submit_pick_line(body: LineInput):
     # casino/odds_decimal fields when the user didn't pass them.
     market_data: dict   = {}        # consensus + per-book detail
     market_event_id: Optional[str]  = None
-    best_book_casino: Optional[str] = None
-    best_book_odds:   Optional[float] = None
+    # User-executable best (filtered to user_books — what they can actually take)
+    best_book_casino:  Optional[str]   = None
+    best_book_odds:    Optional[float] = None
+    # Whole-market best (any book — info display only)
+    market_best_casino: Optional[str]   = None
+    market_best_odds:   Optional[float] = None
     api_books:        list[dict]    = []
     p_over_market:    Optional[float] = None
     p_under_market:   Optional[float] = None
     n_books_market:   Optional[int] = None
     if _oac is not None and _oac.is_configured() and rec in ("OVER", "UNDER"):
         try:
+            with get_db() as _settings_conn:
+                user_books_list = _user_books(_settings_conn)
+                regions         = _odds_regions(_settings_conn)
             events = await _oac.fetch_events_today()
             event = _oac.find_event_for_pitcher(events, body.team)
             if event:
                 market_event_id = event.get("id")
-                event_odds = await _oac.fetch_pitcher_props(market_event_id)
+                event_odds = await _oac.fetch_pitcher_props(market_event_id, regions=regions)
                 if event_odds:
                     market_data = _oac.extract_pitcher_market(event_odds, body.pitcher_name)
                     api_books = market_data.get("books") or []
                     if api_books:
+                        # Consensus uses ALL books at the consensus k-line (broad market signal).
                         consensus = _oac.consensus_fair_price(api_books)
                         p_over_market  = consensus.get("p_over_consensus")
                         p_under_market = consensus.get("p_under_consensus")
                         n_books_market = consensus.get("n_books") or 0
                         market_data["consensus"] = consensus
-                        bp = _oac.best_price(api_books, rec)
-                        if bp:
-                            best_book_casino = bp.get("casino")
-                            best_book_odds   = bp.get("odds")
+                        # Whole-market best — informational only.
+                        market_bp = _oac.best_price(api_books, rec)
+                        if market_bp:
+                            market_best_casino = market_bp.get("casino")
+                            market_best_odds   = market_bp.get("odds")
+                        # User-executable best — only books the user has access to.
+                        # Falls back to whole market when user_books is empty (legacy behavior).
+                        user_bp = _oac.best_price(api_books, rec, restrict_to=user_books_list or None)
+                        if user_bp:
+                            best_book_casino = user_bp.get("casino")
+                            best_book_odds   = user_bp.get("odds")
+                        elif user_books_list:
+                            # User has filter but none of their books carry this market.
+                            logger.info(
+                                "%s: ningún libro del usuario %s tiene mercado disponible (best %s = %s @ %s)",
+                                body.pitcher_name, user_books_list, rec, market_best_odds, market_best_casino,
+                            )
                         logger.info(
-                            "Odds API: %s — %d books, consensus p_over=%.4f, best %s @ %s = %s",
+                            "Odds API: %s — %d books @ k=%.1f, consensus p_over=%.4f. "
+                            "User best (%s @ %s) · Market best (%s @ %s)",
                             body.pitcher_name, len(api_books),
+                            market_data.get("k_line") or float("nan"),
                             p_over_market or float("nan"),
-                            rec, best_book_casino, best_book_odds,
+                            best_book_casino or "—", best_book_odds or float("nan"),
+                            market_best_casino or "—", market_best_odds or float("nan"),
                         )
         except Exception as e:
             logger.warning("Odds API integration failed for %s: %s", body.pitcher_name, e)
 
     # Auto-populate odds + casino with the best market price when the user
     # didn't pass them. User input always takes precedence (manual override).
-    if not body.odds_decimal and best_book_odds is not None:
-        body.odds_decimal = best_book_odds
-    if not body.casino and best_book_casino:
-        body.casino = best_book_casino
+    # Skipped when body.auto_fill_odds=False — auto-generate uses that path
+    # so picks come back with line + market refs only, leaving cuota entry
+    # to the user (their actual book may show different price than API).
+    if body.auto_fill_odds:
+        if not body.odds_decimal and best_book_odds is not None:
+            body.odds_decimal = best_book_odds
+        if not body.casino and best_book_casino:
+            body.casino = best_book_casino
 
     # Bundle A #3 — EV and fractional Kelly sizing (needs user-provided odds)
     # p_bet is the probability of the *side we'd bet* (favored side).
@@ -2994,10 +3074,12 @@ async def submit_pick_line(body: LineInput):
                  ci_low, ci_high, pitch_limit_flag, confidence, recommendation,
                  odds_decimal, casino, p_over, ev_pct, kelly_units, stake_pesos,
                  p_over_market, p_under_market, ev_market_pct, n_books_market,
-                 best_book_casino, best_book_odds, market_event_id,
+                 best_book_casino, best_book_odds,
+                 market_best_casino, market_best_odds,
+                 market_event_id,
                  actual_ks, result)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
             ON CONFLICT(date, pitcher_name) DO UPDATE SET
                 team             = excluded.team,
                 opponent         = excluded.opponent,
@@ -3020,8 +3102,10 @@ async def submit_pick_line(body: LineInput):
                 p_under_market   = COALESCE(excluded.p_under_market, p_under_market),
                 ev_market_pct    = COALESCE(excluded.ev_market_pct, ev_market_pct),
                 n_books_market   = COALESCE(excluded.n_books_market, n_books_market),
-                best_book_casino = COALESCE(excluded.best_book_casino, best_book_casino),
-                best_book_odds   = COALESCE(excluded.best_book_odds, best_book_odds),
+                best_book_casino   = COALESCE(excluded.best_book_casino, best_book_casino),
+                best_book_odds     = COALESCE(excluded.best_book_odds, best_book_odds),
+                market_best_casino = COALESCE(excluded.market_best_casino, market_best_casino),
+                market_best_odds   = COALESCE(excluded.market_best_odds, market_best_odds),
                 market_event_id  = COALESCE(excluded.market_event_id, market_event_id)
         """, (
             today, body.pitcher_name, body.team, opponent or "",
@@ -3032,7 +3116,9 @@ async def submit_pick_line(body: LineInput):
             body.odds_decimal, body.casino, p_over, ev_pct, kelly_units,
             stake_pesos_val,
             p_over_market, p_under_market, ev_market_pct, n_books_market,
-            best_book_casino, best_book_odds, market_event_id,
+            best_book_casino, best_book_odds,
+            market_best_casino, market_best_odds,
+            market_event_id,
         ))
         # Snapshot every book's quote for this pick (CLV / audit trail).
         if api_books:
@@ -3114,6 +3200,8 @@ async def submit_pick_line(body: LineInput):
         "n_books_market":     n_books_market,
         "best_book_casino":   best_book_casino,
         "best_book_odds":     best_book_odds,
+        "market_best_casino": market_best_casino,
+        "market_best_odds":   market_best_odds,
         "market_event_id":    market_event_id,
         "market_books":       (market_data.get("consensus") or {}).get("books_detail") or [],
     }
@@ -3122,6 +3210,288 @@ async def submit_pick_line(body: LineInput):
 # ══════════════════════════════════════════════════════════════════════════════
 # Tanda 1 — Odds API quota + status endpoint
 # ══════════════════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tanda 1 — manual cuota validation with Monte Carlo simulation
+#
+# Flow: user sees "cuota óptima del mercado" (best across all books) as
+# reference; checks their actual book (bet365/betano); pastes their cuota
+# here. The endpoint returns:
+#   • market_data: optimal price + fair price (de-vigged consensus)
+#   • user_data:   their odds, EV, Kelly stake at THEIR price
+#   • simulation:  distribution of P&L over N hypothetical bets at this edge
+#   • verdict:     APOSTÁ / MARGINAL / NO based on filters
+# ══════════════════════════════════════════════════════════════════════════════
+
+import random as _random
+
+
+def _simulate_bet_pnl(p_win: float, odds_decimal: float,
+                      stake_pesos: float,
+                      n_bets: int = 100, n_trials: int = 5000) -> dict:
+    """Monte Carlo: simulates n_trials sequences of n_bets bets, each at
+    fixed stake, returning the distribution of cumulative P&L.
+
+    Useful to give the user a *long-run* picture: "if you take this bet
+    repeatedly under the same edge, here's the range of outcomes."
+
+    Returns:
+      {
+        "n_bets":       100,
+        "n_trials":     5000,
+        "stake_pesos":  2520,
+        "expected_pnl": 12450,    # mean of trial endings
+        "median_pnl":   12100,
+        "p5_pnl":       -8200,    # 5th percentile (bad-luck case)
+        "p95_pnl":      32500,    # 95th percentile (good-luck case)
+        "p_profit":     0.71,     # fraction of trials ending up
+        "win_per_bet":  p_win,
+      }
+    """
+    if (p_win is None or odds_decimal is None
+            or odds_decimal <= 1 or stake_pesos <= 0):
+        return {}
+    profit_per_win = stake_pesos * (float(odds_decimal) - 1.0)
+    loss_per_loss  = -stake_pesos
+    rng = _random.Random(42)  # deterministic for stable UX
+
+    finals: list[float] = []
+    for _ in range(n_trials):
+        total = 0.0
+        for _ in range(n_bets):
+            if rng.random() < float(p_win):
+                total += profit_per_win
+            else:
+                total += loss_per_loss
+        finals.append(total)
+    finals.sort()
+
+    n = len(finals)
+    return {
+        "n_bets":       n_bets,
+        "n_trials":     n_trials,
+        "stake_pesos":  round(stake_pesos, 0),
+        "expected_pnl": round(sum(finals) / n, 0),
+        "median_pnl":   round(finals[n // 2], 0),
+        "p5_pnl":       round(finals[int(n * 0.05)], 0),
+        "p95_pnl":      round(finals[int(n * 0.95)], 0),
+        "p_profit":     round(sum(1 for f in finals if f > 0) / n, 4),
+        "win_per_bet":  round(float(p_win), 4),
+    }
+
+
+class EvaluateBetInput(BaseModel):
+    pitcher_name: str
+    team:         str
+    k_line:       Optional[float] = None  # if None, uses consensus from API
+    odds_decimal: float
+    casino:       Optional[str]   = None
+    n_sim_bets:   int             = 100  # how many bets to project over
+
+
+@app.post("/api/picks/evaluate-bet")
+async def evaluate_manual_bet(body: EvaluateBetInput):
+    """3-panel validator: market reference + user's cuota + simulation.
+
+    Doesn't mutate the picks table — pure read-only evaluation. Use this
+    when the user wants to test "what would happen if I took this bet at
+    this price" before committing. To persist the pick, call /api/picks/lines.
+    """
+    if _oac is None or not _oac.is_configured():
+        raise HTTPException(400, "Odds API no configurada")
+
+    with get_db() as conn:
+        bankroll  = _bankroll_pesos(conn)
+        max_frac  = _max_stake_fraction(conn)
+        min_ev    = _min_ev_pct(conn)
+        min_stake = _min_stake_pesos(conn)
+        regions   = _odds_regions(conn)
+
+    # Pull market data
+    events = await _oac.fetch_events_today()
+    event = _oac.find_event_for_pitcher(events, body.team)
+    if not event:
+        raise HTTPException(404, f"No se encontró partido para team={body.team}")
+    event_odds = await _oac.fetch_pitcher_props(event["id"], regions=regions)
+    if not event_odds:
+        raise HTTPException(404, "No hay odds disponibles para este partido")
+
+    market = _oac.extract_pitcher_market(event_odds, body.pitcher_name)
+    api_books = market.get("books") or []
+    if not api_books:
+        raise HTTPException(404, "Ningún libro ofrece K-prop para este pitcher")
+
+    consensus = _oac.consensus_fair_price(api_books)
+    p_over_consensus  = consensus.get("p_over_consensus")
+    p_under_consensus = consensus.get("p_under_consensus")
+    n_books_consensus = consensus.get("n_books") or 0
+
+    consensus_k_line = market.get("k_line")
+    k_line = body.k_line if body.k_line is not None else consensus_k_line
+
+    # Determine direction: we don't have the model rec from this endpoint, but
+    # we can infer "the favored side per market consensus" if not provided.
+    # For evaluation we use the side the user implicitly bet (if their odds
+    # match closer to OVER vs UNDER consensus implied price).
+    # Simpler: take the side where the user's cuota gives positive expected
+    # value vs market consensus. If both negative, take the higher-EV one.
+    ev_if_over  = (p_over_consensus  * (body.odds_decimal - 1) - (1 - p_over_consensus))  if p_over_consensus  is not None else None
+    ev_if_under = (p_under_consensus * (body.odds_decimal - 1) - (1 - p_under_consensus)) if p_under_consensus is not None else None
+
+    # User probably bet whichever side they were thinking — both EVs are
+    # informative, but for "best-case interpretation" take the higher EV.
+    if ev_if_over is not None and ev_if_under is not None:
+        if ev_if_over >= ev_if_under:
+            direction       = "OVER"
+            p_user          = p_over_consensus
+            ev_pct          = ev_if_over
+        else:
+            direction       = "UNDER"
+            p_user          = p_under_consensus
+            ev_pct          = ev_if_under
+    else:
+        direction = "OVER" if (ev_if_over or 0) >= (ev_if_under or 0) else "UNDER"
+        p_user    = p_over_consensus if direction == "OVER" else p_under_consensus
+        ev_pct    = ev_if_over if direction == "OVER" else ev_if_under
+
+    # Best market price + fair price (no-vig)
+    market_best = _oac.best_price(api_books, direction)
+    # Fair price for that side from consensus
+    fair_price  = round(1.0 / p_user, 4) if p_user and p_user > 0 else None
+    # User's implied probability and edge over fair
+    user_implied = round(1.0 / body.odds_decimal, 4) if body.odds_decimal > 1 else None
+    edge_vs_fair_pct = round((p_user - user_implied) * 100, 2) if (p_user and user_implied) else None
+
+    # Kelly stake at user's odds (capped)
+    kelly_fraction = _kelly_fraction(p_user, body.odds_decimal)
+    stake_pesos    = _stake_pesos(kelly_fraction, bankroll, max_frac) if kelly_fraction else None
+
+    # Verdict against user's filters
+    if ev_pct is None or ev_pct < 0:
+        verdict      = "NO"
+        verdict_msg  = "EV negativo — no apostar."
+    elif ev_pct < min_ev:
+        verdict      = "MARGINAL"
+        verdict_msg  = f"EV +{ev_pct*100:.1f}% por debajo de tu mín ({min_ev*100:.1f}%) — pasar."
+    elif stake_pesos is not None and stake_pesos < min_stake:
+        verdict      = "MARGINAL"
+        verdict_msg  = f"Stake ${stake_pesos:,.0f} por debajo de tu mín (${min_stake:,.0f}) — pasar."
+    elif ev_pct >= 0.10:
+        verdict      = "STRONG_BET"
+        verdict_msg  = f"EV +{ev_pct*100:.1f}% — apostá fuerte."
+    else:
+        verdict      = "BET"
+        verdict_msg  = f"EV +{ev_pct*100:.1f}% — apostable."
+
+    # Run the simulation only when there's a real stake to project
+    sim = None
+    if stake_pesos is not None and stake_pesos > 0 and p_user is not None:
+        sim = _simulate_bet_pnl(p_user, body.odds_decimal, stake_pesos,
+                                n_bets=max(20, min(int(body.n_sim_bets), 500)))
+
+    return {
+        "pitcher_name": body.pitcher_name,
+        "team":         body.team,
+        "direction":    direction,
+        "k_line":       k_line,
+        # Market reference (the "óptima" + fair)
+        "market": {
+            "consensus_k_line":    consensus_k_line,
+            "best_casino":         (market_best or {}).get("casino"),
+            "best_odds":           (market_best or {}).get("odds"),
+            "fair_price":          fair_price,
+            "p_consensus":         round(p_user, 4) if p_user else None,
+            "n_books":             n_books_consensus,
+        },
+        # User's actual price + math at it
+        "user": {
+            "casino":              body.casino,
+            "odds":                body.odds_decimal,
+            "implied_prob":        user_implied,
+            "edge_vs_fair_pp":     edge_vs_fair_pct,
+            "ev_pct":              round(ev_pct, 4) if ev_pct is not None else None,
+            "kelly_fraction":      kelly_fraction,
+            "stake_pesos":         stake_pesos,
+        },
+        # Simulation distribution (long-run)
+        "simulation":   sim,
+        # Verdict against user's filters
+        "verdict":      verdict,
+        "verdict_msg":  verdict_msg,
+        # Filter context
+        "filters": {
+            "min_ev_pct":     min_ev,
+            "min_stake_pesos": min_stake,
+            "max_stake_fraction": max_frac,
+            "bankroll_pesos": bankroll,
+        },
+    }
+
+
+@app.get("/api/odds/debug")
+async def debug_odds_for_pitcher(pitcher: str, team: str):
+    """Diagnostic endpoint — returns the raw market data for a single pitcher.
+
+    Use this to verify what books are actually returned by The Odds API,
+    what k-lines they offer, and what filtering is being applied.
+
+    Example:
+      curl 'http://localhost:8002/api/odds/debug?pitcher=Kyle%20Bradish&team=BAL'
+    """
+    if _oac is None or not _oac.is_configured():
+        raise HTTPException(400, "Odds API no configurada")
+
+    with get_db() as conn:
+        user_books_list = _user_books(conn)
+        regions         = _odds_regions(conn)
+
+    events = await _oac.fetch_events_today()
+    event = _oac.find_event_for_pitcher(events, team)
+    if not event:
+        return {
+            "pitcher":          pitcher,
+            "team":             team,
+            "error":            "no event found for this team",
+            "events_count":     len(events),
+            "user_books":       user_books_list,
+            "odds_regions":     regions,
+        }
+
+    event_odds = await _oac.fetch_pitcher_props(event["id"], regions=regions)
+    if not event_odds:
+        return {
+            "pitcher":         pitcher,
+            "team":             team,
+            "event_id":         event.get("id"),
+            "matchup":          f"{event.get('away_team')} @ {event.get('home_team')}",
+            "error":            "event_odds returned None",
+            "user_books":       user_books_list,
+            "odds_regions":     regions,
+        }
+
+    market = _oac.extract_pitcher_market(event_odds, pitcher)
+    consensus = _oac.consensus_fair_price(market.get("books") or [])
+    market_best = _oac.best_price(market.get("books") or [], "OVER")
+    user_best   = _oac.best_price(market.get("books") or [], "OVER",
+                                   restrict_to=user_books_list or None)
+
+    return {
+        "pitcher":          pitcher,
+        "team":             team,
+        "event_id":         event.get("id"),
+        "matchup":          f"{event.get('away_team')} @ {event.get('home_team')}",
+        "user_books":       user_books_list,
+        "odds_regions":     regions,
+        "consensus_k_line": market.get("k_line"),
+        "books_at_consensus": market.get("books") or [],
+        "books_other_lines":  market.get("rejected_books") or [],
+        "consensus":        consensus,
+        "market_best_OVER": market_best,
+        "user_best_OVER":   user_best,
+        "n_bookmakers_in_response": len(event_odds.get("bookmakers", [])),
+        "all_bookmaker_keys": [bm.get("key") for bm in event_odds.get("bookmakers", [])],
+    }
+
 
 @app.get("/api/odds/quota")
 def get_odds_quota():
@@ -3136,6 +3506,170 @@ def get_odds_quota():
         "used":       state.get("used"),
         "remaining":  state.get("remaining"),
         "last_seen":  state.get("last_seen"),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tanda 1 bonus — auto-generate the whole slate from market data.
+# One-click: fetch consensus K-line + best-price odds for every probable
+# starter today, run the model, persist picks. Skips pitchers who already
+# have a pick today (preserves user edits / overrides).
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/picks/lines/auto-generate")
+async def auto_generate_today_picks(force: bool = False):
+    """Iterate today's probable starters; for each, pull the consensus K-line
+    and best-price odds from The Odds API, then run submit_pick_line internally.
+
+    Args:
+      force: if true, regenerate even pitchers that already have a pick today
+             (overwrites user edits). Default false = preserve existing picks.
+
+    Returns: { generated: [...], skipped: [...], n_generated, n_skipped, quota }
+    """
+    if _oac is None or not _oac.is_configured():
+        raise HTTPException(
+            400,
+            "The Odds API no está configurada (falta ODDS_API_KEY en .env)."
+        )
+
+    today = date.today().isoformat()
+
+    # 1) Pull today's probable starters from MLB API
+    try:
+        async with httpx.AsyncClient() as client:
+            games = await _today_games(client)
+    except Exception as e:
+        logger.error("auto-generate: _today_games failed: %s", e)
+        raise HTTPException(500, f"No se pudieron obtener los juegos de hoy: {e}")
+
+    pitchers: list[dict] = []
+    for g in games:
+        for side, team_key in (("home_pitcher", "home_team"), ("away_pitcher", "away_team")):
+            p = g.get(side) or {}
+            name = p.get("name")
+            if not name:
+                continue
+            team_norm = _norm_team(g.get(team_key, ""))
+            pitchers.append({"pitcher_name": name, "team": team_norm})
+
+    if not pitchers:
+        return {
+            "generated":   [],
+            "skipped":     [],
+            "n_generated": 0,
+            "n_skipped":   0,
+            "quota":       _oac.quota_state(),
+            "message":     "No hay starters confirmados para hoy.",
+        }
+
+    # 2) Filter / wipe existing picks based on force flag.
+    deleted_rows = 0
+    if not force:
+        # Default: skip pitchers that already have a pick today (preserves user edits).
+        with get_db() as conn:
+            existing = conn.execute(
+                "SELECT pitcher_name FROM picks WHERE date = ?", (today,)
+            ).fetchall()
+        existing_set = {r["pitcher_name"].lower() for r in existing}
+    else:
+        # force=true → DELETE today's picks first, so regen runs from a clean
+        # slate. Without this, the upsert's COALESCE would preserve old
+        # odds_decimal/casino values when the new fetch returns null
+        # (e.g., user_books filter excludes all books for that pitcher),
+        # leaving stale data in place.
+        # Note: we only delete UNSETTLED picks — settled W/L/P are preserved
+        # for historical record (you wouldn't want to lose your P&L history).
+        with get_db() as conn:
+            deleted_rows = conn.execute(
+                """DELETE FROM picks
+                   WHERE date = ?
+                     AND (result IS NULL OR result = '' OR result NOT IN ('W','L','P'))""",
+                (today,),
+            ).rowcount
+            # Cascade-delete the snapshots for those picks (FK ON DELETE CASCADE)
+            conn.commit()
+        logger.info("auto-generate force=true: wiped %d unsettled picks for %s", deleted_rows, today)
+        existing_set = set()
+
+    # 3) Pre-fetch the events list once (shared cache for all pitchers)
+    events = await _oac.fetch_events_today()
+
+    generated:    list[dict] = []
+    skipped:      list[dict] = []
+    seen_event_ids: dict[str, dict] = {}  # event_id → odds payload (per-batch cache)
+
+    for p in pitchers:
+        pname = p["pitcher_name"]
+        team  = p["team"]
+
+        if pname.lower() in existing_set:
+            skipped.append({**p, "reason": "ya tiene pick hoy (usá force=true para regenerar)"})
+            continue
+
+        event = _oac.find_event_for_pitcher(events, team)
+        if not event:
+            skipped.append({**p, "reason": f"no se encontró evento para team={team}"})
+            continue
+
+        event_id = event.get("id")
+        if event_id in seen_event_ids:
+            event_odds = seen_event_ids[event_id]
+        else:
+            event_odds = await _oac.fetch_pitcher_props(event_id)
+            seen_event_ids[event_id] = event_odds
+
+        if not event_odds:
+            skipped.append({**p, "reason": "no hay odds disponibles para este evento"})
+            continue
+
+        market = _oac.extract_pitcher_market(event_odds, pname)
+        k_line = market.get("k_line")
+        if k_line is None or not market.get("books"):
+            skipped.append({**p, "reason": "ningún book ofrece K-prop para este pitcher"})
+            continue
+
+        # 4) Submit the pick using the existing pipeline. We DELIBERATELY
+        # leave odds_decimal/casino null AND set auto_fill_odds=False so the
+        # pick lands in the DB with line + market refs only — no fake stake
+        # or EV based on API prices. The user enters their real cuota in
+        # the manual-entry form, which triggers the simulation + verdict.
+        try:
+            line_input = LineInput(
+                pitcher_name   = pname,
+                team           = team,
+                k_line         = float(k_line),
+                auto_fill_odds = False,
+            )
+            result = await submit_pick_line(line_input)
+            generated.append({
+                "pitcher_name":   pname,
+                "team":           team,
+                "k_line":         k_line,
+                "rec":            result.get("recommendation"),
+                "best_book":      result.get("best_book_casino"),
+                "best_odds":      result.get("best_book_odds"),
+                "ev_market_pct":  result.get("ev_market_pct"),
+                "n_books":        result.get("n_books_market"),
+                "stake_pesos":    result.get("stake_pesos"),
+            })
+        except HTTPException as he:
+            skipped.append({**p, "reason": f"submit falló: {he.detail}"})
+        except Exception as e:
+            logger.warning("auto-generate failed for %s: %s", pname, e)
+            skipped.append({**p, "reason": f"error: {str(e)[:100]}"})
+
+    logger.info(
+        "auto-generate: %d generated / %d skipped (force=%s, quota=%s)",
+        len(generated), len(skipped), force, _oac.quota_state()
+    )
+    return {
+        "generated":   generated,
+        "skipped":     skipped,
+        "n_generated": len(generated),
+        "n_skipped":   len(skipped),
+        "n_wiped":     deleted_rows,
+        "quota":       _oac.quota_state(),
     }
 
 
@@ -3617,17 +4151,21 @@ class BankrollInput(BaseModel):
     max_stake_fraction:  Optional[float] = None  # e.g. 0.03 = 3% hard cap
     min_ev_pct:          Optional[float] = None  # e.g. 0.05 = +5% min EV
     min_stake_pesos:     Optional[float] = None  # e.g. 2000 = $2k min stake
+    user_books:          Optional[str]   = None  # csv of casino_keys, e.g. "bet365,betano"
+    odds_regions:        Optional[str]   = None  # csv of regions, e.g. "us,us2,eu,uk"
 
 
 @app.get("/api/settings/bankroll")
 def get_bankroll():
     try:
         with get_db() as conn:
-            bankroll  = _bankroll_pesos(conn)
-            unit      = _unit_size_pesos(conn)
-            max_frac  = _max_stake_fraction(conn)
-            min_ev    = _min_ev_pct(conn)
-            min_stake = _min_stake_pesos(conn)
+            bankroll     = _bankroll_pesos(conn)
+            unit         = _unit_size_pesos(conn)
+            max_frac     = _max_stake_fraction(conn)
+            min_ev       = _min_ev_pct(conn)
+            min_stake    = _min_stake_pesos(conn)
+            user_books   = _user_books(conn)
+            odds_regions = _odds_regions(conn)
             rows = conn.execute("SELECT * FROM picks").fetchall()
             picks = [_pick_row_to_dict(r) for r in rows]
             summary = _picks_summary(picks)
@@ -3642,6 +4180,8 @@ def get_bankroll():
             "default_min_ev_pct":         DEFAULT_MIN_EV_PCT,
             "min_stake_pesos":            min_stake,
             "default_min_stake_pesos":    DEFAULT_MIN_STAKE_PESOS,
+            "user_books":                 ",".join(user_books),
+            "odds_regions":               odds_regions,
             "pnl_pesos":                  summary["pnl_pesos"],
             "staked_pesos":               summary["staked_pesos"],
             "staked_open_pesos":          summary["staked_open_pesos"],
@@ -3674,6 +4214,16 @@ def put_bankroll(body: BankrollInput):
     if body.min_stake_pesos is not None:
         if body.min_stake_pesos < 0 or body.min_stake_pesos > 1_000_000:
             raise HTTPException(400, "min_stake_pesos fuera de rango razonable.")
+    if body.user_books is not None:
+        # Sanity-check: comma-separated, alphanumerics + underscore only
+        cleaned = ",".join(s.strip().lower() for s in body.user_books.split(",") if s.strip())
+        if cleaned and not all(c.isalnum() or c in "_-, " for c in body.user_books):
+            raise HTTPException(400, "user_books debe ser una lista CSV de keys (ej: 'bet365,betano').")
+    if body.odds_regions is not None:
+        valid_regions = {"us", "us2", "eu", "uk", "au"}
+        regions_list = [r.strip().lower() for r in body.odds_regions.split(",") if r.strip()]
+        if not all(r in valid_regions for r in regions_list):
+            raise HTTPException(400, f"odds_regions inválida. Válidas: {sorted(valid_regions)}")
 
     try:
         with get_db() as conn:
@@ -3687,6 +4237,12 @@ def put_bankroll(body: BankrollInput):
                 _set_setting(conn, "min_ev_pct", str(float(body.min_ev_pct)))
             if body.min_stake_pesos is not None:
                 _set_setting(conn, "min_stake_pesos", str(float(body.min_stake_pesos)))
+            if body.user_books is not None:
+                cleaned = ",".join(s.strip().lower() for s in body.user_books.split(",") if s.strip())
+                _set_setting(conn, "user_books", cleaned)
+            if body.odds_regions is not None:
+                cleaned = ",".join(r.strip().lower() for r in body.odds_regions.split(",") if r.strip())
+                _set_setting(conn, "odds_regions", cleaned or "us,us2,eu,uk")
 
             bankroll  = _bankroll_pesos(conn)
             unit      = _unit_size_pesos(conn)
@@ -4457,4 +5013,94 @@ def submit_matchup_result(body: MatchupResultInput):
         raise
     except Exception as e:
         logger.error("POST /api/matchup-picks/result error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# NBA TAB — GET /api/altlines/edges
+# AltLines long-tail player-prop engine (packages/altlines, repo root)
+# ══════════════════════════════════════════════════════════════════════════════
+# Completely standalone from the MLB strikeout model: its own data, its own
+# Monte Carlo engine, its own cache. Imported lazily INSIDE the handler so a
+# problem in the AltLines package can never stop the MLB API from booting.
+#
+# Declared as a plain `def` on purpose: the work is CPU-bound (thousands of
+# simulations per player-market), so FastAPI runs it in its threadpool instead
+# of blocking the event loop the MLB endpoints share.
+
+@app.get("/api/altlines/edges")
+def get_altlines_edges(
+    n_iter: int = 20000,
+    top_pct: float = 5.0,
+    metric: str = "ev",
+    devig: str = "multiplicative",
+    max_odds: float = 50.0,
+    min_ev: float = 0.0,
+    halflife: float = 6.0,
+    seed: int | None = None,
+    game: str | None = None,
+    date: str | None = None,
+    offline: bool = False,
+    refresh: bool = False,
+    source: str = "demo",
+):
+    """Return the AltLines edge board as JSON for the NBA tab.
+
+    `source=live` prices the real alt trays (The Odds API — spends ~5 credits
+    per game, cached 20 min) against real ESPN game logs.
+
+    `game` restricts the simulation to one game of the slate (the "por partido"
+    view). Same seed + same engine ⇒ identical probabilities to the league-wide
+    run, just faster.
+    """
+    try:
+        from altlines.api import build_payload
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("AltLines package unavailable: %s", e)
+        raise HTTPException(500, f"AltLines engine unavailable: {e}")
+
+    try:
+        return build_payload(
+            n_iter=n_iter, top_pct=top_pct, metric=metric,
+            devig_method=devig, max_odds=max_odds, min_ev=min_ev,
+            halflife=halflife, seed=seed, refresh=refresh,
+            game=game, date=date, offline=offline,
+            live=(source == "live"),
+        )
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/altlines/edges error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/altlines/slate")
+def get_altlines_slate(
+    date: str | None = None,
+    offline: bool = False,
+    n_games: int = 6,
+    seed: int | None = None,
+    refresh: bool = False,
+    direction: int = 0,
+    source: str = "demo",
+):
+    """Tonight's NBA games (real calendar) + what we can price in each.
+
+    Deliberately does NOT simulate: drawing the grid of games must be instant so
+    the user can pick which game to run. Also a plain `def` for the same reason
+    as above (it reads CSVs / generates the demo dataset).
+
+    `direction` (-1 / 0 / +1) is the arrow the user pressed; it only steers the
+    search when the requested day has no games.
+    """
+    try:
+        from altlines.api import slate_payload
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("AltLines package unavailable: %s", e)
+        raise HTTPException(500, f"AltLines engine unavailable: {e}")
+
+    try:
+        return slate_payload(date=date, offline=offline, n_games=n_games,
+                             seed=seed, refresh=refresh, direction=direction,
+                             live=(source == "live"))
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/altlines/slate error: %s", e)
         raise HTTPException(500, str(e))

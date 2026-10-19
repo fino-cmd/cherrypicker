@@ -33,20 +33,48 @@ SPORT_KEY = "baseball_mlb"
 # weights derived from each book's historical accuracy on settled picks.
 # Keys match The Odds API's bookmaker `key` field (lowercase, no spaces).
 PROP_BOOK_WEIGHTS: dict[str, float] = {
-    "fanduel":      0.20,
-    "draftkings":   0.20,
-    "betmgm":       0.15,
-    "williamhill_us": 0.15,  # Caesars in The Odds API
-    "betrivers":    0.10,
-    "betonlineag":  0.10,
-    "bovada":       0.05,
-    "lowvig":       0.05,
-    "mybookieag":   0.03,
-    "betus":        0.02,
-    # Sharp anchors when accessible — Tanda 3 (Pinnacle scraper) sets pinnacle higher
-    "pinnacle":     0.30,
+    # ─ US books (us region) ─
+    "fanduel":         0.20,
+    "draftkings":      0.20,
+    "betmgm":          0.15,
+    "williamhill_us":  0.15,  # Caesars in The Odds API
+    "betrivers":       0.10,
+    # ─ Offshore (us2 region) ─
+    "betonlineag":     0.10,
+    "bovada":          0.05,
+    "lowvig":          0.05,
+    "mybookieag":      0.03,
+    "betus":           0.02,
+    # ─ Sharp anchors (eu region — Pinnacle is the gold standard) ─
+    "pinnacle":        0.30,
+    "matchbook":       0.20,  # Matchbook exchange — sharp due to P2P
+    # ─ Worldwide generalists (uk + eu region) ─
+    "bet365":          0.15,  # respected book; decent for props
+    "betano":          0.08,  # European/LATAM book — accessible from AR
+    "betfair_ex_uk":   0.15,  # Betfair Exchange UK — sharp, P2P
+    "williamhill":     0.10,
+    "unibet_eu":       0.08,
+    "betvictor":       0.07,
+    "coolbet":         0.05,
+    "marathonbet":     0.05,
+    "tipico_de":       0.05,
+    # ─ UK books ─
+    "paddypower":      0.08,
+    "skybet":          0.05,
+    "ladbrokes_uk":    0.05,
+    "coral":           0.05,
+    "boylesports":     0.04,
+    "leovegas":        0.04,
+    "livescorebet":    0.03,
+    "virginbet":       0.03,
 }
 DEFAULT_BOOK_WEIGHT = 0.05  # any book not in the map above
+
+# Default regions to query. Covers US (FanDuel/DK/MGM/Caesars), offshore
+# (Bovada/BetOnline), EU (Pinnacle/Betano/bet365/Matchbook), UK (bet365/Betfair).
+# Each call returns ALL these regions in one response — adding regions does
+# NOT cost extra quota.
+DEFAULT_REGIONS = "us,us2,eu,uk"
 
 # Map MLB abbrev → full team name as used by The Odds API (matches MLB Stats
 # API's "teamName" field). Maintained manually because abbreviations don't
@@ -195,27 +223,33 @@ async def fetch_events_today() -> list[dict]:
     return data
 
 
-async def fetch_pitcher_props(event_id: str) -> Optional[dict]:
-    """Fetch all pitcher_strikeouts odds for one event (every book in us,us2).
+async def fetch_pitcher_props(event_id: str, regions: str = DEFAULT_REGIONS) -> Optional[dict]:
+    """Fetch all pitcher_strikeouts odds for one event across the given regions.
 
-    Cached 5 min. Returns the event dict with .bookmakers populated, or None.
+    Cached 5 min, keyed by (event_id, regions) so a region change invalidates
+    cleanly. Returns the event dict with .bookmakers populated, or None.
+
+    `regions` is a comma-separated subset of {us, us2, eu, uk, au}. Each call
+    returns books across ALL specified regions in one response — no extra
+    quota cost for additional regions.
     """
     if not is_configured():
         return None
-    cached = _cache_get(f"props_{event_id}")
+    cache_key = f"props_{event_id}_{regions}"
+    cached = _cache_get(cache_key)
     if cached is not None:
         return cached
     url = f"{API_BASE}/sports/{SPORT_KEY}/events/{event_id}/odds"
     params = {
         "apiKey":      _api_key(),
-        "regions":     "us,us2",
+        "regions":     regions,
         "markets":     "pitcher_strikeouts",
         "oddsFormat":  "decimal",
     }
     data = await _get(url, params=params)
     if not isinstance(data, dict):
         return None
-    _cache_set(f"props_{event_id}", data)
+    _cache_set(cache_key, data)
     return data
 
 
@@ -248,22 +282,34 @@ def find_event_for_pitcher(events: list[dict], team_abbr: str) -> Optional[dict]
 def extract_pitcher_market(event_odds: dict, pitcher_name: str) -> dict:
     """Pull this pitcher's K-prop quotes out of an event's bookmakers blob.
 
+    CRITICAL: books with DIFFERENT k-lines are filtered out — only books
+    matching the consensus point survive into the returned `books` list.
+
+    Why: comparing odds across different lines produces nonsense. A book
+    offering OVER 8.5 @ 4.00 (because 8.5 is hard) cannot be averaged with
+    a book offering OVER 6.5 @ 1.78 (where 6.5 is plausible). Without this
+    filter, best_price() would surface the 4.00 from line 8.5 next to a
+    consensus k-line of 6.5 — completely wrong number for the bettor.
+
+    Some books carry alternate lines on the same pitcher; we currently only
+    request the main `pitcher_strikeouts` market (no alternates), so each
+    book contributes one (over, under, point) triple. The line discrepancy
+    happens because different books CHOOSE different main lines for the
+    same pitcher.
+
     Returns:
         {
-            "pitcher_name": "Gerrit Cole",
-            "k_line": 7.5,        # mode of points across books
-            "books": [
-                {"casino_key": "fanduel", "casino": "FanDuel",
-                 "over": 1.91, "under": 1.95, "point": 7.5},
-                ...
-            ]
+            "pitcher_name":   "Gerrit Cole",
+            "k_line":         7.5,            # mode of points across books
+            "books":          [...],          # only books at the consensus k_line
+            "rejected_books": [...],          # books at other lines (debug)
         }
     """
     if not event_odds or not pitcher_name:
-        return {"pitcher_name": pitcher_name, "k_line": None, "books": []}
+        return {"pitcher_name": pitcher_name, "k_line": None, "books": [], "rejected_books": []}
 
     pitcher_lower = pitcher_name.lower()
-    books: list[dict] = []
+    raw_books: list[dict] = []
     points: list[float] = []
 
     for bm in event_odds.get("bookmakers", []):
@@ -272,9 +318,9 @@ def extract_pitcher_market(event_odds: dict, pitcher_name: str) -> dict:
         for market in bm.get("markets", []):
             if market.get("key") != "pitcher_strikeouts":
                 continue
-            over_odds: Optional[float] = None
-            under_odds: Optional[float] = None
-            point: Optional[float] = None
+            # Group outcomes by point so a book offering multiple lines
+            # contributes one entry per line (we'll filter to consensus later).
+            by_point: dict[float, dict] = {}
             for outcome in market.get("outcomes", []):
                 desc = (outcome.get("description") or "").lower()
                 # Some books wrap names slightly differently — substring match
@@ -286,25 +332,57 @@ def extract_pitcher_market(event_odds: dict, pitcher_name: str) -> dict:
                 pt    = outcome.get("point")
                 if price is None or pt is None:
                     continue
+                pt_f = float(pt)
+                bucket = by_point.setdefault(pt_f, {"over": None, "under": None})
                 if name == "over":
-                    over_odds = float(price)
-                    point     = float(pt)
+                    bucket["over"] = float(price)
                 elif name == "under":
-                    under_odds = float(price)
-                    point      = float(pt)
-            if over_odds is not None and under_odds is not None and point is not None:
-                books.append({
-                    "casino_key": casino_key,
-                    "casino":     casino_title,
-                    "over":       over_odds,
-                    "under":      under_odds,
-                    "point":      point,
-                })
-                points.append(point)
+                    bucket["under"] = float(price)
+            # Persist per-(book, point) entries, only when both sides exist.
+            for pt_f, bucket in by_point.items():
+                if bucket["over"] is not None and bucket["under"] is not None:
+                    raw_books.append({
+                        "casino_key": casino_key,
+                        "casino":     casino_title,
+                        "over":       bucket["over"],
+                        "under":      bucket["under"],
+                        "point":      pt_f,
+                    })
+                    points.append(pt_f)
 
-    # Most common point across books — handles minor disagreements (7.5 vs 8.0).
-    k_line = max(set(points), key=points.count) if points else None
-    return {"pitcher_name": pitcher_name, "k_line": k_line, "books": books}
+    if not points:
+        return {"pitcher_name": pitcher_name, "k_line": None, "books": [], "rejected_books": []}
+
+    # Most common point across books — handles minor disagreements (5.5 vs 6.5
+    # vs 7.5 across books). When there's no clear plurality, prefer the
+    # alphabetically/numerically lowest to be deterministic.
+    point_counts = {p: points.count(p) for p in set(points)}
+    max_count    = max(point_counts.values())
+    candidates   = sorted([p for p, c in point_counts.items() if c == max_count])
+    k_line       = candidates[0]
+
+    # Filter books to ONLY those at the consensus line. This is the bug fix:
+    # without it, best_price() can return a price from a book whose line is
+    # different from the displayed k_line.
+    books_at_line = [b for b in raw_books if b["point"] == k_line]
+    rejected      = [b for b in raw_books if b["point"] != k_line]
+
+    if rejected:
+        rejected_summary = ", ".join(
+            f"{b['casino']}@{b['point']}" for b in rejected[:5]
+        )
+        logger.info(
+            "Pitcher %s: consensus k_line=%s (%d books); rejected %d books at other lines: %s%s",
+            pitcher_name, k_line, len(books_at_line), len(rejected), rejected_summary,
+            "" if len(rejected) <= 5 else f" (+{len(rejected)-5} more)",
+        )
+
+    return {
+        "pitcher_name":   pitcher_name,
+        "k_line":         k_line,
+        "books":          books_at_line,
+        "rejected_books": rejected,
+    }
 
 
 # ── Consensus + best-price math ───────────────────────────────────────────────
@@ -379,17 +457,43 @@ def consensus_fair_price(books: list[dict]) -> dict:
     }
 
 
-def best_price(books: list[dict], direction: str) -> Optional[dict]:
+def best_price(books: list[dict], direction: str,
+               restrict_to: Optional[list[str]] = None) -> Optional[dict]:
     """The book offering the highest odds for the given direction.
 
     Highest odds = best price for the bet (more profit per dollar staked).
-    Returns {"casino", "casino_key", "odds", "point"} or None.
+
+    Args:
+      books:       list of {casino_key, casino, over, under, point} entries,
+                   already filtered to a consistent k-line (see extract_pitcher_market).
+      direction:   "OVER" or "UNDER".
+      restrict_to: when provided, only books whose casino_key matches an entry
+                   in this list are considered. Used to filter to the user's
+                   actual sportsbooks ("only show me what I can really bet").
+                   Matching is case-insensitive and tolerates substring matches
+                   (so "bet365" matches both "bet365" and "bet365_au").
+
+    Returns: {"casino", "casino_key", "odds", "point"} or None.
     """
     if not books or direction not in ("OVER", "UNDER"):
         return None
     key = "over" if direction == "OVER" else "under"
+
+    # Normalize the allowlist for tolerant matching
+    allowlist: Optional[set[str]] = None
+    if restrict_to:
+        allowlist = {k.strip().lower() for k in restrict_to if k and k.strip()}
+    def _allowed(casino_key: str) -> bool:
+        if allowlist is None:
+            return True
+        ck = (casino_key or "").lower()
+        # Exact match OR substring (handles regional variants like bet365_au)
+        return ck in allowlist or any(a in ck or ck in a for a in allowlist)
+
     best: Optional[dict] = None
     for b in books:
+        if not _allowed(b.get("casino_key", "")):
+            continue
         v = b.get(key)
         if v is None:
             continue

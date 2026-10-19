@@ -26,3 +26,6 @@ backups/
 
 # Claude worktrees (per-task scratch dirs)
 .claude/worktrees/
+
+# AltLines on-disk API cache (odds/rosters/game logs)
+data/altlines/cache/

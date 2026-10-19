@@ -101,7 +101,9 @@ def run(demo: bool = False,
         live: bool = False,
         date: str | None = None,
         refresh_odds: bool = False,
-        anchor: bool | None = None) -> dict:
+        anchor: bool | None = None,
+        log_picks: bool = True,
+        log_origin: str = "cli") -> dict:
     """Execute the pipeline and return a dict of artifacts (frames + paths).
 
     `game` restricts the whole run to a single game of the slate (the "por
@@ -258,6 +260,21 @@ def run(demo: bool = False,
     else:
         shortlist = select_top_pct(table, pct=top_pct, metric=metric)
 
+    # ── 3b. Pick log (real mode only) ────────────────────────────────────────
+    # Every real run is kept, whole board, so it can be settled later
+    # (altlines.tools.settle) and measured (altlines.tools.report_live).
+    run_id = None
+    if live and log_picks:
+        from altlines import picklog
+        run_id = picklog.log_run(
+            {"value_table": table, "odds": odds_df, "shortlist": shortlist,
+             "slate": resolved_slate, "game": game},
+            {"n_iter": n_iter, "seed": seed, "devig": devig_method,
+             "top_pct": top_pct, "metric": metric},
+            origin=log_origin)
+        if run_id is not None:
+            print(f"      pick log -> run {run_id} en {picklog.PICKS_DB}")
+
     # ── 4. Output ─────────────────────────────────────────────────────────────
     print(f"[4/4] Reporting...  {len(table)} priced lines -> "
           f"top {top_pct:g}% by {metric} = {len(shortlist)} picks.")
@@ -283,6 +300,7 @@ def run(demo: bool = False,
         "game": game,
         "mapping": mapping,
         "live_meta": live_meta,
+        "pick_run_id": run_id,
     }
 
 
@@ -295,6 +313,11 @@ def parse_args(argv=None) -> argparse.Namespace:
                         "(costs ~5 credits per game; use with --game)")
     p.add_argument("--refresh-odds", dest="refresh_odds", action="store_true",
                    help="with --live, ignore the 20-min odds cache (spends credits)")
+    p.add_argument("--odds-cache-only", dest="odds_cache_only", action="store_true",
+                   help="with --live, use ONLY the odds already on disk (any age); "
+                        "never spends credits, fails if the game is not cached")
+    p.add_argument("--no-log", dest="log_picks", action="store_false",
+                   help="with --live, do not write the run to data/altlines/picks.db")
     p.add_argument("--no-anchor", dest="anchor", action="store_false", default=None,
                    help="with --live, do NOT put the model median on the market's "
                         "main line (edges then mix level and shape)")
@@ -389,6 +412,8 @@ def main(argv=None) -> None:
         _print_slate(slate_mod.build_slate_view(slate, logs_df, odds_df, mapping))
         return
 
+    if args.odds_cache_only:
+        cfg.LIVE_ODDS_CACHE_ONLY = True
     artifacts = run(
         demo=is_demo,
         logs_path=args.logs, odds_path=args.odds,
@@ -400,7 +425,7 @@ def main(argv=None) -> None:
         out_html=args.out, write_html=args.panel in ("html", "console", "streamlit"),
         game=args.game, offline=args.offline, write_data=args.write_data,
         live=args.live, date=args.date, refresh_odds=args.refresh_odds,
-        anchor=args.anchor,
+        anchor=args.anchor, log_picks=args.log_picks,
     )
 
     if args.top_n:

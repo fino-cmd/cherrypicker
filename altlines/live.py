@@ -344,6 +344,11 @@ def fetch_event_odds(event_id: str, markets: list[str] | None = None,
             keys.append(base)
     key_str = ",".join(sorted(keys))
     ck = f"{event_id}_{cfg.LIVE_ODDS_REGIONS}_{key_str}"
+    if cfg.LIVE_ODDS_CACHE_ONLY:
+        cached = _cache_get("odds", ck, None)
+        if cached is None:
+            raise RuntimeError(f"odds-cache-only: no hay cuotas en caché para {event_id}")
+        return cached
     cached = None if refresh else _cache_get("odds", ck, cfg.LIVE_ODDS_TTL_S)
     if cached is not None:
         return cached

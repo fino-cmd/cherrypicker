@@ -195,6 +195,7 @@ def build_payload(n_iter: int = cfg.N_SIM_DEFAULT,
                 seed=seed, write_html=False, quiet=True,
                 game=resolved_game, slate=slate, offline=offline, write_data=False,
                 live=live, refresh_odds=bool(live and refresh),
+                log_origin="api",
             )
         except SystemExit as exc:                   # run() uses SystemExit for setup errors
             raise RuntimeError(str(exc)) from exc

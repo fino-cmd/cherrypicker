@@ -150,6 +150,9 @@ LIVE_MAX_ANCHOR_DRIFT = 0.25
 LIVE_STALE_DAYS = 45
 LIVE_STALE_HALFLIFE = 30.0
 LIVE_ODDS_TTL_S   = 20 * 60        # re-opening a game within 20 min is free
+# True = odds come ONLY from the disk cache (any age); a miss raises instead of
+# paying credits. Set by `run_pipeline --odds-cache-only` (backfills, tests).
+LIVE_ODDS_CACHE_ONLY = False
 LIVE_EVENTS_TTL_S = 30 * 60        # the events list is free anyway
 LIVE_ROSTER_TTL_S = 12 * 3600
 LIVE_LOGS_TTL_S   = 6 * 3600       # current season; past seasons never expire

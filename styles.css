@@ -6324,20 +6324,85 @@ body[data-sport="nba"] .brand-nba { display: flex; }
 
 .pst-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 10px;
+  align-items: start;
 }
 .pst-card {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: linear-gradient(180deg, #10160d 0%, #0a0d08 100%);
   border: 1px solid var(--border);
   overflow: hidden;
+  transition: border-color .15s ease, box-shadow .2s ease;
 }
+.pst-card:hover { border-color: rgba(var(--pst-rgb), .45); }
+.pst-card[open] { box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+
+/* Lo que se ve cerrado */
+.pst-sum {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px 11px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.pst-sum::-webkit-details-marker { display: none; }
+.pst-sum:focus-visible { outline: 2px solid var(--pst); outline-offset: -2px; border-radius: 12px; }
+.pst-sum .pst-avatar { width: 36px; height: 36px; }
+.pst-sum .pst-avatar span { font-size: 12px; }
+.pst-sum-main { flex: 1; min-width: 0; }
+.pst-sum-top { display: flex; align-items: center; gap: 6px; }
+.pst-sum-top .pst-player {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pst-tier-dot { display: inline-flex; flex: none; }
+.pst-tier-dot svg { width: 14px; height: 14px; }
+.pst-card--shell .pst-tier-dot { opacity: .55; }
+.pst-sum-bet {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.pst-sum-bet strong { color: #fff; font-size: 15px; font-variant-numeric: tabular-nums; }
+.pst-sum-bet .pst-side { transform: none; font-size: 10px; padding: 1px 5px; border-radius: 4px; }
+.pst-sum-mkt { overflow: hidden; text-overflow: ellipsis; }
+.pst-sum-odds { margin-left: auto; padding-left: 6px; color: var(--pst); font-weight: 700; font-size: 13px; }
+.pst-sum .pst-ring, .pst-sum .pst-ring svg { width: 38px; height: 38px; }
+.pst-sum .pst-ring-n { font-size: 16px; }
+.pst-chev {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-right: 1.6px solid var(--text-muted);
+  border-bottom: 1.6px solid var(--text-muted);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform .2s ease;
+}
+.pst-card[open] .pst-chev { transform: rotate(225deg) translateY(-2px); }
+
+/* Lo que aparece al abrir la cáscara */
+.pst-body {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 2px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+  padding-top: 12px;
+  animation: pstOpen .22s ease-out;
+}
+@keyframes pstOpen { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pst-body { animation: none; } }
+.pst-coda { display: block; margin-top: 6px; color: var(--tier); font-style: italic; font-size: 12.5px; }
+.pst-foot { flex-wrap: wrap; gap: 4px 12px; }
 .pst-card::before {
   content: "";
   position: absolute;
@@ -6348,21 +6413,12 @@ body[data-sport="nba"] .brand-nba { display: flex; }
 .pst-card--gold  { --tier: #e9d48a; border-color: rgba(233, 212, 138, .35); }
 .pst-card--open  { --tier: var(--pst); border-color: rgba(var(--pst-rgb), .3); }
 .pst-card--shell { --tier: var(--pst-shell); }
-.pst-card--hero {
-  grid-column: span 2;
-  background:
-    radial-gradient(120% 90% at 100% 0%, rgba(var(--pst-rgb), .16) 0%, rgba(0,0,0,0) 55%),
-    linear-gradient(180deg, #121a0e 0%, #0a0d08 100%);
-}
-.pst-card--hero .pst-bet-line { font-size: 44px; }
-.pst-card--hero .pst-why { font-size: 15px; }
 
-.pst-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .pst-tier { display: flex; align-items: center; gap: 9px; }
 .pst-tier svg { width: 26px; height: 26px; flex: none; }
 .pst-tier-name {
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: 18px;
   letter-spacing: .8px;
   color: var(--tier);
   line-height: 1;
@@ -6383,7 +6439,6 @@ body[data-sport="nba"] .brand-nba { display: flex; }
   color: #fff;
 }
 
-.pst-who { display: flex; align-items: center; gap: 11px; }
 .pst-avatar {
   position: relative;
   width: 44px;
@@ -6399,18 +6454,7 @@ body[data-sport="nba"] .brand-nba { display: flex; }
 .pst-avatar span { font-weight: 700; font-size: 14px; color: var(--pst); }
 .pst-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #121a0e; }
 .pst-player { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.15; }
-.pst-team { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
-.pst-bet { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
-.pst-bet-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-family: var(--font-display);
-  font-size: 36px;
-  line-height: 1;
-  color: #fff;
-}
 .pst-side {
   font-family: var(--font-sans);
   font-size: 11px;
@@ -6422,9 +6466,6 @@ body[data-sport="nba"] .brand-nba { display: flex; }
 }
 .pst-side--over { background: var(--pst); color: #0b1208; }
 .pst-side--under { background: var(--pst-shell); color: #1a140a; }
-.pst-bet-odds { text-align: right; }
-.pst-bet-odds strong { display: block; font-size: 22px; color: var(--pst); font-variant-numeric: tabular-nums; }
-.pst-bet-odds span { font-size: 11px; color: var(--text-muted); }
 
 .pst-why { font-size: 13.5px; line-height: 1.45; color: #d7dcd2; margin: 0; }
 .pst-why strong { color: #fff; }
@@ -6504,7 +6545,5 @@ body[data-sport="nba"] .brand-nba { display: flex; }
 .pst-gloss-note { font-size: 11.5px; color: var(--text-dim); margin: 8px 0 0; }
 
 @media (max-width: 720px) {
-  .pst-card--hero { grid-column: auto; }
-  .pst-card--hero .pst-bet-line { font-size: 36px; }
   .pst-grid { grid-template-columns: 1fr; }
 }

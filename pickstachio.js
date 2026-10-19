@@ -86,10 +86,15 @@
     };
   }
 
+  // El lema de la casa: el valor está adentro de la cáscara; el libro la ve
+  // cerrada, nosotros le vemos la grieta.
   const TIERS = {
-    gold: { name: 'Pistacho Dorado', line: 'Se abre solo: valor claro y la cola a favor.' },
-    open: { name: 'Pistacho Abierto', line: 'Buena grieta en el precio del libro.' },
-    shell: { name: 'Cáscara Dura', line: 'Hay valor, pero cuesta abrirlo.' },
+    gold: { name: 'Pistacho Dorado', line: 'Se abre solo: la grieta en el precio se ve a simple vista.',
+            coda: 'Grieta grande: de los que se pelan con los dedos.' },
+    open: { name: 'Pistacho Abierto', line: 'La cáscara ya está partida: hay fruto en el precio.',
+            coda: 'Grieta clara: un poco de uña y sale.' },
+    shell: { name: 'Cáscara Dura', line: 'Hay fruto adentro, pero cuesta romperla.',
+             coda: 'Cáscara dura: se abre pocas veces, pero cuando se abre rinde.' },
   };
 
   function alerts(r, m) {
@@ -110,12 +115,16 @@
     const n = Math.ceil(p) - 1; return `${n} o menos ${n === 1 ? one : many}`;
   }
 
+  // La descripción, en idioma pistacho: cuántas veces se "abre" (pega) según
+  // nuestro modelo vs. cuántas cree el libro.
   function sentence(r, m) {
     const a = oneIn(m.pm), b = oneIn(m.pf);
     const first = String(r.player || '').split(' ')[0];
     if (!a || !b) return '';
-    return `El modelo ve a <strong>${esc(first)}</strong> llegando a <strong>${esc(milestone(r, m))}</strong> `
-      + `<strong>1 de cada ${a}</strong> partidos. El libro paga como si fuera <strong>1 de cada ${b}</strong>.`;
+    return `Este pistacho se abre <strong>1 de cada ${a}</strong> partidos: así de seguido vemos a `
+      + `<strong>${esc(first)}</strong> llegar a <strong>${esc(milestone(r, m))}</strong>. `
+      + `El libro lo ve cerrado y lo paga como si se abriera <strong>1 de cada ${b}</strong>. `
+      + `<span class="pst-coda">${esc(TIERS[m.tier].coda)}</span>`;
   }
 
   function avatar(r) {
@@ -139,7 +148,9 @@
     </div>`;
   }
 
-  function card(r, hero) {
+  // Tarjeta compacta: lo esencial a la vista (quién, qué, a cuánto, score) y
+  // el resto adentro de la cáscara, que se abre al tocarla.
+  function card(r) {
     const m = metrics(r);
     const t = TIERS[m.tier];
     const chips = alerts(r, m).map(a =>
@@ -150,35 +161,44 @@
         <div class="pst-bar-track"><div class="pst-bar-fill" style="width:${Math.round(b.fill * 100)}%"></div></div>
       </div>`).join('');
     return `
-      <article class="pst-card pst-card--${m.tier} ${hero ? 'pst-card--hero' : ''}">
-        <header class="pst-card-head">
-          <div class="pst-tier">${I.nut}<div><div class="pst-tier-name">${t.name}</div><div class="pst-tier-line">${t.line}</div></div></div>
-          ${ring(m.score)}
-        </header>
-        <div class="pst-who">
+      <details class="pst-card pst-card--${m.tier}">
+        <summary class="pst-sum">
           ${avatar(r)}
-          <div class="pst-who-txt">
-            <div class="pst-player">${esc(r.player)}</div>
-            <div class="pst-team">${esc(r.team || '')} · ${esc(MARKET_SHORT[r.market] || r.market_label)}</div>
+          <div class="pst-sum-main">
+            <div class="pst-sum-top">
+              <span class="pst-player">${esc(r.player)}</span>
+              <span class="pst-tier-dot" title="${esc(t.name)}">${I.nut}</span>
+            </div>
+            <div class="pst-sum-bet">
+              <span class="pst-side pst-side--${m.over ? 'over' : 'under'}">${m.over ? 'O' : 'U'}</span>
+              <strong>${esc(Number(r.point).toFixed(1))}</strong>
+              <span class="pst-sum-mkt">${esc(MARKET_SHORT[r.market] || r.market_label)}</span>
+              <span class="pst-sum-odds">${american(r.decimal_odds)}</span>
+            </div>
           </div>
+          ${ring(m.score)}
+          <span class="pst-chev" aria-hidden="true"></span>
+        </summary>
+        <div class="pst-body">
+          <div class="pst-tier">
+            <div><div class="pst-tier-name">${t.name}</div><div class="pst-tier-line">${t.line}</div></div>
+          </div>
+          <p class="pst-why">${sentence(r, m)}</p>
+          ${chips ? `<div class="pst-chips">${chips}</div>` : ''}
+          <div class="pst-bars">${bars}</div>
+          <footer class="pst-foot">
+            <span>${esc(r.team || '')} · ${esc(Number(r.decimal_odds).toFixed(2))} en ${esc(r.book || '')}</span>
+            <span title="${esc(DEF.stake)}">Stake <strong>${Number(r.stake_units || 0).toFixed(2)}u</strong></span>
+            <span>EV <strong class="pst-pos">+${Number(r.ev_pct).toFixed(0)}%</strong></span>
+          </footer>
         </div>
-        <div class="pst-bet">
-          <div class="pst-bet-line"><span class="pst-side pst-side--${m.over ? 'over' : 'under'}">${m.over ? 'OVER' : 'UNDER'}</span>${esc(Number(r.point).toFixed(1))}</div>
-          <div class="pst-bet-odds"><strong>${american(r.decimal_odds)}</strong><span>${esc(Number(r.decimal_odds).toFixed(2))} · ${esc(r.book || '')}</span></div>
-        </div>
-        <p class="pst-why">${sentence(r, m)}</p>
-        ${chips ? `<div class="pst-chips">${chips}</div>` : ''}
-        <div class="pst-bars">${bars}</div>
-        <footer class="pst-foot">
-          <span title="${esc(DEF.stake)}">Stake <strong>${Number(r.stake_units || 0).toFixed(2)}u</strong></span>
-          <span>EV <strong class="pst-pos">+${Number(r.ev_pct).toFixed(0)}%</strong></span>
-        </footer>
-      </article>`;
+      </details>`;
   }
 
   function glossary() {
     const rows = [
-      [I.nut, 'Pistacho', 'Una línea alternativa donde el modelo le encuentra valor al precio del libro.'],
+      [I.nut, 'Pistacho', 'Una línea alternativa donde el modelo le encuentra valor al precio del libro. El libro la ve cerrada; nosotros le vemos la grieta.'],
+      [I.nut, 'Se abre', 'Que la apuesta pegue. "Se abre 1 de cada 4" = el modelo espera que pegue uno de cada cuatro partidos.'],
       [I.nut, 'Pickstachio Score', DEF.score],
       [I.edge, 'Ventaja', DEF.edge],
       [I.tail, 'Cola gorda', DEF.tail],
@@ -227,7 +247,7 @@
         <div class="pst-filters">${chip('all', 'Todos')}${markets.map(k => chip(k, MARKET_SHORT[k] || k)).join('')}</div>
       </div>
       <div class="pst-grid">
-        ${shown.length ? shown.map((x, i) => card(x.r, i === 0 && state.market === 'all')).join('')
+        ${shown.length ? shown.map(x => card(x.r)).join('')
           : '<div class="pst-empty-sm">Sin pistachos en ese mercado.</div>'}
       </div>
       ${glossary()}`;

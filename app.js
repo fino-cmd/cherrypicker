@@ -4220,6 +4220,13 @@ function currentSport() {
  *  · abre la sección por defecto de ese deporte (showSection oculta el resto)
  */
 function showSport(sport) {
+  const from = currentSport();
+  const tab = document.getElementById('sport-tab-' + sport);
+  if (from === sport) { _applySport(sport); return; }
+  _sportMorph(sport, tab, () => _applySport(sport));
+}
+
+function _applySport(sport) {
   document.body.dataset.sport = sport;
 
   document.querySelectorAll('.sport-tab').forEach(t => {
@@ -4240,6 +4247,58 @@ function showSport(sport) {
   showSection(SPORT_DEFAULT_SECTION[sport] || 'pitcher-props', null);
 }
 
+/**
+ * La app "se convierte": un círculo del color de la app destino crece desde
+ * la pestaña tocada hasta cubrir la pantalla, aparece su logo, se aplica el
+ * cambio por detrás y el velo se funde revelando la página ya convertida.
+ * Con prefers-reduced-motion es un fundido corto.
+ */
+const _PST_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.4c4.3 0 7.1 4.4 7.1 9.8 0 5.4-3 9.4-7.1 9.4s-7.1-4-7.1-9.4C4.9 6.8 7.7 2.4 12 2.4z" fill="#d9c7a0"/><path d="M12 4.6c2.8 1.7 3.9 4.6 3.9 7.7s-1.3 6.2-3.9 7.5c-2.6-1.3-3.9-4.4-3.9-7.5S9.2 6.3 12 4.6z" fill="#a6d86f"/><path d="M12 5.4v13.8" stroke="#5f8a37" stroke-width="1.1" stroke-linecap="round"/></svg>`;
+let _sportMorphing = false;
+
+async function _sportMorph(sport, origin, apply) {
+  if (_sportMorphing) return;
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const veil = document.createElement('div');
+  veil.className = `sport-morph sport-morph--${sport}`;
+  veil.innerHTML = sport === 'nba'
+    ? `<div class="sport-morph-logo">${_PST_ICON}<div>PICK<span>STACHIO</span></div></div>`
+    : `<div class="sport-morph-logo"><img src="cherries.png" alt=""><div>CHERRY<span>PICK</span></div></div>`;
+  document.body.appendChild(veil);
+  const logo = veil.querySelector('.sport-morph-logo');
+  const main = document.querySelector('.app-main');
+  _sportMorphing = true;
+  try {
+    if (reduced || !veil.animate) {
+      veil.style.opacity = '0';
+      await veil.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, fill: 'forwards' }).finished;
+      apply();
+      await veil.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).finished;
+      return;
+    }
+    const r = origin ? origin.getBoundingClientRect() : { left: innerWidth / 2, top: 0, width: 0, height: 0 };
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const R = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    const grow = veil.animate(
+      [{ clipPath: `circle(0px at ${x}px ${y}px)` }, { clipPath: `circle(${R}px at ${x}px ${y}px)` }],
+      { duration: 620, easing: 'cubic-bezier(.76,0,.24,1)', fill: 'forwards' });
+    logo.animate([{ opacity: 0, transform: 'scale(.92)', filter: 'blur(6px)' },
+                  { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' }],
+                 { duration: 520, delay: 280, easing: 'ease-out', fill: 'forwards' });
+    await grow.finished;
+    apply();
+    if (main) { main.classList.remove('app-main-fadein'); void main.offsetWidth; main.classList.add('app-main-fadein'); }
+    await new Promise(res => setTimeout(res, 380));
+    logo.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.06)' }],
+                 { duration: 420, easing: 'ease-in', fill: 'forwards' });
+    await veil.animate([{ opacity: 1 }, { opacity: 0 }],
+                       { duration: 520, delay: 120, easing: 'ease-out', fill: 'forwards' }).finished;
+  } finally {
+    veil.remove();
+    _sportMorphing = false;
+  }
+}
+
 // ── NBA · Alt Lines (motor AltLines: Monte Carlo de colas largas) ───────────
 
 // Estado del tablero visible: o un partido, o la liga entera fusionada.
@@ -4251,15 +4310,9 @@ const _alFilters = { market: 'all', side: 'all', minEv: 0, search: '', touched: 
 // elección no es cosmética: es lo que hace usable el motor. Y como el RNG se
 // siembra por (jugador, mercado), simular un partido devuelve EXACTAMENTE los
 // mismos números que el tablero global — sólo menos trabajo.
-const AL_VIDEO = {
-  webm: 'assets/altlines/sim-loop.webm',
-  mp4: 'assets/altlines/sim-loop.mp4',
-  poster: 'assets/altlines/sim-loop-poster.jpg',
-};
-// Respetamos a quien pidió menos movimiento: en ese caso no reproducimos video,
-// pero la tarjeta igual avisa que está simulando (con el pulso y el contador).
-const AL_MOTION_OK = !(window.matchMedia
-  && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+// La animación de cada tarjeta ("La cola canta") vive en altlines-galton.js:
+// tablero de Galton sonoro mientras simula, y el resultado real al terminar.
+// Con prefers-reduced-motion se queda quieta (el pulso y el contador avisan).
 const AL_N_ITER = 20000;
 
 let _alSlate = null;            // pizarra: calendario + props disponibles
@@ -4270,6 +4323,11 @@ let _alScope = 'game';          // 'game' | 'league'
 let _alDate = null;             // fecha pedida (null = la de hoy)
 let _alSimAll = false;          // "Simular todos" en curso
 let _alBusy = false;            // hay una simulación en vuelo (evita dobles clicks)
+// 'easy' = panel de picks (Pickstachio) · 'nerd' = tablas y números
+let _alView = (() => {
+  try { return localStorage.getItem('al-view') === 'nerd' ? 'nerd' : 'easy'; }
+  catch (_) { return 'easy'; }
+})();
 // 'demo' = datos sintéticos (gratis) · 'live' = ESPN + The Odds API (gasta créditos)
 let _alSource = (() => {
   try { return localStorage.getItem('al-source') === 'live' ? 'live' : 'demo'; }
@@ -4322,10 +4380,10 @@ async function loadAltLines() {
 function _alShellHtml() {
   return `
     <div class="al-header">
-      <div class="al-title">ALT <span class="al-title-accent">LINES</span> · NBA</div>
-      <div class="al-sub">Monte Carlo de colas largas sobre props extremos — el libro ancla en la <em>mediana</em>
-        y cotiza las colas con una curva simétrica genérica. Aquí reconstruimos la distribución completa
-        (media, sesgo y varianza reales) y comparamos. <strong>Elegí un partido</strong>: se simula sólo ese.</div>
+      <div class="al-title">PICK<span class="al-title-accent">STACHIO</span> <span class="al-title-tag">NBA · Alt Lines</span></div>
+      <div class="al-sub">El libro cotiza las líneas extremas con una curva genérica igual para todos.
+        Nosotros simulamos la distribución real de cada jugador y te mostramos dónde su cola le gana al precio.
+        <strong>Elegí un partido</strong> y abrí los pistachos.</div>
     </div>
 
     <div class="al-slate">
@@ -4344,6 +4402,8 @@ function _alShellHtml() {
             <button class="al-source-btn" data-src="live" onclick="altLinesSource('live')"
                     title="Logs reales (ESPN) + bandejas Alt reales de cada casa (The Odds API). Gasta créditos.">Real</button>
           </div>
+          <button class="al-sound" id="al-sound" onclick="altLinesToggleSound()"
+                  title="Cada tirada suena según dónde cae; la cola que le gana al libro suena a campana">Sonido</button>
           <button class="al-sim-all" id="al-sim-all" onclick="simulateAllGames()">Simular todos</button>
         </div>
       </div>
@@ -4453,11 +4513,9 @@ function _alGameCardHtml(g) {
     <article class="al-game" data-gid="${_alEsc(g.game_id)}" data-state="${state}"
              role="button" tabindex="${pr.has_props ? 0 : -1}" ${interactive}>
       <div class="al-game-media">
-        <video class="al-game-video" muted loop playsinline preload="none"
-               poster="${AL_VIDEO.poster}">
-          <source src="${AL_VIDEO.webm}" type="video/webm">
-          <source src="${AL_VIDEO.mp4}" type="video/mp4">
-        </video>
+        <canvas class="al-game-canvas" aria-hidden="true"
+                data-home="${_alEsc(g.home && g.home.color)}"
+                data-away="${_alEsc(g.away && g.away.color)}"></canvas>
         <div class="al-game-veil"></div>
         <div class="al-game-status">
           <span class="al-game-dot"></span>
@@ -4548,7 +4606,9 @@ function renderSlate() {
   const dateEl = document.getElementById('al-date');
   if (dateEl) dateEl.textContent = _alSlate.date || '—';
   _alSyncSourceBtns();
+  _alSyncSoundBtn();
   _alUpdateSimAllBtn();
+  _alPaintCards();
 }
 
 function _alUpdateSimAllBtn() {
@@ -4574,34 +4634,39 @@ function _alCard(gid) {
   return document.querySelector(`.al-game[data-gid="${_alEsc(gid)}"]`);
 }
 
-function _alPlayVideo(video) {
-  if (!video || !AL_MOTION_OK) return;
-  const attempt = () => {
-    try {
-      const p = video.play();
-      if (p && p.catch) p.catch(() => { /* autoplay bloqueado: no es fatal */ });
-    } catch (_) { /* noop */ }
-  };
-
-  // Con `preload="none"` y varios <source>, el navegador todavía está eligiendo
-  // la fuente cuando llega el primer play(): ese primer intento se aborta y la
-  // tarjeta se quedaría "simulando" sin imagen. Disparamos igual (para que
-  // arranque la carga) y reintentamos en cuanto haya datos.
-  if (video.readyState >= 2) { attempt(); return; }
-  attempt();
-  if (video.dataset.alPrimed) return;
-  video.dataset.alPrimed = '1';
-  const onData = () => {
-    video.removeEventListener('loadeddata', onData);
-    const card = video.closest('.al-game');
-    if (video.paused && card && card.dataset.state === 'simulating') attempt();
-  };
-  video.addEventListener('loadeddata', onData);
+// El pick que la tarjeta dibuja al terminar: el primero del top del motor o,
+// si el top quedó vacío, la mejor línea elegible.
+function _alBestRow(res) {
+  if (!res) return null;
+  if (res.edges && res.edges.length) return res.edges[0];
+  const rows = (res.all_edges || []).filter(r => r.level_ok !== false);
+  return rows.length ? rows.reduce((a, b) => (Number(b.ev_pct) > Number(a.ev_pct) ? b : a)) : null;
 }
 
-function _alStopVideo(video) {
-  if (!video) return;
-  try { video.pause(); video.currentTime = 0; } catch (_) { /* noop */ }
+function _alPaintCards() {
+  if (!window.AlGalton) return;
+  document.querySelectorAll('.al-game').forEach(card => {
+    const cv = card.querySelector('.al-game-canvas');
+    if (!cv) return;
+    const res = _alGameResults[card.dataset.gid];
+    if (card.dataset.state === 'simulating') return;
+    AlGalton.paint(cv, res ? _alBestRow(res) : null);
+  });
+}
+
+function altLinesToggleSound() {
+  if (!window.AlGalton) return;
+  AlGalton.setSound(!AlGalton.soundOn());
+  _alSyncSoundBtn();
+}
+
+function _alSyncSoundBtn() {
+  const b = document.getElementById('al-sound');
+  if (!b || !window.AlGalton) return;
+  const on = AlGalton.soundOn();
+  b.textContent = on ? 'Sonido: sí' : 'Sonido: no';
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.classList.toggle('al-sound--on', on);
 }
 
 /**
@@ -4612,16 +4677,19 @@ function _alSetCardState(gid, state, msg) {
   const card = _alCard(gid);
   if (!card) return;
   card.dataset.state = state;
-  const video = card.querySelector('.al-game-video');
+  const canvas = card.querySelector('.al-game-canvas');
   const label = card.querySelector('.al-game-status-text');
   const ev = card.querySelector('.al-game-ev');
   const el = card.querySelector('.al-game-elapsed');
 
   if (state === 'simulating') {
     if (label) label.textContent = 'SIMULANDO…';
-    _alPlayVideo(video);
+    if (window.AlGalton) AlGalton.start(canvas);
   } else {
-    _alStopVideo(video);
+    if (window.AlGalton) {
+      if (state === 'done') AlGalton.finish(canvas, _alBestRow(_alGameResults[gid]));
+      else AlGalton.stop(canvas);
+    }
     if (label) {
       label.textContent = state === 'done' ? 'SIMULADO'
         : (state === 'error' ? 'ERROR' : 'SIMULAR');
@@ -4740,6 +4808,7 @@ function _alSelectGame(gid) {
   _alSelected = gid;
   _alScope = 'game';
   _alFilters.touched = false;
+  if (window.Pickstachio) Pickstachio.reset();
   _altLinesData = _alGameResults[gid] || null;
   _alDefaultFilters();
   renderAltLines();
@@ -4836,8 +4905,28 @@ function renderAltLines() {
     return;
   }
   if (!_alFilters.touched) _alFilters.minEv = _alTopEv();
+  if (_alView === 'easy' && window.Pickstachio) {
+    host.innerHTML = _alDetailHeaderHtml(d) + Pickstachio.html(d);
+    return;
+  }
   host.innerHTML = _alDetailHeaderHtml(d) + _alBoardHtml(d);
   renderAltLinesTable();
+}
+
+function altLinesView(v) {
+  if (v === _alView) return;
+  _alView = v;
+  try { localStorage.setItem('al-view', v); } catch (_) { }
+  renderAltLines();
+}
+
+function _alViewTabs() {
+  return `<div class="al-view" role="group" aria-label="Vista">
+      <button class="al-view-btn ${_alView === 'easy' ? 'al-view-btn--on' : ''}" onclick="altLinesView('easy')"
+              title="Panel de picks: qué apostar y por qué, en criollo">Easy</button>
+      <button class="al-view-btn ${_alView === 'nerd' ? 'al-view-btn--on' : ''}" onclick="altLinesView('nerd')"
+              title="Todas las líneas, probabilidades, curvas y perfiles">Nerd</button>
+    </div>`;
 }
 
 function _alScopeTabs() {
@@ -4867,6 +4956,7 @@ function _alDetailHeaderHtml(d) {
         <span class="al-detail-sub">${sub}</span>
       </div>
       ${_alScopeTabs()}
+      ${_alViewTabs()}
       <div class="al-meta">
         ${_alEsc(d.source === 'demo' ? 'datos DEMO (sintéticos)'
           : (d.source === 'live' ? 'datos REALES (ESPN + The Odds API, mediana anclada al mercado)' : 'datos reales (CSV)'))} ·

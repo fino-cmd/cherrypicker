@@ -47,6 +47,9 @@ Extras de integración:
 | `altlines/api.py` | Puente JSON para el backend FastAPI (caché en proceso + candado por clave) |
 | `altlines/tools/make_sim_video.py` | Genera el mini video de las tarjetas (`assets/altlines/`) |
 | `altlines/tools/check_calibration.py` | Re-mide la tabla de calibración de la sección 5 |
+| `altlines/picklog.py` | Log de cada corrida real en `data/altlines/picks.db` (validación, §4b) |
+| `altlines/tools/settle.py` | Liquida las líneas logueadas contra el box score ESPN |
+| `altlines/tools/report_live.py` | Reliability `p_model`/`p_fair`, ROI top vs resto, CLV |
 | `altlines/config.py` | Rutas, **claves de API**, registro de mercados y todos los parámetros numéricos |
 
 **Todo el paquete es autónomo**: no importa nada del modelo MLB de CherryPick
@@ -220,6 +223,64 @@ mostrar. Cada una tiene su defensa:
 Además, el prior de varianza y la curva del libro ahora escalan con el nivel
 del jugador (`league_ref_mean`, varianza ∝ media): un suplente de 7 puntos ya
 no recibe el sigma de 9 de una estrella, que le inventaba colas gordas.
+
+### Validación contra resultados reales (log → settle → reporte)
+
+En la primera corrida real el modelo pone las colas ~1,4× por encima del precio
+justo del mercado. Si eso es edge o sesgo sólo se decide liquidando picks.
+
+**1. Log automático.** Cada corrida en modo real (CLI `--live` o
+`/api/altlines/edges` con source=live) guarda el **tablero completo** en
+`data/altlines/picks.db` (SQLite, fuera de git, separado del tracker MLB):
+tabla `runs` (parámetros de la corrida) y tabla `lines` (una fila por línea:
+`game_id`, `player_id`, mercado, lado, punto, casa, cuota, `p_model`, `p_fair`,
+`p_curve`, `ev`, `main_line`, `anchor_scale`, `level_ok`, `in_top`,
+`snapshot_ts`, `tip_off`). Dentro de una corrida `(game, player, market, side,
+point, book)` es único; la misma línea vista en otra corrida es otra fila (un
+snapshot más para CLV). `--no-log` lo apaga. Si el log falla, la corrida sigue.
+
+```bash
+# Re-loguear un partido con las cuotas YA cacheadas (cero créditos; falla si no hay caché)
+python -m altlines.run_pipeline --live --game 401909088 --date 2026-10-20 --odds-cache-only
+```
+
+**2. Liquidar** (sólo ESPN, sin créditos). Pregunta a ESPN si el partido
+terminó, re-baja el gamelog de cada jugador (`live.fetch_athlete_games`) y marca
+cada línea `win` / `loss` / `push` con `pnl` por unidad (`cuota − 1` / `−1` /
+`0`). Un jugador sin fila en un partido terminado (DNP) queda `void`, pero recién
+36 h después del tip (ESPN tarda en publicar el log). Lo pendiente se reintenta
+en la próxima corrida.
+
+```bash
+python -m altlines.tools.settle                    # todo lo pendiente
+python -m altlines.tools.settle --game 401909088   # un partido (--dry-run: no escribe)
+```
+
+**3. Reporte.**
+
+```bash
+python -m altlines.tools.report_live [--game 401909088] [--all-levels]
+```
+
+Un *pick* = `(game, player, market, side, point)` tomado de la **primera**
+corrida pre-tip (lo priceado después del tip se ignora). Por default sólo
+líneas `level_ok` (las que pueden entrar al tablero).
+
+| Sección | Qué mide | Cómo leerlo |
+|---|---|---|
+| 1a · Reliability de `p_model` | buckets 20-35, 10-20, 5-10, 2-5 %: `p_model` medio vs frecuencia real (IC 95 % de Wilson) | `real_vs_prob` ≈ 1 calibrado; < 1 el modelo sobreestima la cola |
+| 1b · Reliability de `p_fair` | lo mismo bucketeando por la probabilidad sin vig del mercado | si `p_fair` calibra y `p_model` da ~0,7, el "edge" es sesgo |
+| 2 · ROI | top X % vs resto (y resto con EV > 0), pnl por unidad | push = 0, void fuera |
+| 3 · CLV | si la línea tiene > 1 snapshot pre-tip: `cuota_pick / cuota_cierre − 1` y deriva de `p_fair` hacia nuestro lado | CLV > 0 sostenido es la señal más rápida de edge real |
+
+Para CLV hay que correr el modo real al menos dos veces antes del tip (p. ej.
+al publicarse las líneas y ~1 h antes): cada corrida cuesta los ~5 créditos del
+partido salvo que caiga dentro del caché de 20 min, en cuyo caso el snapshot es
+el mismo y no aporta CLV.
+
+Con pocos partidos los IC son anchísimos (15 picks de ~8 % ⇒ ~1 acierto
+esperado): hacen falta cientos de líneas liquidadas por bucket antes de
+concluir algo.
 
 ---
 
@@ -408,18 +469,52 @@ sin tocar el modelo MLB:
   con filtros por mercado, lado, EV mínimo y jugador, más el panel de perfiles de
   distribución.
 
-### El mini video de cada tarjeta
+### Pickstachio: la cara de la pestaña NBA
 
-`assets/altlines/sim-loop.{webm,mp4}` (+ `sim-loop-poster.jpg`) es un clip de 6 s
-que se reproduce **sólo mientras ese partido se está simulando** y queda en
-pausa (con su poster) el resto del tiempo. No es decoración: es la tesis del
-producto dibujada — histograma sesgado a la derecha, la curva simétrica del libro
-encima, la nube de tiradas y un barrido que la recorre.
+La pestaña NBA es otra app dentro de la app: **Pickstachio**, en verde
+pistacho y negro (variables del tema bajo `body[data-sport="nba"]` en
+`styles.css`). Al pasar de MLB a NBA, un círculo crece desde la pestaña, aparece
+el logo y el velo se funde revelando la página convertida (`_sportMorph` en
+`app.js`; con `prefers-reduced-motion` es un fundido corto).
 
-Se genera con `python altlines/tools/make_sim_video.py` (numpy → ffmpeg
-`rawvideo`; no necesita fuentes ni assets externos). Si el sistema pide
-`prefers-reduced-motion`, el video **no** se reproduce: la tarjeta igual muestra
-el latido de "SIMULANDO…" y el contador de segundos.
+El tablero tiene dos vistas (selector **Easy | Nerd**, se recuerda por navegador):
+
+- **Easy** (`pickstachio.js`): un panel de picks. Cada línea con valor es un
+  **Pistacho**, según su *Pickstachio Score* (0–100: ventaja 40 %, cola gorda
+  25 %, probabilidad 20 %, nivel alineado 15 %):
+  **Pistacho Dorado** (≥ 70), **Pistacho Abierto** (50–69), **Cáscara Dura** (< 50).
+  Cada tarjeta muestra la apuesta, la cuota americana y la casa, una frase
+  ("lo ve llegar 1 de cada N; el libro paga como 1 de cada M"), alertas
+  (Cola gorda, Boom-or-bust, Hito lejano, Nivel alineado —sólo en modo
+  real—, Longshot) y cuatro métricas con su definición (Ventaja, Cola gorda,
+  Hito, Explosividad). Abajo, un glosario.
+- **Nerd**: la tabla completa con filtros, probabilidades, curvas y perfiles.
+
+### La animación de cada tarjeta: "La cola canta"
+
+`altlines-galton.js` (raíz del repo, canvas + WebAudio, sin assets) reemplaza
+al viejo video en loop. Tiene tres fases:
+
+1. **Mientras simula**: un tablero de Galton con los colores de los dos equipos.
+   Las tiradas caen por los clavos (un 12 % en régimen "boom" empuja a la
+   derecha) y se apilan en una distribución sesgada. Encima, en fantasma, la
+   Normal del libro centrada en la mediana de la pila; los compartimentos de la
+   cola que la superan se encienden en verde. Se muestra al menos 3,5 s aunque
+   el motor termine antes.
+2. **Sonido**: un pad cálido que respira (sube ~1 s, se desvanece ~1,5 s y
+   vuelve) con un latido grave suave en cada pico. Cuando una tirada cae en la
+   cola por encima del libro, el filtro del pad se abre y brilla un instante.
+   Botón **Sonido: sí/no** en la pizarra (se recuerda por navegador).
+3. **Al terminar**: la pila se disuelve en el **resultado real** del mejor pick
+   del partido —su distribución (media, desvío y sesgo del motor, como Gamma
+   desplazada) contra la Normal del libro (σ recuperado de `p_curve`)—, con la
+   línea alt marcada, la región ganadora en verde y `modelo X % · libro Y %`.
+   El pad da una última respiración larga y se apaga.
+
+Las fases 1 y 2 son ilustrativas (el cómputo real corre en el servidor); la 3
+sale del payload. Con `prefers-reduced-motion` no hay animación: la tarjeta
+pasa directo al cuadro final. `assets/altlines/sim-loop.*` y
+`tools/make_sim_video.py` quedan sin uso.
 
 ### Por qué un partido == la liga (determinismo)
 

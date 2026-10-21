@@ -4253,11 +4253,18 @@ function _applySport(sport) {
  * cambio por detrás y el velo se funde revelando la página ya convertida.
  * Con prefers-reduced-motion es un fundido corto.
  */
-const _PST_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.4c4.3 0 7.1 4.4 7.1 9.8 0 5.4-3 9.4-7.1 9.4s-7.1-4-7.1-9.4C4.9 6.8 7.7 2.4 12 2.4z" fill="#d9c7a0"/><path d="M12 4.6c2.8 1.7 3.9 4.6 3.9 7.7s-1.3 6.2-3.9 7.5c-2.6-1.3-3.9-4.4-3.9-7.5S9.2 6.3 12 4.6z" fill="#a6d86f"/><path d="M12 5.4v13.8" stroke="#5f8a37" stroke-width="1.1" stroke-linecap="round"/></svg>`;
+const _PST_ICON = `<svg class="pst-mark" viewBox="0 0 48 48" aria-hidden="true"><g transform="rotate(28 24 26)"><path d="M24 25.5c-5-3.6-6.6-10.6-4.6-17 1.3-4.2 7.9-4.2 9.2 0 2 6.4.4 13.4-4.6 17z" fill="#9FCF5F"/><path d="M22 23.8c-3.4-3.7-4.4-9.6-2.6-14.9" stroke="#8C4E6C" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M25.8 9.2c1.1 2.7 1.3 6.1.6 9.2" stroke="#D6F0A9" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M24 45c-8.6 0-13.4-7.4-13.4-16.4 0-8.2 3.3-15.6 7.8-19.4 1 6.6 2.9 12.3 5.6 16.4z" fill="#EBD8AB"/><path d="M24 45c8.6 0 13.4-7.4 13.4-16.4 0-8.2-3.3-15.6-7.8-19.4-1 6.6-2.9 12.3-5.6 16.4z" fill="#D1B37A"/><path d="M18.4 9.2c1 6.6 2.9 12.3 5.6 16.4 2.7-4.1 4.6-9.8 5.6-16.4" stroke="#7B6038" stroke-width="1.1" stroke-linejoin="round" fill="none"/><path d="M24 25.6V45" stroke="#B4955A" stroke-width=".9"/><path d="M14.3 22.5c-.8 2.2-1.1 4.5-1.1 6.8 0 4.6 1.6 8.4 4.6 10.7" stroke="#F7EDD2" stroke-width="1.4" stroke-linecap="round" fill="none"/></g></svg>`;
 let _sportMorphing = false;
 
 async function _sportMorph(sport, origin, apply) {
   if (_sportMorphing) return;
+  // Si la página no está pintando (pestaña de fondo, ventana tapada) las
+  // animaciones no avanzan y sus promesas nunca se resuelven: cada espera tiene
+  // un tope, y el cambio de deporte se aplica pase lo que pase.
+  const settle = (anim, ms) => Promise.race([
+    anim.finished.catch(() => {}), new Promise(res => setTimeout(res, ms))]);
+  let applied = false;
+  const doApply = () => { if (!applied) { applied = true; apply(); } };
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const veil = document.createElement('div');
   veil.className = `sport-morph sport-morph--${sport}`;
@@ -4269,11 +4276,11 @@ async function _sportMorph(sport, origin, apply) {
   const main = document.querySelector('.app-main');
   _sportMorphing = true;
   try {
-    if (reduced || !veil.animate) {
+    if (reduced || !veil.animate || document.hidden) {
       veil.style.opacity = '0';
-      await veil.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, fill: 'forwards' }).finished;
-      apply();
-      await veil.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).finished;
+      await settle(veil.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, fill: 'forwards' }), 400);
+      doApply();
+      await settle(veil.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }), 500);
       return;
     }
     const r = origin ? origin.getBoundingClientRect() : { left: innerWidth / 2, top: 0, width: 0, height: 0 };
@@ -4285,15 +4292,16 @@ async function _sportMorph(sport, origin, apply) {
     logo.animate([{ opacity: 0, transform: 'scale(.92)', filter: 'blur(6px)' },
                   { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' }],
                  { duration: 520, delay: 280, easing: 'ease-out', fill: 'forwards' });
-    await grow.finished;
-    apply();
+    await settle(grow, 1100);
+    doApply();
     if (main) { main.classList.remove('app-main-fadein'); void main.offsetWidth; main.classList.add('app-main-fadein'); }
     await new Promise(res => setTimeout(res, 380));
     logo.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.06)' }],
                  { duration: 420, easing: 'ease-in', fill: 'forwards' });
-    await veil.animate([{ opacity: 1 }, { opacity: 0 }],
-                       { duration: 520, delay: 120, easing: 'ease-out', fill: 'forwards' }).finished;
+    await settle(veil.animate([{ opacity: 1 }, { opacity: 0 }],
+                              { duration: 520, delay: 120, easing: 'ease-out', fill: 'forwards' }), 1100);
   } finally {
+    doApply();
     veil.remove();
     _sportMorphing = false;
   }
@@ -4327,6 +4335,12 @@ let _alBusy = false;            // hay una simulación en vuelo (evita dobles cl
 let _alView = (() => {
   try { return localStorage.getItem('al-view') === 'nerd' ? 'nerd' : 'easy'; }
   catch (_) { return 'easy'; }
+})();
+// true = probabilidades pasadas por la calibración del backtest walk-forward
+// (data/altlines/tail_calibration.json) · false = el motor crudo.
+let _alCalibrated = (() => {
+  try { return localStorage.getItem('al-calibrated') !== 'raw'; }
+  catch (_) { return true; }
 })();
 // 'demo' = datos sintéticos (gratis) · 'live' = ESPN + The Odds API (gasta créditos)
 let _alSource = (() => {
@@ -4368,57 +4382,104 @@ async function loadAltLines() {
   const sec = document.getElementById('section-altlines');
   if (!sec) return;
 
-  // El esqueleto se construye una sola vez: la grilla de partidos reemplaza a
-  // los videos, y rehacer el innerHTML en cada click los reiniciaría.
+  // El armazón se arma una sola vez: el riel (barra lateral), las herramientas
+  // de la barra superior y el contenido. Rehacerlo en cada clic reiniciaría
+  // la animación del partido que se está simulando.
   if (!sec.dataset.built) {
     sec.innerHTML = _alShellHtml();
+    const rail = document.getElementById('nba-rail');
+    if (rail) rail.innerHTML = _alRailHtml();
+    const tools = document.getElementById('nba-tools');
+    if (tools) tools.innerHTML = _alToolsHtml();
     sec.dataset.built = '1';
   }
+  _alSyncSourceBtns();
+  _alSyncSoundBtn();
   await loadSlate();
 }
 
+// ── Armazón ─────────────────────────────────────────────────────────────────
+// Navegar Pickstachio es elegir un partido: por eso la barra lateral es el
+// riel de partidos de la noche, la barra superior lleva los ajustes (datos,
+// créditos, sonido) y el contenido es el partido elegido.
+
 function _alShellHtml() {
   return `
-    <div class="al-header">
-      <div class="al-title">PICK<span class="al-title-accent">STACHIO</span> <span class="al-title-tag">NBA · Alt Lines</span></div>
-      <div class="al-sub">El libro cotiza las líneas extremas con una curva genérica igual para todos.
-        Nosotros simulamos la distribución real de cada jugador y te mostramos dónde su cola le gana al precio.
-        <strong>Elegí un partido</strong> y abrí los pistachos.</div>
-    </div>
-
-    <div class="al-slate">
-      <div class="al-slate-head">
-        <div class="al-slate-title">Pizarra <span class="al-slate-sub" id="al-slate-meta"></span></div>
-        <div class="al-date-nav">
-          <button class="al-date-btn" title="Día anterior" onclick="altLinesShiftDate(-1)">‹</button>
-          <span class="al-date" id="al-date">—</span>
-          <button class="al-date-btn" title="Día siguiente" onclick="altLinesShiftDate(1)">›</button>
-          <button class="al-date-btn al-date-btn--today" onclick="altLinesToday()">Hoy</button>
-        </div>
-        <div class="al-slate-actions">
-          <div class="al-source" role="group" aria-label="Origen de los datos">
-            <button class="al-source-btn" data-src="demo" onclick="altLinesSource('demo')"
-                    title="Jugadores y cuotas sintéticos: gratis, para ver el motor funcionar">Demo</button>
-            <button class="al-source-btn" data-src="live" onclick="altLinesSource('live')"
-                    title="Logs reales (ESPN) + bandejas Alt reales de cada casa (The Odds API). Gasta créditos.">Real</button>
-          </div>
-          <button class="al-sound" id="al-sound" onclick="altLinesToggleSound()"
-                  title="Cada tirada suena según dónde cae; la cola que le gana al libro suena a campana">Sonido</button>
-          <button class="al-sim-all" id="al-sim-all" onclick="simulateAllGames()">Simular todos</button>
-        </div>
+    <div class="pst-mstrip" aria-label="Partidos de la noche">
+      <div class="pst-mstrip-top">
+        ${_alDateNavHtml(true)}
+        ${_alSourceSegHtml()}
+        ${_alSoundBtnHtml()}
       </div>
-      <div class="al-games" id="al-games">
-        <div class="al-status">Consultando el calendario NBA…</div>
-      </div>
+      <div class="pst-mstrip-list js-rail-list"></div>
     </div>
-
+    <div class="pst-hero-host" id="pst-hero-host"></div>
     <div id="al-detail"></div>
     <div class="al-status" id="al-status" hidden></div>`;
 }
 
+function _alRailHtml() {
+  return `
+    ${_alDateNavHtml(false)}
+    <div class="rail-head">
+      <span class="rail-label">Partidos</span>
+      <span class="rail-meta js-rail-meta"></span>
+    </div>
+    <div class="rail-list js-rail-list">
+      <div class="rail-empty">Consultando el calendario…</div>
+    </div>
+    <div class="rail-foot">
+      <button class="rail-league js-rail-league" onclick="altLinesScope('league')" hidden></button>
+      <button class="rail-simall js-simall" onclick="simulateAllGames()">Simular todos</button>
+    </div>`;
+}
+
+function _alToolsHtml() {
+  return `
+    ${_alSourceSegHtml()}
+    <span class="nba-credits js-credits" hidden></span>
+    ${_alSoundBtnHtml()}`;
+}
+
+function _alDateNavHtml(compact) {
+  return `
+    <div class="rail-date ${compact ? 'rail-date--compact' : ''}">
+      <button class="rail-arrow" title="Día anterior" aria-label="Día anterior" onclick="altLinesShiftDate(-1)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="rail-day js-rail-day" onclick="altLinesToday()" title="Volver a hoy">
+        <span class="rail-dow">—</span><b class="rail-dnum">—</b><span class="rail-mon">—</span>
+      </button>
+      <button class="rail-arrow" title="Día siguiente" aria-label="Día siguiente" onclick="altLinesShiftDate(1)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>`;
+}
+
+function _alSourceSegHtml() {
+  return `
+    <div class="nba-seg js-source" role="group" aria-label="Origen de los datos">
+      <button data-src="demo" onclick="altLinesSource('demo')"
+              title="Jugadores y cuotas sintéticos: gratis, para ver el motor funcionar">Demo</button>
+      <button data-src="live" onclick="altLinesSource('live')"
+              title="Logs reales (ESPN) y bandejas Alt reales de cada casa (The Odds API). Gasta créditos.">Real</button>
+    </div>`;
+}
+
+function _alSoundBtnHtml() {
+  return `
+    <button class="nba-sound js-sound" onclick="altLinesToggleSound()" aria-pressed="false"
+            title="Sonido de la simulación">
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M3.5 7.5h3l4-3.5v12l-4-3.5h-3z" fill="currentColor"/>
+        <path class="nba-sound-on" d="M13.4 7.2a4 4 0 0 1 0 5.6M15.6 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path class="nba-sound-off" d="m13.5 7.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>`;
+}
+
 async function loadSlate(date = _alDate, opts = {}) {
-  const wrap = document.getElementById('al-games');
-  if (wrap) wrap.innerHTML = `<div class="al-status">Consultando el calendario NBA…</div>`;
+  document.querySelectorAll('.js-rail-list').forEach(el => {
+    el.innerHTML = `<div class="rail-empty">Consultando el calendario…</div>`;
+  });
   try {
     const q = new URLSearchParams();
     if (date) q.set('date', date);
@@ -4444,12 +4505,15 @@ async function loadSlate(date = _alDate, opts = {}) {
     renderAltLines();
   } catch (e) {
     console.error('AltLines slate fetch failed', e);
-    const el = document.getElementById('al-games');
-    if (el) {
-      el.innerHTML = `<div class="al-status al-status--error">
-        No se pudo leer el calendario NBA: <strong>${_alEsc(e.message)}</strong><br>
-        ${_alFetchHint()}<br>
-        Backend esperado en <code>${_alEsc(API)}</code>.</div>`;
+    document.querySelectorAll('.js-rail-list').forEach(el => {
+      el.innerHTML = `<div class="rail-empty rail-empty--error">Sin calendario.</div>`;
+    });
+    const st = document.getElementById('al-status');
+    if (st) {
+      st.hidden = false;
+      st.className = 'al-status al-status--error';
+      st.innerHTML = `No se pudo leer el calendario NBA: <strong>${_alEsc(e.message)}</strong><br>
+        ${_alFetchHint()}<br>Backend esperado en <code>${_alEsc(API)}</code>.`;
     }
   }
 }
@@ -4466,8 +4530,6 @@ function altLinesToday() {
   _alDate = null;
   loadSlate(null);
 }
-
-// ── Pizarra: una tarjeta por partido, con su mini video ─────────────────────
 
 function _alTime(iso) {
   if (!iso) return '—';
@@ -4487,77 +4549,123 @@ function _alStatusLabel(g) {
   return st || 'Programado';
 }
 
-function _alTeamChip(t) {
-  const logo = (t && t.logo)
-    ? `<img src="${_alEsc(t.logo)}" alt="" loading="lazy" onerror="this.style.display='none'">`
-    : '';
-  return `<span class="al-game-team">${logo}<span class="al-game-tri">${_alEsc((t && t.tricode) || '—')}</span></span>`;
-}
-
 // Mejor EV que puede llegar al tablero (excluye las líneas con nivel dudoso).
 function _alBestEv(res) {
   const rows = ((res && res.all_edges) || []).filter(r => r.level_ok !== false);
   return rows.length ? Math.max(...rows.map(r => Number(r.ev_pct))) : null;
 }
 
-function _alGameCardHtml(g) {
-  const pr = g.props || {};
-  const res = _alGameResults[g.game_id];
-  const state = res ? 'done' : (pr.has_props ? 'idle' : 'noprops');
-  const best = _alBestEv(res);
-  const interactive = pr.has_props
-    ? `onclick="simulateGame('${_alEsc(g.game_id)}')"
-       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();simulateGame('${_alEsc(g.game_id)}');}"`
-    : 'aria-disabled="true"';
-  return `
-    <article class="al-game" data-gid="${_alEsc(g.game_id)}" data-state="${state}"
-             role="button" tabindex="${pr.has_props ? 0 : -1}" ${interactive}>
-      <div class="al-game-media">
-        <canvas class="al-game-canvas" aria-hidden="true"
-                data-home="${_alEsc(g.home && g.home.color)}"
-                data-away="${_alEsc(g.away && g.away.color)}"></canvas>
-        <div class="al-game-veil"></div>
-        <div class="al-game-status">
-          <span class="al-game-dot"></span>
-          <span class="al-game-status-text">${state === 'done' ? 'SIMULADO'
-            : (pr.has_props ? 'SIMULAR' : 'SIN PROPS')}</span>
-          <span class="al-game-elapsed"></span>
-        </div>
-        <div class="al-game-ev" ${best === null ? 'hidden' : ''}>
-          ${best === null ? '' : `mejor EV ${best.toFixed(0)}%`}</div>
-      </div>
-      <div class="al-game-foot">
-        <div class="al-game-match">
-          ${_alTeamChip(g.away)}<span class="al-game-at">@</span>${_alTeamChip(g.home)}
-        </div>
-        <div class="al-game-when">${_alEsc(_alTime(g.tip_off))} · ${_alEsc(_alStatusLabel(g))}</div>
-        <div class="al-game-props">${_alSource === 'live'
-          ? (res ? `${(res.counts || {}).player_markets ?? '—'} props · ${(res.counts || {}).lines_priced ?? '—'} líneas reales`
-            : (pr.has_props ? `cuotas reales disponibles · ~${_alSlate.credits_per_game || 5} créditos`
-              : (g.state === 'post' ? 'partido terminado' : 'sin cuotas en The Odds API')))
-          : (pr.has_props
-            ? `${pr.players} jug · ${pr.player_markets} props · ${pr.lines} líneas`
-            : 'sin props cargados para este partido')}</div>
-        ${pr.has_props ? `<div class="al-game-est">≈ ${_alNum(g.est_seconds, 1)}s de Monte Carlo</div>` : ''}
-      </div>
-    </article>`;
+// ── Riel: una fila por partido ──────────────────────────────────────────────
+
+function _alGame(gid) {
+  return ((_alSlate && _alSlate.games) || []).find(g => g.game_id === gid) || null;
 }
 
-function _alSlateMeta() {
-  if (!_alSlate) return '';
-  const src = _alSlate.slate_source === 'espn' ? 'calendario real (ESPN)'
-    : (_alSlate.slate_source === 'offline' ? 'calendario local (sin red)' : 'calendario local');
-  const shifted = _alSlate.auto_shifted
-    ? ` · pediste ${_alEsc(_alSlate.requested_date)} y no había partidos, te muestro el más cercano`
-    : '';
-  const props = `${_alSlate.games_with_props}/${_alSlate.n_games} con props`;
-  if (_alSlate.data_source === 'live') {
-    const q = _alQuota();
-    const left = q != null ? ` · quedan ${_alEsc(q)} créditos` : '';
-    const err = _alSlate.odds_error ? ` · <span class="al-neg">${_alEsc(_alSlate.odds_error)}</span>` : '';
-    return `${src}${shifted} · ${_alSlate.games_with_props}/${_alSlate.n_games} con cuotas reales${left}${err}`;
+function _alCanSim(g) {
+  return !!(g && (g.props || {}).has_props);
+}
+
+function _alRowState(g) {
+  if (_alGameResults[g.game_id]) return 'done';
+  const prev = document.querySelector(`.rail-game[data-gid="${_alEsc(g.game_id)}"]`);
+  if (prev && prev.dataset.state === 'simulating') return 'simulating';
+  return _alCanSim(g) ? 'idle' : 'noprops';
+}
+
+function _alRowStateHtml(g, state) {
+  if (state === 'simulating') {
+    return `<span class="rail-state rail-state--sim"><i></i><span class="js-elapsed">0s</span></span>`;
   }
-  return `${src}${shifted} · ${props}`;
+  if (state === 'done') {
+    const res = _alGameResults[g.game_id];
+    const rec = res && res.results && res.results.top;
+    if (rec && (rec.win + rec.loss + rec.push) > 0) {
+      const cls = rec.pnl > 0 ? 'won' : rec.pnl < 0 ? 'lost' : 'push';
+      return `<span class="rail-state rail-state--rec rail-state--${cls}"
+        title="Picks recomendados: ${rec.win} ganados, ${rec.loss} perdidos${rec.push ? `, ${rec.push} push` : ''} · ${rec.pnl > 0 ? '+' : ''}${rec.pnl}u">
+        <b>${rec.win}-${rec.loss}</b></span>`;
+    }
+    const n = ((res && res.edges) || []).length;
+    const best = _alBestEv(res);
+    return `<span class="rail-state rail-state--done" title="${n} pistachos · mejor EV ${best === null ? '—' : best.toFixed(0) + '%'}">
+      <b>${n}</b><small>pist.</small></span>`;
+  }
+  if (state === 'error') return `<span class="rail-state rail-state--err">Error</span>`;
+  if (state === 'noprops') {
+    return `<span class="rail-state rail-state--off">${g.state === 'post' ? 'Final' : 'Sin cuotas'}</span>`;
+  }
+  return `<span class="rail-state rail-state--idle">Simular</span>`;
+}
+
+function _alRailRowHtml(g) {
+  const state = _alRowState(g);
+  const sel = _alScope === 'game' && _alSelected === g.game_id;
+  const team = t => `
+    <span class="rail-team">
+      ${t && t.logo ? `<img src="${_alEsc(t.logo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : '<span class="rail-nologo"></span>'}
+      <b>${_alEsc((t && t.tricode) || '—')}</b>
+    </span>`;
+  const away = '#' + String((g.away && g.away.color) || '333').replace('#', '');
+  const home = '#' + String((g.home && g.home.color) || '333').replace('#', '');
+  return `
+    <button class="rail-game ${sel ? 'is-selected' : ''}" data-gid="${_alEsc(g.game_id)}" data-state="${state}"
+            style="--away:${_alEsc(away)};--home:${_alEsc(home)}"
+            ${state === 'noprops' ? 'disabled' : ''}
+            onclick="simulateGame('${_alEsc(g.game_id)}')"
+            aria-label="${_alEsc(`${(g.away || {}).tricode} en ${(g.home || {}).tricode}, ${_alTime(g.tip_off)}`)}">
+      <span class="rail-teams">${team(g.away)}${team(g.home)}</span>
+      <span class="rail-when">${_alEsc(_alTime(g.tip_off))}<small>${_alEsc(_alStatusLabel(g))}</small></span>
+      <span class="js-rail-state">${_alRowStateHtml(g, state)}</span>
+    </button>`;
+}
+
+function _alRows(gid) {
+  return document.querySelectorAll(`.rail-game[data-gid="${_alEsc(gid)}"]`);
+}
+
+function _alMarkSelected() {
+  document.querySelectorAll('.rail-game').forEach(r => {
+    r.classList.toggle('is-selected', _alScope === 'game' && r.dataset.gid === _alSelected);
+  });
+  document.querySelectorAll('.js-rail-league').forEach(b => {
+    b.classList.toggle('is-selected', _alScope === 'league');
+  });
+}
+
+function renderSlate() {
+  if (!_alSlate) return;
+  const games = _alSlate.games || [];
+  const rows = games.length
+    ? games.map(_alRailRowHtml).join('')
+    : `<div class="rail-empty">No hay partidos esa fecha.</div>`;
+  document.querySelectorAll('.js-rail-list').forEach(el => { el.innerHTML = rows; });
+
+  // Fecha: "MAR 20 OCT"
+  const d = _alSlate.date ? new Date(`${_alSlate.date}T12:00:00`) : null;
+  document.querySelectorAll('.js-rail-day').forEach(b => {
+    if (!d || isNaN(d)) return;
+    b.querySelector('.rail-dow').textContent = d.toLocaleDateString('es', { weekday: 'short' }).replace('.', '');
+    b.querySelector('.rail-dnum').textContent = String(d.getDate());
+    b.querySelector('.rail-mon').textContent = d.toLocaleDateString('es', { month: 'short' }).replace('.', '');
+    b.title = _alSlate.auto_shifted
+      ? `Pediste ${_alSlate.requested_date} y no había partidos: es el día más cercano. Tocá para volver a hoy.`
+      : 'Volver a hoy';
+  });
+  document.querySelectorAll('.js-rail-meta').forEach(el => { el.textContent = _alRailMeta(); });
+
+  _alSyncSourceBtns();
+  _alSyncSoundBtn();
+  _alSyncCredits();
+  _alUpdateSimAllBtn();
+  _alRenderHero();
+}
+
+function _alRailMeta() {
+  if (!_alSlate) return '';
+  const n = _alSlate.n_games || 0;
+  const with_ = _alSlate.games_with_props || 0;
+  const base = `${n} partido${n === 1 ? '' : 's'}`;
+  return with_ < n ? `${base} · ${with_} con cuotas` : base;
 }
 
 // Créditos que quedan en The Odds API: el dato más fresco entre la pizarra y
@@ -4570,6 +4678,16 @@ function _alQuota() {
   return best ? best.remaining : null;
 }
 
+function _alSyncCredits() {
+  const q = _alQuota();
+  document.querySelectorAll('.js-credits').forEach(el => {
+    const show = _alSource === 'live';
+    el.hidden = !show;
+    el.innerHTML = q != null ? `<b>${_alEsc(q)}</b> créditos` : `~${(_alSlate && _alSlate.credits_per_game) || 5} créd./partido`;
+    el.title = 'Créditos de The Odds API (plan compartido con MLB)';
+  });
+}
+
 function altLinesSource(src) {
   if (src === _alSource || _alSimAll || _alBusy) return;
   _alSource = src;
@@ -4577,6 +4695,7 @@ function altLinesSource(src) {
   _alGameResults = {};
   _alLeague = null;
   _alSelected = null;
+  _alScope = 'game';
   _altLinesData = null;
   _alFilters.touched = false;
   const det = document.getElementById('al-detail');
@@ -4586,72 +4705,43 @@ function altLinesSource(src) {
 }
 
 function _alSyncSourceBtns() {
-  document.querySelectorAll('.al-source-btn').forEach(b => {
+  document.querySelectorAll('.js-source button').forEach(b => {
     const on = b.dataset.src === _alSource;
-    b.classList.toggle('al-source-btn--on', on);
+    b.classList.toggle('is-on', on);
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
 }
 
-function renderSlate() {
-  const wrap = document.getElementById('al-games');
-  if (!wrap || !_alSlate) return;
-  const games = _alSlate.games || [];
-  wrap.innerHTML = games.length
-    ? games.map(_alGameCardHtml).join('')
-    : `<div class="al-status">No hay partidos en el calendario para esa fecha.</div>`;
-
-  const meta = document.getElementById('al-slate-meta');
-  if (meta) meta.innerHTML = _alSlateMeta();
-  const dateEl = document.getElementById('al-date');
-  if (dateEl) dateEl.textContent = _alSlate.date || '—';
-  _alSyncSourceBtns();
-  _alSyncSoundBtn();
-  _alUpdateSimAllBtn();
-  _alPaintCards();
-}
-
 function _alUpdateSimAllBtn() {
-  const btn = document.getElementById('al-sim-all');
-  if (!btn || !_alSlate) return;
-  const withProps = (_alSlate.games || []).filter(g => (g.props || {}).has_props);
+  const withProps = ((_alSlate && _alSlate.games) || []).filter(_alCanSim);
   const done = withProps.filter(g => _alGameResults[g.game_id]).length;
-  if (_alSimAll) {
-    btn.textContent = `Detener (${done}/${withProps.length})`;
-    btn.classList.add('al-sim-all--running');
-  } else {
-    btn.textContent = done === withProps.length && withProps.length
-      ? `Todos simulados (${done})`
-      : `Simular todos (${withProps.length})`;
-    btn.classList.remove('al-sim-all--running');
-  }
-  btn.disabled = !withProps.length;
+  document.querySelectorAll('.js-simall').forEach(btn => {
+    if (_alSimAll) {
+      btn.textContent = `Detener · ${done}/${withProps.length}`;
+      btn.classList.add('is-running');
+    } else {
+      btn.textContent = done === withProps.length && withProps.length
+        ? `Todos simulados · ${done}`
+        : `Simular todos · ${withProps.length}`;
+      btn.classList.remove('is-running');
+    }
+    btn.disabled = !withProps.length;
+  });
+  const n = Object.keys(_alGameResults).length;
+  document.querySelectorAll('.js-rail-league').forEach(b => {
+    b.hidden = n < 1;
+    b.innerHTML = `<span>Toda la liga</span><small>${n} simulado${n === 1 ? '' : 's'}</small>`;
+  });
+  _alMarkSelected();
 }
 
-// ── Video de la tarjeta ─────────────────────────────────────────────────────
-
-function _alCard(gid) {
-  return document.querySelector(`.al-game[data-gid="${_alEsc(gid)}"]`);
-}
-
-// El pick que la tarjeta dibuja al terminar: el primero del top del motor o,
+// El pick que la cabecera dibuja al terminar: el primero del top del motor o,
 // si el top quedó vacío, la mejor línea elegible.
 function _alBestRow(res) {
   if (!res) return null;
   if (res.edges && res.edges.length) return res.edges[0];
   const rows = (res.all_edges || []).filter(r => r.level_ok !== false);
   return rows.length ? rows.reduce((a, b) => (Number(b.ev_pct) > Number(a.ev_pct) ? b : a)) : null;
-}
-
-function _alPaintCards() {
-  if (!window.AlGalton) return;
-  document.querySelectorAll('.al-game').forEach(card => {
-    const cv = card.querySelector('.al-game-canvas');
-    if (!cv) return;
-    const res = _alGameResults[card.dataset.gid];
-    if (card.dataset.state === 'simulating') return;
-    AlGalton.paint(cv, res ? _alBestRow(res) : null);
-  });
 }
 
 function altLinesToggleSound() {
@@ -4661,57 +4751,100 @@ function altLinesToggleSound() {
 }
 
 function _alSyncSoundBtn() {
-  const b = document.getElementById('al-sound');
-  if (!b || !window.AlGalton) return;
+  if (!window.AlGalton) return;
   const on = AlGalton.soundOn();
-  b.textContent = on ? 'Sonido: sí' : 'Sonido: no';
-  b.setAttribute('aria-pressed', on ? 'true' : 'false');
-  b.classList.toggle('al-sound--on', on);
+  document.querySelectorAll('.js-sound').forEach(b => {
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.classList.toggle('is-on', on);
+    b.title = on ? 'Sonido activado' : 'Sonido apagado';
+  });
+}
+
+// ── Cabecera del partido: el tablero de Galton en grande ────────────────────
+
+function _alHeroCanvas() {
+  return document.querySelector('#pst-hero-host .pst-hero-canvas');
+}
+
+function _alRenderHero() {
+  const host = document.getElementById('pst-hero-host');
+  if (!host) return;
+  const g = _alScope === 'game' && _alSelected ? _alGame(_alSelected) : null;
+  const sim = g && [..._alRows(g.game_id)].some(r => r.dataset.state === 'simulating');
+  const res = g ? _alGameResults[g.game_id] : null;
+  const away = g ? String((g.away && g.away.color) || '2b3a22') : '1a2414';
+  const home = g ? String((g.home && g.home.color) || '2b3a22') : '6e9b3f';
+
+  let info;
+  if (_alScope === 'league') {
+    const n = Object.keys(_alGameResults).length;
+    info = `
+      <div class="pst-hero-kicker">Toda la liga</div>
+      <div class="pst-hero-title">${n} partido${n === 1 ? '' : 's'} <span>simulado${n === 1 ? '' : 's'}</span></div>
+      <div class="pst-hero-sub">Los mejores pistachos de la noche, juntos.</div>`;
+  } else if (g) {
+    const logo = t => t && t.logo ? `<img src="${_alEsc(t.logo)}" alt="" onerror="this.remove()">` : '';
+    info = `
+      <div class="pst-hero-kicker">${_alEsc(_alTime(g.tip_off))} · ${_alEsc(_alStatusLabel(g))}${g.venue ? ' · ' + _alEsc(g.venue) : ''}</div>
+      <div class="pst-hero-title pst-hero-title--match">
+        ${logo(g.away)}<span>${_alEsc(g.away.tricode)}</span><i>@</i><span>${_alEsc(g.home.tricode)}</span>${logo(g.home)}
+      </div>
+      <div class="pst-hero-sub js-hero-status">${sim ? 'Simulando 20.000 partidos por jugador… <b class="js-elapsed">0s</b>'
+        : res ? _alHeroResultText(res)
+          : _alCanSim(g) ? 'Tocá <b>Simular</b> para abrir los pistachos de este partido.' : 'Este partido no tiene cuotas para simular.'}</div>
+      ${!sim && !res && _alCanSim(g) ? `<button class="pst-hero-cta" onclick="simulateGame('${_alEsc(g.game_id)}')">Simular partido</button>` : ''}
+      ${!sim && res && !res.from_log ? `<button class="pst-hero-cta pst-hero-cta--ghost" onclick="resimulateGame('${_alEsc(g.game_id)}')">Re-simular</button>` : ''}`;
+  } else {
+    const n = (_alSlate && _alSlate.games_with_props) || 0;
+    info = `
+      <div class="pst-hero-kicker">${_alSlate && _alSlate.date
+        ? _alEsc(new Date(`${_alSlate.date}T12:00:00`).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' }))
+          + ' · ' + _alEsc(_alRailMeta())
+        : 'NBA · Alt Lines'}</div>
+      <div class="pst-hero-title">Elegí un <span>partido</span></div>
+      <div class="pst-hero-sub">El libro cotiza las líneas extremas con una curva genérica igual para todos.
+        Simulamos la distribución real de cada jugador y te mostramos dónde su cola le gana al precio.</div>
+      ${n ? `<button class="pst-hero-cta" onclick="simulateAllGames()">Simular los ${n}</button>` : ''}`;
+  }
+
+  host.innerHTML = `
+    <section class="pst-hero ${g ? 'pst-hero--game' : ''}" style="--away:#${_alEsc(away.replace('#', ''))};--home:#${_alEsc(home.replace('#', ''))}">
+      <canvas class="pst-hero-canvas" aria-hidden="true" data-away="${_alEsc(away)}" data-home="${_alEsc(home)}"
+              data-plot-left="${window.innerWidth > 768 ? '0.42' : '0'}"></canvas>
+      <div class="pst-hero-info">${info}</div>
+    </section>`;
+
+  const cv = _alHeroCanvas();
+  if (!cv || !window.AlGalton) return;
+  if (sim) AlGalton.start(cv);
+  else AlGalton.paint(cv, res ? _alBestRow(res) : null);
 }
 
 /**
- * Cambia el estado visual de una tarjeta EN SITIO (sin re-renderizar la grilla)
- * para no reiniciar los videos de las demás.
+ * Cambia el estado de un partido EN SITIO: sus filas del riel y, si es el
+ * partido abierto, la cabecera (que es donde corre la animación).
  */
 function _alSetCardState(gid, state, msg) {
-  const card = _alCard(gid);
-  if (!card) return;
-  card.dataset.state = state;
-  const canvas = card.querySelector('.al-game-canvas');
-  const label = card.querySelector('.al-game-status-text');
-  const ev = card.querySelector('.al-game-ev');
-  const el = card.querySelector('.al-game-elapsed');
-
+  const g = _alGame(gid);
+  _alRows(gid).forEach(r => {
+    r.dataset.state = state;
+    const slot = r.querySelector('.js-rail-state');
+    if (slot && g) slot.innerHTML = _alRowStateHtml(g, state);
+    if (state === 'error' && msg) r.title = msg;
+  });
+  if (!(_alScope === 'game' && _alSelected === gid)) return;
+  const cv = _alHeroCanvas();
+  const status = document.querySelector('#pst-hero-host .js-hero-status');
   if (state === 'simulating') {
-    if (label) label.textContent = 'SIMULANDO…';
-    if (window.AlGalton) AlGalton.start(canvas);
+    _alRenderHero();
+  } else if (state === 'done') {
+    if (cv && window.AlGalton) AlGalton.finish(cv, _alBestRow(_alGameResults[gid]));
+    const res = _alGameResults[gid];
+    if (status) status.innerHTML = _alHeroResultText(res);
+    document.querySelector('#pst-hero-host .pst-hero-cta')?.remove();
   } else {
-    if (window.AlGalton) {
-      if (state === 'done') AlGalton.finish(canvas, _alBestRow(_alGameResults[gid]));
-      else AlGalton.stop(canvas);
-    }
-    if (label) {
-      label.textContent = state === 'done' ? 'SIMULADO'
-        : (state === 'error' ? 'ERROR' : 'SIMULAR');
-    }
-    if (el) el.textContent = '';
-  }
-  if (state === 'done' && ev) {
-    const r = _alGameResults[gid];
-    const best = _alBestEv(r);
-    if (best !== null) {
-      ev.hidden = false;
-      ev.textContent = `mejor EV ${best.toFixed(0)}%`;
-    }
-    const props = card.querySelector('.al-game-props');
-    if (props && r && _alSource === 'live') {
-      const c = r.counts || {};
-      props.textContent = `${c.player_markets ?? '—'} props · ${c.lines_priced ?? '—'} líneas reales`;
-    }
-  }
-  if (state === 'error' && ev) {
-    ev.hidden = false;
-    ev.textContent = msg || 'no se pudo simular';
+    if (cv && window.AlGalton) AlGalton.stop(cv);
+    if (status) status.textContent = state === 'error' ? `No se pudo simular: ${msg || 'error'}` : '';
   }
 }
 
@@ -4719,32 +4852,61 @@ function _alSetCardState(gid, state, msg) {
 
 async function simulateGame(gid, opts = {}) {
   const done = _alGameResults[gid];
-  if (done) {                                   // ya simulado: sólo abrirlo
+  if (done && !opts.refresh) {                  // ya simulado: sólo abrirlo
     _alSelectGame(gid);
     return done;
   }
-  const card = _alCard(gid);
-  if (card && card.dataset.state === 'simulating') return null;
+  if ([..._alRows(gid)].some(r => r.dataset.state === 'simulating')) {
+    if (!opts.silent) { _alSelected = gid; _alScope = 'game'; _alMarkSelected(); _alRenderHero(); }
+    return null;
+  }
 
+  // Abrir el partido apenas se toca: la cabecera muestra su simulación.
+  if (!opts.silent) {
+    _alSelected = gid;
+    _alScope = 'game';
+    _altLinesData = null;
+    _alMarkSelected();
+    renderAltLines();
+  }
   const t0 = Date.now();
   _alSetCardState(gid, 'simulating');
   const tick = setInterval(() => {
-    const el = card && card.querySelector('.al-game-elapsed');
-    if (el) el.textContent = `${((Date.now() - t0) / 1000).toFixed(0)}s`;
+    const txt = `${((Date.now() - t0) / 1000).toFixed(0)}s`;
+    _alRows(gid).forEach(r => { const el = r.querySelector('.js-elapsed'); if (el) el.textContent = txt; });
+    if (_alSelected === gid) {
+      const el = document.querySelector('#pst-hero-host .js-elapsed');
+      if (el) el.textContent = txt;
+    }
   }, 250);
 
   try {
     const q = new URLSearchParams({ game: gid, n_iter: AL_N_ITER });
     if (_alDate) q.set('date', _alDate);
     if (opts.refresh) q.set('refresh', 'true');
+    if (opts.refreshOdds) q.set('refresh_odds', 'true');
     q.set('source', _alSource);
-    const res = await fetch(`${API}/api/altlines/edges?${q}`);
-    if (!res.ok) {
-      let detail = `HTTP ${res.status}`;
-      try { const j = await res.json(); if (j && j.detail) detail = j.detail; } catch (_) { }
-      throw new Error(detail);
+    q.set('calibrated', _alCalibrated ? 'true' : 'false');
+    const g0 = _alGame(gid);
+    if (_alFromLog(g0)) {
+      // Partido terminado: las casas ya bajaron sus líneas. Se reabre el
+      // tablero que guardó el registro de picks, con su resultado.
+      const r = await fetch(`${API}/api/altlines/results?game=${encodeURIComponent(gid)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      if (!j.board) throw new Error('No hay picks guardados de este partido.');
+      j.board.game = g0;
+      _alGameResults[gid] = j.board;
+    } else {
+      const res = await fetch(`${API}/api/altlines/edges?${q}`);
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try { const j = await res.json(); if (j && j.detail) detail = j.detail; } catch (_) { }
+        throw new Error(detail);
+      }
+      _alGameResults[gid] = await res.json();
+      if (_alSource === 'live') _alAttachResults(gid);   // en segundo plano
     }
-    _alGameResults[gid] = await res.json();
     _alLeague = null;                           // el tablero global quedó viejo
     _alSetCardState(gid, 'done');
     if (!opts.silent) _alSelectGame(gid);
@@ -4811,6 +4973,8 @@ function _alSelectGame(gid) {
   if (window.Pickstachio) Pickstachio.reset();
   _altLinesData = _alGameResults[gid] || null;
   _alDefaultFilters();
+  _alMarkSelected();
+  _alRenderHero();
   renderAltLines();
 }
 
@@ -4829,6 +4993,8 @@ function altLinesScope(scope) {
     _altLinesData = _alSelected ? _alGameResults[_alSelected] : null;
   }
   _alDefaultFilters();
+  _alMarkSelected();
+  _alRenderHero();
   renderAltLines();
 }
 
@@ -4866,8 +5032,9 @@ function _alRowHtml(r) {
   const profClass = prof.includes('boom') ? 'al-badge--boom'
     : prof.includes('volatile') ? 'al-badge--volatile' : 'al-badge--steady';
   const sideClass = String(r.side).toUpperCase() === 'OVER' ? 'al-side--over' : 'al-side--under';
+  const oc = r.outcome === 'win' ? 'al-row--won' : r.outcome === 'loss' ? 'al-row--lost' : '';
   return `
-    <tr>
+    <tr class="${oc}" ${r.outcome ? `title="${r.outcome === 'win' ? 'Ganada' : r.outcome === 'loss' ? 'Perdida' : r.outcome}${r.actual != null ? ` · terminó en ${r.actual}` : ''}"` : ''}>
       <td class="al-td-player">
         <div class="al-player">${_alEsc(r.player)}</div>
         <div class="al-team">${_alEsc(r.team || '')}</div>
@@ -4900,17 +5067,26 @@ function renderAltLines() {
   }
   const d = _altLinesData;
   if (!d) {
-    host.innerHTML = `<div class="al-status">Elegí un partido de la pizarra
-      (o <strong>Simular todos</strong>) para ver el tablero de edges.</div>`;
+    const busy = _alSelected && [..._alRows(_alSelected)].some(r => r.dataset.state === 'simulating');
+    host.innerHTML = busy ? `<div class="pst-wait">Abriendo pistachos…</div>` : '';
     return;
   }
   if (!_alFilters.touched) _alFilters.minEv = _alTopEv();
   if (_alView === 'easy' && window.Pickstachio) {
-    host.innerHTML = _alDetailHeaderHtml(d) + Pickstachio.html(d);
+    host.innerHTML = _alDetailHeaderHtml(d) + Pickstachio.html(d, _alTeams());
     return;
   }
   host.innerHTML = _alDetailHeaderHtml(d) + _alBoardHtml(d);
   renderAltLinesTable();
+}
+
+// tricode → { color, logo } de los equipos de la pizarra (para los cromos).
+function _alTeams() {
+  const out = {};
+  ((_alSlate && _alSlate.games) || []).forEach(g => {
+    [g.home, g.away].forEach(t => { if (t && t.tricode) out[t.tricode] = { color: t.color, logo: t.logo }; });
+  });
+  return out;
 }
 
 function altLinesView(v) {
@@ -4929,44 +5105,21 @@ function _alViewTabs() {
     </div>`;
 }
 
-function _alScopeTabs() {
-  const n = Object.keys(_alGameResults).length;
-  if (!n) return '';
-  return `<div class="al-scope">
-      <button class="al-scope-btn ${_alScope === 'game' ? 'al-scope-btn--on' : ''}"
-              onclick="altLinesScope('game')">Partido</button>
-      <button class="al-scope-btn ${_alScope === 'league' ? 'al-scope-btn--on' : ''}"
-              onclick="altLinesScope('league')">Liga (${n} simulados)</button>
-    </div>`;
-}
-
 function _alDetailHeaderHtml(d) {
   const c = d.counts || {};
-  const g = d.game;
-  const title = g
-    ? `${_alEsc(g.away.tricode)} <span class="al-detail-at">@</span> ${_alEsc(g.home.tricode)}`
-    : 'Toda la liga';
-  const sub = g
-    ? `${_alEsc(_alTime(g.tip_off))} · ${_alEsc(_alStatusLabel(g))}${g.venue ? ' · ' + _alEsc(g.venue) : ''}`
-    : `${c.games || 0} partidos simulados`;
+  const src = d.source === 'demo' ? 'Demo' : d.source === 'live' ? 'Real' : 'CSV';
   return `
     <div class="al-detail-head">
-      <div class="al-detail-title">
-        <span class="al-detail-name">${title}</span>
-        <span class="al-detail-sub">${sub}</span>
-      </div>
-      ${_alScopeTabs()}
-      ${_alViewTabs()}
+      <div class="al-head-tabs">${_alViewTabs()}${_alModelTabs()}</div>
       <div class="al-meta">
-        ${_alEsc(d.source === 'demo' ? 'datos DEMO (sintéticos)'
-          : (d.source === 'live' ? 'datos REALES (ESPN + The Odds API, mediana anclada al mercado)' : 'datos reales (CSV)'))} ·
-        ${d.source === 'live' && _alQuota() != null ? `quedan ${_alEsc(_alQuota())} créditos ·` : ''}
-        ${c.player_markets ?? '—'} jugador-mercado · ${c.lines_priced ?? '—'} líneas cotizadas ·
-        reportadas ${c.lines_reported ?? '—'} ·
-        ${_alNum(d.params && d.params.n_iter, 0)} iteraciones ·
-        ${_alNum(d.elapsed_s, 1)}s
-        ${d.cached ? '· en caché' : ''}
-        <button class="al-refresh" onclick="refreshAltLines()">Actualizar</button>
+        <span class="al-meta-src al-meta-src--${_alEsc(d.source || 'csv')}">${src}</span>
+        <span class="al-meta-src">${d.params && d.params.calibrated ? 'Calibrado' : 'Crudo'}</span>
+        ${c.player_markets ?? '—'} jugador-mercado · ${c.lines_priced ?? '—'} líneas ·
+        ${_alNum(d.params && d.params.n_iter, 0)} iteraciones${d.elapsed_s != null ? ` · ${_alNum(d.elapsed_s, 1)}s` : ''}${d.cached ? ' · en caché' : ''}
+        <button class="al-refresh" onclick="resimulateGame()" ${_alScope === 'game' && _alSelected ? '' : 'hidden'}
+                title="Volver a correr el motor sobre este partido (no gasta créditos)">Re-simular</button>
+        <button class="al-refresh" onclick="refreshAltLines()"
+                title="${_alSource === 'live' ? 'Pedir cuotas nuevas (gasta créditos) y re-simular' : 'Releer el calendario y re-simular'}">Actualizar</button>
       </div>
     </div>`;
 }
@@ -5059,10 +5212,10 @@ function _alMergeGames() {
   if (!parts.length) return null;
   const all = [].concat(...parts.map(p => p.all_edges || []));
   all.sort((a, b) => b.ev_pct - a.ev_pct);
-  // Misma regla que el motor: las líneas donde modelo y mercado no coinciden
-  // en el nivel del jugador (level_ok = false) nunca entran al top.
-  const pos = all.filter(r => Number(r.ev_pct) > 0 && r.level_ok !== false);
-  const n = Math.max(1, Math.ceil(pos.length * 5 / 100));
+  // Los recomendados de la liga son la unión de los de cada partido: el motor
+  // ya los eligió con sus filtros (probabilidad, cuota) y sin correlación
+  // (ver ev.select_board). Recalcularlos acá desde all_edges los rompería.
+  const top = [].concat(...parts.map(p => p.edges || [])).sort((a, b) => b.ev_pct - a.ev_pct);
   const first = parts[0];
   return {
     source: first.source,
@@ -5077,13 +5230,13 @@ function _alMergeGames() {
       player_markets: parts.reduce((s, p) => s + (((p.counts || {}).player_markets) || 0), 0),
       games_of_history: parts.reduce((s, p) => s + (((p.counts || {}).games_of_history) || 0), 0),
       lines_priced: all.length,
-      lines_reported: Math.min(n, pos.length),
+      lines_reported: top.length,
       games: parts.length,
     },
     books: [...new Set(all.map(r => r.book))].sort(),
     profiles: [].concat(...parts.map(p => p.profiles || []))
       .sort((a, b) => b.mean_minus_median - a.mean_minus_median).slice(0, 12),
-    edges: pos.slice(0, n),
+    edges: top,
     all_edges: all,
   };
 }
@@ -5153,9 +5306,98 @@ async function refreshAltLines() {
   _alFilters.touched = false;
   await loadSlate(_alDate, { refresh: true });
   if (keep && _alSlate && (_alSlate.games || []).some(g => g.game_id === keep)) {
-    await simulateGame(keep, { refresh: true });
+    await simulateGame(keep, { refresh: true, refreshOdds: _alSource === 'live' });
   }
   if (typeof _showToast === 'function') _showToast('Pizarra y tablero actualizados', 'ok');
+}
+
+/**
+ * Vuelve a correr el motor sobre el partido abierto. No pide cuotas nuevas
+ * (eso es "Actualizar"), así que en modo Real no gasta créditos. El motor es
+ * determinístico por (jugador, mercado): con los mismos datos y el mismo
+ * modelo da lo mismo; lo que cambia el resultado es el modelo (calibrado o
+ * crudo) o datos nuevos.
+ */
+// ── Resultados: lo que pasó con los picks guardados ─────────────────────────
+
+// Un partido se abre desde el registro (y no simulando) cuando es modo Real,
+// tiene picks guardados y ya no hay cuotas que pedir.
+function _alFromLog(g) {
+  return !!(g && _alSource === 'live' && (g.logged || 0) > 0
+    && (g.state === 'post' || !g.has_odds_event));
+}
+
+function _alResultKey(r) {
+  return `${r.player_id}|${r.market}|${String(r.side).toUpperCase()}|${Number(r.point)}`;
+}
+
+// Pide al backend el resultado de los picks de un partido (liquida contra
+// ESPN si ya terminó) y lo pega en las líneas que se están mostrando.
+async function _alAttachResults(gid) {
+  try {
+    const r = await fetch(`${API}/api/altlines/results?game=${encodeURIComponent(gid)}`);
+    if (!r.ok) return;
+    const j = await r.json();
+    const d = _alGameResults[gid];
+    if (!d || !j || !j.results) return;
+    d.results = j.summary;
+    const mark = (rows) => (rows || []).forEach(row => {
+      const hit = j.results[_alResultKey(row)];
+      if (hit && hit.outcome) Object.assign(row, { outcome: hit.outcome, actual: hit.actual, pnl: hit.pnl });
+    });
+    mark(d.edges); mark(d.all_edges);
+    if (!j.settled) return;
+    _alRows(gid).forEach(row => {
+      const slot = row.querySelector('.js-rail-state');
+      const g = _alGame(gid);
+      if (slot && g) slot.innerHTML = _alRowStateHtml(g, 'done');
+    });
+    if (_alSelected === gid && _alScope === 'game') { _alRenderHero(); renderAltLines(); }
+  } catch (_) { /* sin resultados: no es un error */ }
+}
+
+function _alHeroResultText(res) {
+  const rec = res && res.results && res.results.top;
+  const n = ((res && res.edges) || []).length;
+  if (rec && (rec.win + rec.loss + rec.push) > 0) {
+    const pnl = `${rec.pnl > 0 ? '+' : ''}${_alNum(rec.pnl, 2)}u`;
+    return `Resultado de los recomendados: <b class="pst-res-w">${rec.win} ganados</b> · `
+      + `<b class="pst-res-l">${rec.loss} perdidos</b>${rec.push ? ` · ${rec.push} push` : ''}`
+      + `${rec.pending ? ` · ${rec.pending} pendientes` : ''} · <b class="${rec.pnl >= 0 ? 'pst-res-w' : 'pst-res-l'}">${pnl}</b>`;
+  }
+  if (res && res.from_log) return `${n} pistachos guardados · resultado pendiente de ESPN`;
+  return `${n} pistachos abiertos · el mejor, dibujado contra la curva del libro`;
+}
+
+function resimulateGame(gid = _alSelected) {
+  if (!gid) return;
+  delete _alGameResults[gid];
+  _alLeague = null;
+  return simulateGame(gid, { refresh: true });
+}
+
+function altLinesCalibration(on) {
+  if (on === _alCalibrated || _alSimAll) return;
+  _alCalibrated = on;
+  try { localStorage.setItem('al-calibrated', on ? 'cal' : 'raw'); } catch (_) { }
+  // Lo ya simulado se hizo con el otro modelo: se descarta y se re-simula el
+  // partido abierto (el resto se recalcula cuando lo abras).
+  const keep = _alScope === 'game' ? _alSelected : null;
+  _alGameResults = {};
+  _alLeague = null;
+  _altLinesData = null;
+  renderSlate();
+  if (keep) resimulateGame(keep);
+  else renderAltLines();
+}
+
+function _alModelTabs() {
+  return `<div class="al-view al-model" role="group" aria-label="Modelo">
+      <button class="al-view-btn ${_alCalibrated ? 'al-view-btn--on' : ''}" onclick="altLinesCalibration(true)"
+              title="Probabilidades corregidas con el backtest walk-forward de la temporada 2025-26">Calibrado</button>
+      <button class="al-view-btn ${!_alCalibrated ? 'al-view-btn--on' : ''}" onclick="altLinesCalibration(false)"
+              title="El motor sin corrección">Crudo</button>
+    </div>`;
 }
 
 /* Estado inicial de las pestañas de deporte.

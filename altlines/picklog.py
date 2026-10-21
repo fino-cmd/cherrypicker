@@ -15,12 +15,17 @@ tracker on purpose.
            so the same quote is never stored twice within a run. The same line
            seen by a LATER run is a new row: that is what gives CLV its
            snapshots. `actual` / `outcome` / `pnl` are filled by settle.
+           `pst_score` / `pst_tier` keep the Pickstachio tier the board showed
+           (gold = Pistacho Dorado, open = Pistacho Abierto, shell = Cáscara
+           Dura) and `extra` the card fields (JSON), so a finished game can be
+           reopened from here after the books pulled their lines.
 
 Logging must never break a run: every failure here is caught and logged.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from contextlib import closing
@@ -74,6 +79,9 @@ CREATE TABLE IF NOT EXISTS lines (
     anchor_scale REAL,
     level_ok     INTEGER,
     in_top       INTEGER,                   -- 1 = in that run's top-X% shortlist
+    pst_score    INTEGER,                   -- Pickstachio Score 0-100 (altlines/tiers.py)
+    pst_tier     TEXT,                      -- gold | open | shell
+    extra        TEXT,                      -- JSON: the card fields (profile, sim_*, stake…)
     snapshot_ts  TEXT,                      -- the book's last_update for the quote
     actual       REAL,                      -- settled stat (NULL until settled / DNP)
     outcome      TEXT,                      -- win | loss | push | void
@@ -88,7 +96,14 @@ CREATE INDEX IF NOT EXISTS ix_lines_unsettled ON lines(outcome);
 _LINE_COLS = ["game_id", "game_date", "tip_off", "player_id", "player", "team",
               "market", "side", "point", "book", "decimal_odds", "p_model",
               "p_fair", "p_curve", "ev", "main_line", "anchor_scale", "level_ok",
-              "in_top", "snapshot_ts"]
+              "in_top", "snapshot_ts", "pst_score", "pst_tier", "extra"]
+# Columns added after the first version of the table: ALTER'd in on connect.
+_ADDED_COLS = {"pst_score": "INTEGER", "pst_tier": "TEXT", "extra": "TEXT"}
+# Card fields kept in `extra` (everything the web panel needs besides the
+# columns above).
+_EXTRA_FIELDS = ["market_label", "profile", "sim_mean", "sim_median", "sim_skew",
+                 "sim_cv", "curve_ratio", "discrepancy", "ev_pct", "kelly",
+                 "stake_units", "fair_odds", "vig", "level_gap", "p_model_raw"]
 _KEY = ["game_id", "player_id", "market", "side", "point", "book"]
 
 
@@ -98,7 +113,29 @@ def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
     con = sqlite3.connect(str(path))
     con.row_factory = sqlite3.Row
     con.executescript(_SCHEMA)
+    _migrate(con)
     return con
+
+
+def _migrate(con: sqlite3.Connection) -> None:
+    """Bring an older picks.db up to date: add the new columns and fill the
+    tier of lines logged before tiers existed (every logged run is real mode,
+    i.e. anchored)."""
+    have = {r[1] for r in con.execute("PRAGMA table_info(lines)")}
+    for col, typ in _ADDED_COLS.items():
+        if col not in have:
+            con.execute(f"ALTER TABLE lines ADD COLUMN {col} {typ}")
+    todo = con.execute("SELECT id, p_model, p_fair, p_curve, anchor_scale FROM lines "
+                       "WHERE pst_tier IS NULL AND p_model IS NOT NULL AND p_fair IS NOT NULL").fetchall()
+    if todo:
+        from altlines.tiers import pistachio_score, tier_of
+        upd = []
+        for r in todo:
+            ratio = (r["p_model"] / r["p_curve"]) if r["p_curve"] else None
+            sc = pistachio_score(r["p_model"], r["p_fair"], ratio, r["anchor_scale"], True)
+            upd.append((sc, tier_of(sc), r["id"]))
+        con.executemany("UPDATE lines SET pst_score = ?, pst_tier = ? WHERE id = ?", upd)
+        con.commit()
 
 
 def _now_utc() -> str:
@@ -145,6 +182,18 @@ def build_rows(table: pd.DataFrame, odds: pd.DataFrame,
         df["level_ok"] = df["level_ok"].astype(bool).astype(int)
     else:
         df["level_ok"] = None
+    keep = [c for c in _EXTRA_FIELDS if c in df.columns]
+
+    def _extra(row) -> str:
+        out = {}
+        for c in keep:
+            v = row[c]
+            if isinstance(v, (float, np.floating)) and not np.isfinite(v):
+                v = None
+            out[c] = v.item() if hasattr(v, "item") else v
+        return json.dumps(out, ensure_ascii=False)
+
+    df["extra"] = df.apply(_extra, axis=1) if keep else None
     for c in _LINE_COLS:
         if c not in df.columns:
             df[c] = None

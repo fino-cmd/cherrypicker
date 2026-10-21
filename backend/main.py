@@ -5043,8 +5043,14 @@ def get_altlines_edges(
     offline: bool = False,
     refresh: bool = False,
     source: str = "demo",
+    calibrated: bool | None = None,
+    refresh_odds: bool = False,
 ):
     """Return the AltLines edge board as JSON for the NBA tab.
+
+    `calibrated` applies the walk-forward tail calibration (None = config
+    default). `refresh` rebuilds the board; only `refresh_odds` re-downloads
+    the real odds (credits).
 
     `source=live` prices the real alt trays (The Odds API — spends ~5 credits
     per game, cached 20 min) against real ESPN game logs.
@@ -5065,10 +5071,23 @@ def get_altlines_edges(
             devig_method=devig, max_odds=max_odds, min_ev=min_ev,
             halflife=halflife, seed=seed, refresh=refresh,
             game=game, date=date, offline=offline,
-            live=(source == "live"),
+            live=(source == "live"), calibrate=calibrated,
+            refresh_odds=refresh_odds,
         )
     except Exception as e:                                  # noqa: BLE001
         logger.error("GET /api/altlines/edges error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/altlines/results")
+def get_altlines_results(game: str, settle: bool = True):
+    """Picks guardados de un partido (modo real) con su resultado: liquida contra
+    el box score de ESPN si el partido ya terminó. No gasta créditos."""
+    try:
+        from altlines.api import results_payload
+        return results_payload(game, settle_now=settle)
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/altlines/results error: %s", e)
         raise HTTPException(500, str(e))
 
 

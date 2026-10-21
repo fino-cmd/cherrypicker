@@ -11,7 +11,8 @@ anything priced after the tip-off is ignored.
      2-5 %) and compare the mean p_model with the realised hit rate (Wilson 95 %
      interval). Same table bucketed by p_fair: if p_fair is calibrated and
      p_model is ~1.4× too high, the "edge" is model bias.
-  2. ROI per unit staked: the top X% shortlist vs the rest of the board.
+  2. ROI per unit staked: the top X% shortlist vs the rest of the board, and
+     by Pickstachio tier (Dorado / Abierto / Cáscara) for the lines with EV > 0.
   3. CLV, when a line has more than one pre-tip snapshot: price CLV =
      pick_odds / closing_odds − 1 (> 0 = we got a better price than the close)
      and the drift of the market's p_fair toward our side.
@@ -92,6 +93,28 @@ def roi(picks: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+TIER_ORDER = [("gold", "Pistacho Dorado"), ("open", "Pistacho Abierto"), ("shell", "Cáscara Dura")]
+
+
+def by_tier(picks: pd.DataFrame) -> pd.DataFrame:
+    """Record and ROI per Pickstachio tier, over the value lines (EV > 0)."""
+    if "pst_tier" not in picks:
+        return pd.DataFrame()
+    staked = picks[picks["outcome"].isin(["win", "loss", "push"]) & (picks["ev"] > 0)]
+    out = []
+    for key, name in TIER_ORDER:
+        g = staked[staked["pst_tier"] == key]
+        n, k = len(g), int((g["outcome"] == "win").sum())
+        graded = int(g["outcome"].isin(["win", "loss"]).sum())
+        pnl = float(g["pnl"].sum()) if n else 0.0
+        out.append({"categoría": name, "n": n, "ganadas": k,
+                    "perdidas": int((g["outcome"] == "loss").sum()),
+                    "hit_rate": k / graded if graded else np.nan,
+                    "p_model_medio": g["p_model"].mean() if n else np.nan,
+                    "pnl_u": round(pnl, 2), "roi": pnl / n if n else np.nan})
+    return pd.DataFrame(out)
+
+
 def clv(lines: pd.DataFrame) -> pd.DataFrame:
     """Pick vs closing (last pre-tip) snapshot, for lines seen more than once."""
     df = _pretip(lines)
@@ -149,6 +172,10 @@ def report(db_path=None, game: str | None = None, all_levels: bool = False) -> d
         print(_fmt(res["rel_fair"]))
         print("\n2. ROI por unidad apostada (push = 0, void fuera)")
         print(_fmt(res["roi"]))
+        res["tiers"] = by_tier(picks)
+        if not res["tiers"].empty:
+            print("\n2b. Por categoría Pickstachio (líneas con EV > 0)")
+            print(_fmt(res["tiers"]))
     else:
         print("\nNada liquidado todavía: corré `python -m altlines.tools.settle` cuando terminen los partidos.")
 

@@ -17,9 +17,13 @@ not the fair price. `discrepancy` is the diagnostic the brief asks for.
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+
 import numpy as np
 import pandas as pd
 
+from altlines import config as cfg
 from altlines.config import MARKET_SPECS, get_spec
 from altlines.ingest import best_price_per_line, prepare_odds
 from altlines.config import RANDOM_SEED
@@ -67,6 +71,45 @@ def discrepancy(p_model: float, p_fair: float) -> float:
     return p_model - p_fair
 
 
+@lru_cache(maxsize=1)
+def _tail_calibration() -> dict:
+    """Per-market maps written by altlines.tools.backtest ({} when absent)."""
+    try:
+        return json.loads(cfg.TAIL_CALIBRATION_JSON.read_text(encoding="utf-8"))["markets"]
+    except Exception:  # noqa: BLE001 - no file = no calibration
+        return {}
+
+
+def calibrate_p_over(p_over: float, market: str) -> float:
+    """Backtest map p_model → observed frequency of the OVER (identity when the
+    market has no map). Isotonic = piecewise-linear knots; Platt = logistic on
+    the logit."""
+    entry = _tail_calibration().get(market)
+    if not entry:
+        return p_over
+    if entry["method"] == "isotonic":
+        return float(np.interp(p_over, entry["isotonic"]["x"], entry["isotonic"]["y"]))
+    p = min(max(p_over, 1e-4), 1 - 1e-4)
+    z = entry["platt"]["a"] * np.log(p / (1 - p)) + entry["platt"]["b"]
+    return float(1.0 / (1.0 + np.exp(-z)))
+
+
+def blend_with_market(p_model: float, p_fair: float, w: float) -> float:
+    """Average the engine and the de-vigged market in logit space.
+
+    w = 1 is the engine alone, w = 0 the market alone. Picking the largest EV
+    among hundreds of lines systematically picks the lines where the engine
+    erred upward (the winner's curse); shrinking toward the market is the
+    standard cure. The first settled games showed exactly that pattern.
+    """
+    if w >= 1.0:
+        return p_model
+    a = min(max(p_model, 1e-4), 1 - 1e-4)
+    b = min(max(p_fair, 1e-4), 1 - 1e-4)
+    z = w * np.log(a / (1 - a)) + (1 - w) * np.log(b / (1 - b))
+    return float(1.0 / (1.0 + np.exp(-z)))
+
+
 def kelly_fraction(p_win: float, decimal_odds: float, p_push: float = 0.0) -> float:
     """Full-Kelly fraction for a win/lose/push bet. Clipped to [0, 1]."""
     p_loss = max(0.0, 1.0 - p_win - p_push)
@@ -95,7 +138,9 @@ def build_value_table(summary_df: pd.DataFrame, odds_df: pd.DataFrame,
                       min_prob: float = 0.0,
                       max_odds: float = MAX_DECIMAL_ODDS,
                       anchor: bool = False,
-                      seed: int = RANDOM_SEED) -> pd.DataFrame:
+                      seed: int = RANDOM_SEED,
+                      calibrate: bool | None = None,
+                      model_weight: float | None = None) -> pd.DataFrame:
     """Cross every quoted alt line against our simulated distribution.
 
     Returns one row per (player, market, book-best price, point, side) with the
@@ -140,20 +185,28 @@ def build_value_table(summary_df: pd.DataFrame, odds_df: pd.DataFrame,
 
         point = float(o["point"])
         side = o["side"]
+        p_push = prob_push(sims, point)
         if side == "over":
             p_win = prob_over(sims, point)
             p_curve = casino_curve_prob(point, _main_line(o), spec)
         else:
             p_win = prob_under(sims, point)
             p_curve = 1.0 - casino_curve_prob(point, _main_line(o), spec)
-        p_push = prob_push(sims, point)
-        if p_win < min_prob:
-            continue
-
+        p_raw = p_win
+        if (cfg.APPLY_TAIL_CALIBRATION if calibrate is None else calibrate):
+            p_over_cal = calibrate_p_over(prob_over(sims, point), market)
+            p_win = p_over_cal if side == "over" else max(0.0, 1.0 - p_over_cal - p_push)
         dec = float(o["decimal_odds"])
         if max_odds and dec > max_odds:
             continue
         p_fair = float(o["p_fair"])
+        # Mezcla con el mercado (ver blend_with_market): la probabilidad con la
+        # que se calcula el EV ya no es la del motor solo.
+        p_engine = p_win
+        w = cfg.MODEL_WEIGHT if model_weight is None else model_weight
+        p_win = blend_with_market(p_engine, p_fair, w)
+        if p_win < min_prob:
+            continue
         ev = ev_per_unit(p_win, dec, p_push)
         kf = kelly_fraction(p_win, dec, p_push)
 
@@ -186,6 +239,8 @@ def build_value_table(summary_df: pd.DataFrame, odds_df: pd.DataFrame,
             "book":        o.get("best_book"),
             "decimal_odds": dec,
             "p_model":     round(p_win, 4),
+            "p_model_raw": round(p_raw, 4),
+            "p_engine":    round(p_engine, 4),
             "p_fair":      round(p_fair, 4),
             "p_curve":     round(float(p_curve), 4),
             "discrepancy": round(discrepancy(p_win, p_fair), 4),
@@ -231,6 +286,38 @@ def select_top_pct(df: pd.DataFrame, pct: float = 5.0, metric: str = "ev",
         return pool
     n = max(1, int(np.ceil(len(pool) * pct / 100.0)))
     return pool.nlargest(n, metric).sort_values(metric, ascending=False).reset_index(drop=True)
+
+
+def select_board(df: pd.DataFrame, pct: float = 5.0, metric: str = "ev",
+                 min_prob: float | None = None, max_odds: float | None = None,
+                 max_per_player: int | None = None) -> pd.DataFrame:
+    """The recommended board: the top `pct`% by size, but chosen with care.
+
+    How many: `pct`% of the lines with positive `metric` (same size as before).
+    Which ones:
+      • only lines with p ≥ min_prob and price ≤ max_odds: long shots are where
+        a model's error is largest and where it gets amplified by the price;
+      • one line per (player, market): OVER 9.5 / 10.5 / 11.5 rebounds of the
+        same player are ONE bet on his night, not three;
+      • at most `max_per_player` lines per player across markets.
+    """
+    if df.empty:
+        return df
+    min_prob = cfg.BOARD_MIN_PROB if min_prob is None else min_prob
+    max_odds = cfg.BOARD_MAX_ODDS if max_odds is None else max_odds
+    max_per_player = cfg.BOARD_MAX_PER_PLAYER if max_per_player is None else max_per_player
+    positive = df[df[metric] > 0]
+    n = max(1, int(np.ceil(len(positive) * pct / 100.0))) if len(positive) else 0
+    pool = positive
+    if "level_ok" in pool.columns:
+        pool = pool[pool["level_ok"].astype(bool)]
+    pool = pool[(pool["p_model"] >= min_prob) & (pool["decimal_odds"] <= max_odds)]
+    if pool.empty or n == 0:
+        return pool.iloc[0:0]
+    pool = pool.sort_values(metric, ascending=False)
+    pool = pool.drop_duplicates(["player_id", "market"], keep="first")
+    pool = pool[pool.groupby("player_id").cumcount() < max_per_player]
+    return pool.head(n).reset_index(drop=True)
 
 
 def top_n(df: pd.DataFrame, n: int = 20, metric: str = "ev") -> pd.DataFrame:

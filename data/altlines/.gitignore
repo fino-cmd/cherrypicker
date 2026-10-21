@@ -1,3 +1,5 @@
 # AltLines pick log (validation runs) — local only
 picks.db
 picks.db-*
+# Walk-forward backtest predictions (regenerate: python -m altlines.tools.backtest)
+backtest_predictions.csv.gz

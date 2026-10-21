@@ -28,6 +28,9 @@ from scipy.optimize import brentq
 from altlines.config import (
     ALT_LINES_CSV,
     ASSUMED_MARGIN_SINGLE_SIDED,
+    LADDER_DEVIG,
+    LADDER_GAMMA_DEFAULT,
+    LADDER_GAMMA_MAX,
     GAME_LOGS_CSV,
     MARKET_SPECS,
     ODDS_API_ALT_SUFFIX,
@@ -176,6 +179,68 @@ def fair_prob_one_sided(decimal_odds: float,
     return min(p_raw / (1.0 + margin), 0.999)
 
 
+def ladder_gamma(points, decimal_odds, main_line: float) -> float | None:
+    """Real margin of ONE alt ladder (one book, player, market, over side).
+
+    An alt ladder is quoted on one side only, so its overround cannot be read
+    off a pair. But the ladder itself says where the book's 50/50 is: the
+    main line. Find the γ such that p_fair = p_implied ** γ puts the main line
+    at exactly 0.5. γ > 1 strips proportionally MORE from the long shots,
+    which is how books actually load their alt trays (favourite–longshot).
+
+    Returns None when the ladder does not straddle the main line.
+    """
+    pts = np.asarray(points, dtype=float)
+    p = 1.0 / np.asarray(decimal_odds, dtype=float)
+    order = np.argsort(pts)
+    pts, p = pts[order], p[order]
+    if len(pts) < 2 or not np.isfinite(main_line):
+        return None
+    if main_line < pts[0] or main_line > pts[-1]:
+        return None
+    # P(over) falls with the point: interpolate in logit space.
+    lg = np.log(np.clip(p, 1e-6, 1 - 1e-6) / (1 - np.clip(p, 1e-6, 1 - 1e-6)))
+    l_main = float(np.interp(main_line, pts, lg))
+    p_main = 1.0 / (1.0 + np.exp(-l_main))
+    if not (0.5 < p_main < 0.97):
+        return None
+    g = float(np.log(0.5) / np.log(p_main))
+    return float(np.clip(g, 1.0, LADDER_GAMMA_MAX))
+
+
+def ladder_fair_probs(df: pd.DataFrame) -> pd.Series:
+    """p_fair for single-sided OVER quotes via each ladder's own γ.
+
+    Ladders that do not straddle the main line borrow the median γ of the same
+    book (else of all books) in this frame, else LADDER_GAMMA_DEFAULT.
+    Returns a Series aligned to df.index (NaN where not applicable).
+    """
+    out = pd.Series(np.nan, index=df.index)
+    if df.empty or "main_line" not in df.columns:
+        return out
+    over = df[(df["side"] == "over") & df["main_line"].notna()]
+    if over.empty:
+        return out
+    keys = [c for c in ("event_date", "player_id", "market", "book") if c in over.columns]
+    gammas = {}
+    for k, g in over.groupby(keys, dropna=False):
+        gammas[k] = ladder_gamma(g["point"].to_numpy(float), g["decimal_odds"].to_numpy(float),
+                                 float(g["main_line"].iloc[0]))
+    by_book: dict = {}
+    for k, gm in gammas.items():
+        if gm is not None:
+            by_book.setdefault(k[keys.index("book")], []).append(gm)
+    all_g = [x for v in by_book.values() for x in v]
+    for k, g in over.groupby(keys, dropna=False):
+        gm = gammas.get(k)
+        if gm is None:
+            pool = by_book.get(k[keys.index("book")]) or all_g
+            gm = float(np.median(pool)) if pool else LADDER_GAMMA_DEFAULT
+        p_imp = 1.0 / g["decimal_odds"].astype(float)
+        out.loc[g.index] = np.clip(p_imp ** gm, 1e-6, 0.999)
+    return out
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1c. Loaders
 # ══════════════════════════════════════════════════════════════════════════════
@@ -265,6 +330,9 @@ def prepare_odds(df: pd.DataFrame, method: str = "multiplicative") -> pd.DataFra
     id_cols = [c for c in ("event_date", "player_id", "player_name", "market", "point", "book")
                if c in out.columns]
 
+    # Single-sided alt ladders: each ladder's own margin (see ladder_gamma).
+    ladder = ladder_fair_probs(out) if LADDER_DEVIG else pd.Series(np.nan, index=out.index)
+
     # One pass over each (book, point) pair group.
     for _, g in out.groupby(id_cols, dropna=False):
         over = g[g["side"] == "over"]
@@ -280,6 +348,13 @@ def prepare_odds(df: pd.DataFrame, method: str = "multiplicative") -> pd.DataFra
             # Single-sided alt line.
             for side_df in (over, under):
                 if side_df.empty:
+                    continue
+                lad = ladder.loc[side_df.index].iloc[0]
+                if np.isfinite(lad):
+                    raw = 1.0 / side_df.iloc[0]["decimal_odds"]
+                    out.loc[side_df.index, "p_fair"] = lad
+                    out.loc[side_df.index, "vig"] = raw / lad - 1.0
+                    out.loc[side_df.index, "devig_method"] = "ladder_power"
                     continue
                 p_fair = fair_prob_one_sided(side_df.iloc[0]["decimal_odds"])
                 out.loc[side_df.index, "p_fair"] = p_fair

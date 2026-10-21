@@ -157,6 +157,15 @@ LIVE_EVENTS_TTL_S = 30 * 60        # the events list is free anyway
 LIVE_ROSTER_TTL_S = 12 * 3600
 LIVE_LOGS_TTL_S   = 6 * 3600       # current season; past seasons never expire
 
+# ── Tail calibration (altlines/tools/backtest.py) ────────────────────────────
+# The walk-forward backtest fits, per market, a map p_model → observed
+# frequency of the OVER and saves it here. With the flag on, ev.build_value_table
+# passes every P(over) through that map (the under follows as 1 − p_over − push)
+# and keeps the raw number in `p_model_raw`. Off by default: the map was fitted
+# on the UNANCHORED engine, and the board anchors on the main line.
+APPLY_TAIL_CALIBRATION = False
+TAIL_CALIBRATION_JSON = DATA_DIR / "tail_calibration.json"
+
 # ── Simulation defaults ───────────────────────────────────────────────────────
 N_SIM_DEFAULT      = 20_000   # spec asks for ≥ 10,000; 20k is cheap insurance
 RANDOM_SEED        = 20261018
@@ -300,3 +309,27 @@ def get_spec(market: str) -> dict:
     except KeyError as exc:
         known = ", ".join(sorted(MARKET_SPECS))
         raise KeyError(f"Unknown market '{market}'. Known markets: {known}") from exc
+
+
+# ── Board quality (precio justo, mezcla con el mercado, selección) ───────────
+# Medido con los primeros partidos liquidados (2026-10-20/21): el tablero
+# recomendaba cuotas largas donde el motor se equivocaba para arriba, contra un
+# precio justo inflado por suponer un margen chico en las bandejas alt.
+
+# 2. Margen real de cada escalera alternativa: p_justa = p_implícita ** γ, con γ
+#    tal que la línea principal quede en 50 % (ingest.ladder_gamma).
+LADDER_DEVIG = True
+LADDER_GAMMA_DEFAULT = 1.10     # escaleras que no cruzan la línea principal
+LADDER_GAMMA_MAX = 1.6
+
+# 1. Mezcla modelo–mercado en escala logit: p = σ(w·logit p_motor + (1−w)·logit p_justa).
+#    Contra la maldición del ganador: elegir el mayor EV entre cientos de
+#    líneas elige justo donde el motor se pasó. w se ajusta con los picks liquidados.
+MODEL_WEIGHT = 0.40
+#    Filtros del tablero recomendado (no de la tabla completa).
+BOARD_MIN_PROB = 0.15
+BOARD_MAX_ODDS = 10.0
+
+# 3. Selección sin correlación: una línea por jugador y mercado (la mejor) y
+#    como mucho BOARD_MAX_PER_PLAYER por jugador.
+BOARD_MAX_PER_PLAYER = 2

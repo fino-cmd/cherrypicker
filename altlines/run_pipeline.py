@@ -48,7 +48,7 @@ from altlines import config as cfg
 from altlines import ev as ev_mod
 from altlines import slate as slate_mod
 from altlines.dashboard import render_console, write_html_report
-from altlines.ev import build_value_table, select_top_pct, top_n
+from altlines.ev import build_value_table, select_board, top_n
 from altlines.ingest import (
     fetch_alt_lines_api,
     generate_demo_dataset,
@@ -57,6 +57,7 @@ from altlines.ingest import (
     write_demo_dataset,
 )
 from altlines.simulation import simulate_universe
+from altlines.tiers import add_tiers
 
 
 def _print_distribution_report(summary: pd.DataFrame, n: int = 12) -> None:
@@ -103,7 +104,8 @@ def run(demo: bool = False,
         refresh_odds: bool = False,
         anchor: bool | None = None,
         log_picks: bool = True,
-        log_origin: str = "cli") -> dict:
+        log_origin: str = "cli",
+        calibrate: bool | None = None) -> dict:
     """Execute the pipeline and return a dict of artifacts (frames + paths).
 
     `game` restricts the whole run to a single game of the slate (the "por
@@ -244,9 +246,12 @@ def run(demo: bool = False,
                               devig_method=devig_method, min_prob=min_prob,
                               max_odds=max_odds,
                               anchor=live if anchor is None else anchor,
-                              seed=seed)
+                              seed=seed, calibrate=calibrate)
     if table.empty:
         raise SystemExit("No lines could be priced (player ids must match between logs and odds).")
+    # Pickstachio Score y categoría (Dorado / Abierto / Cáscara): se calculan
+    # acá una sola vez y viajan al tablero, al registro de picks y a la web.
+    table = add_tiers(table, anchored=live if anchor is None else bool(anchor))
 
     table = table[table["ev_pct"] >= min_ev].reset_index(drop=True)
     if "anchor_scale" in table.columns:
@@ -256,9 +261,11 @@ def run(demo: bool = False,
         if n_bad:
             print(f"      {n_bad} líneas fuera del tablero: el modelo y el mercado "
                   f"discrepan > ±{drift:.0%} en el nivel del jugador.")
-        shortlist = select_top_pct(table[table["level_ok"]], pct=top_pct, metric=metric)
     else:
-        shortlist = select_top_pct(table, pct=top_pct, metric=metric)
+        table["level_ok"] = True
+    # Tablero recomendado: filtros de probabilidad y cuota, y sin correlación
+    # (una línea por jugador-mercado, máx. 2 por jugador). Ver ev.select_board.
+    shortlist = select_board(table, pct=top_pct, metric=metric)
 
     # ── 3b. Pick log (real mode only) ────────────────────────────────────────
     # Every real run is kept, whole board, so it can be settled later

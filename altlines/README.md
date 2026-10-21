@@ -391,6 +391,118 @@ Tres advertencias, porque acá es donde uno se miente solo:
 3. El `--max-odds` sigue teniendo sentido — en cuotas muy altas cualquier error
    de la cola se multiplica — pero **no** porque hayamos medido sobreestimación.
 
+### Backtest walk-forward con logs reales (`altlines/tools/backtest.py`)
+
+La medición de arriba es sintética. Esta es la real: logs de ESPN de la
+temporada 2025-26, **sin mirar el futuro** y sin gastar un crédito de The Odds API.
+
+```bash
+python -m altlines.tools.backtest                 # rosters cacheados (rápido)
+python -m altlines.tools.backtest --teams ALL     # los 30 equipos (~9 min con 4 procesos)
+#   --season 2026  --min-games 15  --min-minutes 20  --n-iter 10000  --workers 4
+#   --conditional  (excluye partidos con minutos bajo el piso: salidas por lesión)
+#   --no-save      (no escribe el JSON ni el CSV de predicciones)
+```
+
+Qué hace, por jugador de rotación (≥ 20 PJ y mediana ≥ 20 min en 2025-26) y por
+cada partido a partir de su 15º de la temporada:
+
+1. **historia = sólo los partidos anteriores** (2024-25 + 2025-26 hasta la
+   víspera), con el mismo tratamiento que el modo real: sin playoffs, filtro de
+   minutos (`LIVE_MIN_MINUTES_FRAC`) calculado **con esa historia**, y la
+   semivida larga si el jugador vuelve de > 45 días parado;
+2. `project_player` + `calibrate_player` → 10.000 simulaciones;
+3. `P(valor > umbral)` en una escalera fija por mercado (`LADDERS`: puntos
+   10.5…45.5 de a 5, rebotes 3.5…17.5 de a 2, asistencias 2.5…14.5 de a 2,
+   triples 0.5…7.5 de a 1, PRA 15.5…65.5 de a 5);
+4. lo que pasó esa noche (`hit` = 1 si superó el umbral).
+
+Las mismas líneas se tarifan con dos referencias: **Normal ingenua** (media y sd
+de la misma historia) y **curva del libro** (`casino_curve_prob`, un σ por
+mercado, centrada en la mediana del modelo: mismo nivel, sólo cambia la forma).
+
+**Resultado (corrida `--teams ALL`, 2026-10-19):** 260 jugadores, 12.727
+partidos-jugador, 537.978 predicciones (364 partidos con minutos bajo el piso,
+incluidos: una apuesta en un partido así se liquida igual).
+
+| Bucket `P` predicha | n | Motor: pred → obs | ratio | Normal ingenua | Curva libro |
+|---|---:|---|---:|---:|---:|
+| 35 – 50 % | 28.585 | 42,2 % → 44,1 % | 0,96× | 1,07× | 1,02× |
+| 20 – 35 % | 41.011 | 26,9 % → 28,9 % | 0,93× | 1,03× | 0,91× |
+| 10 – 20 % | 44.403 | 14,5 % → 15,9 % | 0,92× | 0,92× | 0,82× |
+| 5 – 10 % | 40.189 | 7,3 % → 7,9 % | 0,92× | 0,77× | 0,60× |
+| 2 – 5 % | 50.218 | 3,3 % → 3,4 % | 0,97× | 0,59× | 0,48× |
+| < 2 % | 257.651 | 0,36 % → 0,36 % | 1,00× | 0,27× | 0,18× |
+
+`ratio` = p media predicha ÷ frecuencia observada (> 1 = cola demasiado gorda;
+< 1 = demasiado flaca). Las columnas de las referencias son su propio ratio,
+agrupando por **su** probabilidad.
+
+| | Brier motor | Brier naive | Brier libro | LL motor | LL naive | LL libro |
+|---|---:|---:|---:|---:|---:|---:|
+| TOTAL | **0,0748** | 0,0773 | 0,0772 | **0,2374** | 0,2481 | 0,2539 |
+
+El motor gana a las dos referencias en Brier y log-loss **en los 5 mercados y
+los 3 perfiles** (`--teams ALL` imprime el desglose completo).
+
+Ratio del motor en la cola, por mercado:
+
+| Mercado | 10–20 % | 5–10 % | 2–5 % | < 2 % |
+|---|---:|---:|---:|---:|
+| asistencias | 0,99× | 1,02× | 1,05× | 0,86× |
+| puntos | 0,89× | 0,88× | 0,97× | **1,38×** |
+| PRA | **0,78×** | **0,81×** | 0,88× | 1,14× |
+| rebotes | 1,00× | 1,03× | 1,04× | 0,89× |
+| triples | 1,00× | 0,99× | 0,98× | 0,80× |
+
+Por perfil, BOOM-BUST va de 0,85× (10–20 %) a 1,09× (< 2 %); STEADY ≈ 0,92×;
+VOLATILE ≈ 0,94–1,00×.
+
+**Cómo leerlo**
+
+- **El motor está calibrado en la cola** dentro de ±10 % hasta el bucket de
+  2–5 %, que es justo donde viven las alt lines. Sin ningún ajuste.
+- **La tesis se sostiene:** una curva simétrica con un σ genérico (la del libro)
+  subestima la cola profunda 2× en 2–5 % y 5× en < 2 %. La Normal del propio
+  jugador también falla (0,59× / 0,27×). La asimetría del motor es la que
+  acierta.
+- **El sesgo es leve y conservador** (0,92–0,96× entre 5 y 50 %): el motor da un
+  poco *menos* probabilidad de la que pasa, sobre todo en PRA. Esto contradice
+  la lectura in-sample de BOS@DET (1,6× en 5–10 %): ese partido era un solo
+  tablero, y con colas *ancladas* a la línea del mercado.
+- **La excepción son las colas extremas de puntos** (< 2 %: 1,38×, y PRA
+  1,14×): en líneas de +5000 el motor sí sobreestima. `MAX_DECIMAL_ODDS = 50`
+  ya corta casi todo eso; no lo subas.
+
+**El mapa de calibración** (`data/altlines/tail_calibration.json`). Por mercado
+se ajustan una isotónica y una Platt (logística sobre `logit(p)`) con el 60 %
+más viejo de los partidos, se comparan en el 40 % más nuevo (hold-out temporal,
+sin mirar el futuro) y se guarda la que tiene menor log-loss, reajustada con
+todo. Ganó Platt en los cinco mercados, con pendientes de 0,92–0,98, es decir,
+un retoque. La mejora en el hold-out es mínima (log-loss de puntos: 0,2387 →
+0,2381), y en el propio ajuste, Platt infla un poco las colas < 5 % (1,18× /
+1,25×) a cambio de arreglar el medio.
+
+`APPLY_TAIL_CALIBRATION` (en `config.py`) queda en **`False`** y la
+recomendación es dejarlo así: el motor crudo ya está calibrado, el mapa casi no
+mejora el hold-out y empeora justo las colas que apostamos. Si lo activás,
+`ev.build_value_table` pasa cada `P(over)` por el mapa (el under queda como
+`1 − p_over_cal − p_push`) y guarda el número crudo en `p_model_raw`.
+
+Tres advertencias:
+
+1. **Sin anclaje.** El tablero real mueve la mediana del motor a la línea
+   principal (`anchor_to_line`); acá no hay líneas históricas, así que se mide
+   el motor sin anclar. El anclaje conserva la forma, que es lo que se mide,
+   pero el mapa se ajustó sobre probabilidades sin anclar.
+2. **No es un backtest de EV.** Mide si las probabilidades son verdaderas, no si
+   le ganan al precio. Para eso hace falta liquidar picks (`tools/settle.py`).
+3. **Sesgo de supervivencia leve:** los jugadores salen de los rosters
+   *actuales* (2026-27), así que faltan los que dejaron la liga.
+
+Las predicciones crudas quedan en `data/altlines/backtest_predictions.csv.gz`
+(gitignored, ~16 MB), para reagrupar sin volver a simular.
+
 ### El libro, reproducido
 
 `casino_sigma` (en `config.py`) es el sigma genérico del libro por mercado —
@@ -469,6 +581,35 @@ sin tocar el modelo MLB:
   con filtros por mercado, lado, EV mínimo y jugador, más el panel de perfiles de
   distribución.
 
+### Calidad del tablero (después de los primeros partidos liquidados)
+
+Los dos primeros partidos reales (20/10) dieron **0 de 27** en los recomendados:
+el tablero elegía cuotas largas (media 19) donde el motor se equivocaba para
+arriba, contra un precio justo inflado. Tres cambios (`config.py`, bloque
+"Board quality"):
+
+1. **Margen real de las bandejas alt** (`ingest.ladder_gamma`). Las alt lines
+   vienen de un solo lado, así que se suponía un margen de 5,5 %. Ahora cada
+   escalera (casa × jugador × mercado) se desvigoriza con
+   `p_justa = p_implícita ** γ`, con γ tal que la línea principal quede en 50 %:
+   le saca más a las cuotas largas, como hacen las casas. Sobre 4.794 escalones
+   liquidados: log-loss 0,4429 → 0,4409 y la sobreestimación en 2–5 % pasa de
+   0,20× a 0,41× (en 5–10 %, de 0,41× a 0,61×).
+2. **Mezcla con el mercado** (`ev.blend_with_market`, `MODEL_WEIGHT = 0.40`):
+   `p = σ(0,4·logit p_motor + 0,6·logit p_justa)`. Elegir el mayor EV entre
+   cientos de líneas elige justo donde el motor se pasó (maldición del ganador).
+   La fila guarda `p_engine` (motor solo) y `p_model` (la mezcla, con la que se
+   calcula el EV).
+3. **Selección sin correlación** (`ev.select_board`): el tamaño sigue siendo el
+   5 % de las líneas con EV > 0, pero sólo con `p ≥ 15 %`, cuota `≤ 10`, una
+   línea por jugador y mercado y como mucho 2 por jugador.
+
+Repetición de esos dos partidos con el mismo motor (cuotas de la caché e
+historial cortado el día anterior): viejo **3-24, −2,1u** (27 picks de 9
+jugadores, cuota media 21,9); nuevo **3-12, +5,9u** (15 picks de 11 jugadores,
+cuota media 6,1; el modelo esperaba 2,9 ganadas). Dos partidos no prueban
+rentabilidad; `MODEL_WEIGHT` y los filtros se ajustan con los picks liquidados.
+
 ### Pickstachio: la cara de la pestaña NBA
 
 La pestaña NBA es otra app dentro de la app: **Pickstachio**, en verde
@@ -477,42 +618,62 @@ pistacho y negro (variables del tema bajo `body[data-sport="nba"]` en
 el logo y el velo se funde revelando la página convertida (`_sportMorph` en
 `app.js`; con `prefers-reduced-motion` es un fundido corto).
 
+Navegación (sólo en NBA; MLB conserva la suya):
+
+- **Barra lateral = riel de partidos.** La fecha (‹ MAR 20 OCT ›; tocarla vuelve a
+  hoy), una fila por partido con logos, horario y estado (Simular / simulando /
+  cantidad de pistachos), y al pie **Toda la liga** y **Simular todos**. En el
+  teléfono el riel es una tira deslizable arriba del contenido.
+- **Barra superior:** el logo (pistacho abierto + wordmark en Big Shoulders),
+  el cambio MLB/NBA y los ajustes: Demo/Real, créditos de The Odds API y sonido.
+- **Cabecera del partido:** la cancha de la simulación en grande; al terminar
+  dibuja la distribución real del mejor pick contra la curva del libro.
+
 El tablero tiene dos vistas (selector **Easy | Nerd**, se recuerda por navegador):
 
 - **Easy** (`pickstachio.js`): un panel de picks. Cada línea con valor es un
   **Pistacho**, según su *Pickstachio Score* (0–100: ventaja 40 %, cola gorda
   25 %, probabilidad 20 %, nivel alineado 15 %):
   **Pistacho Dorado** (≥ 70), **Pistacho Abierto** (50–69), **Cáscara Dura** (< 50).
-  Cada tarjeta muestra la apuesta, la cuota americana y la casa, una frase
+  Cada pick es un **cromo** cuadrado: color del equipo, logo de marca de
+  agua, foto del jugador (ESPN, sólo en modo Real), marco del color de su
+  categoría (dorado holográfico para los Dorados) y la apuesta en una franja
+  negra; con el mouse se inclina en 3D con un reflejo. Al tocarlo, el cromo
+  viaja al centro, se agranda y a su lado se despliega su **ficha**
+  (Escape o clic afuera la cierra y el cromo vuelve a su lugar). La ficha
+  muestra la apuesta, la cuota americana y la casa, una frase
   ("lo ve llegar 1 de cada N; el libro paga como 1 de cada M"), alertas
   (Cola gorda, Boom-or-bust, Hito lejano, Nivel alineado —sólo en modo
   real—, Longshot) y cuatro métricas con su definición (Ventaja, Cola gorda,
   Hito, Explosividad). Abajo, un glosario.
 - **Nerd**: la tabla completa con filtros, probabilidades, curvas y perfiles.
 
-### La animación de cada tarjeta: "La cola canta"
+### La animación de la simulación: la cancha
 
-`altlines-galton.js` (raíz del repo, canvas + WebAudio, sin assets) reemplaza
-al viejo video en loop. Tiene tres fases:
+`altlines-galton.js` (raíz del repo, canvas + WebAudio, sin assets). Corre en
+la cabecera del partido y tiene tres fases:
 
-1. **Mientras simula**: un tablero de Galton con los colores de los dos equipos.
-   Las tiradas caen por los clavos (un 12 % en régimen "boom" empuja a la
-   derecha) y se apilan en una distribución sesgada. Encima, en fantasma, la
-   Normal del libro centrada en la mediana de la pila; los compartimentos de la
-   cola que la superan se encienden en verde. Se muestra al menos 3,5 s aunque
-   el motor termine antes.
+1. **Mientras simula**: media cancha NBA vista desde arriba, con proporciones
+   reales (línea de 3 a 23,75 pies, pintura de 16 × 19 con el color del local)
+   encuadrada como una toma de TV. Salen tiros en parábola hacia el aro (la
+   sombra marca el piso; los del régimen "boom", un 12 %, van en pistacho),
+   la red se sacude con los que entran, y cada tiro suma su resultado a un
+   **marcador de LEDs** al pie que arma la distribución. Encima del marcador,
+   la Normal del libro centrada en la mediana; las columnas de la cola que la
+   superan se encienden. Un **reloj de posesión** cuenta los segundos reales
+   de la simulación. Se muestra al menos 3,5 s aunque el motor termine antes.
 2. **Sonido**: un pad cálido que respira (sube ~1 s, se desvanece ~1,5 s y
-   vuelve) con un latido grave suave en cada pico. Cuando una tirada cae en la
+   vuelve) con un latido grave suave en cada pico. Cuando un tiro cae en la
    cola por encima del libro, el filtro del pad se abre y brilla un instante.
-   Botón **Sonido: sí/no** en la pizarra (se recuerda por navegador).
-3. **Al terminar**: la pila se disuelve en el **resultado real** del mejor pick
-   del partido —su distribución (media, desvío y sesgo del motor, como Gamma
-   desplazada) contra la Normal del libro (σ recuperado de `p_curve`)—, con la
-   línea alt marcada, la región ganadora en verde y `modelo X % · libro Y %`.
-   El pad da una última respiración larga y se apaga.
+   Botón de sonido en la barra superior (se recuerda por navegador).
+3. **Al terminar**: la cancha se disuelve en el **resultado real** del mejor
+   pick del partido —su distribución (media, desvío y sesgo del motor, como
+   Gamma desplazada) contra la Normal del libro (σ recuperado de `p_curve`)—,
+   con la línea alt marcada, la región ganadora en verde y
+   `modelo X % · libro Y %`. El pad da una última respiración larga y se apaga.
 
-Las fases 1 y 2 son ilustrativas (el cómputo real corre en el servidor); la 3
-sale del payload. Con `prefers-reduced-motion` no hay animación: la tarjeta
+Los tiros son ilustrativos (el cómputo real corre en el servidor); el reloj y
+el cuadro final no. Con `prefers-reduced-motion` no hay animación: la cabecera
 pasa directo al cuadro final. `assets/altlines/sim-loop.*` y
 `tools/make_sim_video.py` quedan sin uso.
 

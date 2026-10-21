@@ -121,8 +121,15 @@ def build_payload(n_iter: int = cfg.N_SIM_DEFAULT,
                   game: str | None = None,
                   date: str | None = None,
                   offline: bool = False,
-                  live: bool = False) -> dict:
+                  live: bool = False,
+                  calibrate: bool | None = None,
+                  refresh_odds: bool = False) -> dict:
     """Run the AltLines pipeline and return the frontend payload.
+
+    `calibrate` passes every P(over) through the backtest map
+    (data/altlines/tail_calibration.json); None = config default.
+    `refresh` only rebuilds the board; `refresh_odds` (real mode) also pays to
+    re-download the odds — re-simulating never spends credits by itself.
 
     `live=True` prices REAL alt trays (The Odds API, costs credits) against
     REAL game logs (ESPN). Use it per game: a league-wide live run pays for
@@ -143,7 +150,8 @@ def build_payload(n_iter: int = cfg.N_SIM_DEFAULT,
     game = str(game) if game else None
     key = (n_iter, top_pct, metric, devig_method, max_odds, min_ev, halflife,
            halflife_var, seed, demo, logs_path, odds_path, game,
-           str(date or ""), bool(offline), bool(live))
+           str(date or ""), bool(offline), bool(live),
+           cfg.APPLY_TAIL_CALIBRATION if calibrate is None else bool(calibrate))
 
     def _hit(now: float):
         if (not refresh and _CACHE["payload"] is not None
@@ -194,7 +202,8 @@ def build_payload(n_iter: int = cfg.N_SIM_DEFAULT,
                 max_odds=max_odds, halflife=halflife, halflife_var=halflife_var,
                 seed=seed, write_html=False, quiet=True,
                 game=resolved_game, slate=slate, offline=offline, write_data=False,
-                live=live, refresh_odds=bool(live and refresh),
+                live=live, refresh_odds=bool(live and refresh_odds),
+                calibrate=calibrate,
                 log_origin="api",
             )
         except SystemExit as exc:                   # run() uses SystemExit for setup errors
@@ -249,6 +258,7 @@ def build_payload(n_iter: int = cfg.N_SIM_DEFAULT,
             "halflife_var": halflife_var,
             "seed": seed,
             "game": resolved_game,
+            "calibrated": cfg.APPLY_TAIL_CALIBRATION if calibrate is None else bool(calibrate),
         },
         "counts": {
             "player_markets": int(len(summary)) if summary is not None else 0,
@@ -394,13 +404,17 @@ def _live_slate_payload(slate: dict, t0: float, seed: int, n_games: int,
         odds_error = str(exc)
 
     view = slate_mod.build_slate_view(slate)
+    logged = _logged_counts(g["game_id"] for g in view["games"])
     for g in view["games"]:
         ev = live_mod.match_event(g, events) if events else None
+        # Picks guardados de este partido: un partido terminado se puede
+        # reabrir desde el registro para ver qué se ganó y qué se perdió.
+        g["logged"] = logged.get(str(g["game_id"]), 0)
         g["odds_event_id"] = ev["id"] if ev else None
         g["has_odds_event"] = ev is not None
         # Clickable iff the odds feed has the game and it has not finished.
         g["props"] = {**(g.get("props") or {}),
-                      "has_props": bool(ev) and g.get("state") != "post"}
+                      "has_props": (bool(ev) and g.get("state") != "post") or g["logged"] > 0}
         # ~25 player-markets is a typical real game; good enough for the timer.
         g["est_seconds"] = round(25 * SIM_SECONDS_PER_PLAYER_MARKET + 4.0, 1)
 
@@ -433,6 +447,134 @@ def _live_slate_payload(slate: dict, t0: float, seed: int, n_games: int,
         "assigned_players": 0,
     }
     return payload
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Resultados: el registro de picks (data/altlines/picks.db) liquidado
+# ══════════════════════════════════════════════════════════════════════════════
+# Cada corrida en modo real queda guardada con su categoría Pickstachio. Este
+# payload devuelve el último tablero guardado de un partido con el resultado de
+# cada línea (win / loss / push / void), liquidando en el momento si el
+# partido ya terminó (ESPN, gratis). Sirve para pintar los cromos en verde o
+# rojo, y para reabrir un partido terminado aunque las casas ya no tengan sus
+# cuotas.
+
+_SETTLE_TRIED: dict[str, float] = {}
+_SETTLE_EVERY_S = 120          # no pegarle a ESPN en cada clic
+
+
+def _logged_counts(game_ids) -> dict[str, int]:
+    """How many lines picks.db holds per game (0 when the log does not exist)."""
+    from altlines import picklog
+    ids = [str(g) for g in game_ids]
+    if not ids or not picklog.PICKS_DB.exists():
+        return {}
+    try:
+        from contextlib import closing
+        with closing(picklog.connect()) as con:
+            q = (f"SELECT game_id, COUNT(*) FROM lines WHERE game_id IN "
+                 f"({','.join('?' * len(ids))}) GROUP BY game_id")
+            return {str(g): int(n) for g, n in con.execute(q, ids).fetchall()}
+    except Exception as exc:  # noqa: BLE001 - the log is a nice-to-have here
+        logger.warning("picks.db count failed: %s", exc)
+        return {}
+
+
+def results_payload(game: str, settle_now: bool = True) -> dict:
+    import json as _json
+
+    import pandas as pd
+
+    from altlines import picklog
+    from altlines.tiers import TIER_NAMES
+
+    gid = str(game)
+    lines = picklog.load_lines()
+    lines = lines[lines["game_id"].astype(str) == gid] if not lines.empty else lines
+    if lines.empty:
+        return {"game_id": gid, "logged": 0, "settled": 0, "rows": [], "board": None,
+                "summary": None}
+
+    if settle_now and lines["outcome"].isna().any()             and time.time() - _SETTLE_TRIED.get(gid, 0) > _SETTLE_EVERY_S:
+        _SETTLE_TRIED[gid] = time.time()
+        try:
+            from altlines.tools.settle import settle
+            settle(game=gid)
+            lines = picklog.load_lines()
+            lines = lines[lines["game_id"].astype(str) == gid]
+        except Exception as exc:  # noqa: BLE001 - results stay pending
+            logger.warning("settle %s failed: %s", gid, exc)
+
+    # El último tablero que se vio ANTES del inicio (si no hay, el último).
+    run_ts = pd.to_datetime(lines["run_ts"], utc=True, errors="coerce")
+    tip = pd.to_datetime(lines["tip_off"], utc=True, errors="coerce")
+    pre = lines[tip.isna() | (run_ts < tip)]
+    base = pre if not pre.empty else lines
+    board = base[base["run_id"] == base["run_id"].max()]
+
+    rows = []
+    for r in board.to_dict("records"):
+        extra = {}
+        try:
+            extra = _json.loads(r.get("extra") or "{}")
+        except Exception:  # noqa: BLE001
+            pass
+        row = {k: (None if isinstance(v, float) and v != v else v) for k, v in r.items()
+               if k not in ("extra", "id", "run_ts")}
+        row.update({k: v for k, v in extra.items() if v is not None})
+        row["side"] = str(row.get("side") or "").upper()
+        row.setdefault("ev_pct", round(float(row.get("ev") or 0) * 100, 2))
+        row.setdefault("market_label", str(row.get("market") or "").title())
+        row["level_ok"] = bool(row.get("level_ok", 1))
+        row["tier_name"] = TIER_NAMES.get(row.get("pst_tier"), "")
+        rows.append(row)
+    rows.sort(key=lambda x: -(x.get("ev") or 0))
+
+    def _record(sub):
+        out = {"win": 0, "loss": 0, "push": 0, "void": 0, "pending": 0, "pnl": 0.0}
+        for x in sub:
+            o = x.get("outcome") or "pending"
+            out[o] = out.get(o, 0) + 1
+            out["pnl"] += float(x.get("pnl") or 0)
+        out["pnl"] = round(out["pnl"], 2)
+        return out
+
+    top = [x for x in rows if x.get("in_top") == 1]
+    tiers = {t: _record([x for x in top if x.get("pst_tier") == t]) for t in TIER_NAMES}
+    settled = sum(1 for x in rows if x.get("outcome"))
+    summary = {"top": _record(top), "tiers": tiers,
+               "final": settled > 0, "settled_lines": settled}
+    keyed = {f"{x['player_id']}|{x['market']}|{x['side']}|{float(x['point'])}":
+             {k: x.get(k) for k in ("outcome", "actual", "pnl", "pst_tier", "pst_score")}
+             for x in rows}
+
+    board_payload = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "elapsed_s": None,
+        "cached": False,
+        "from_log": True,
+        "source": "live",
+        "sport": "NBA",
+        "game": None,
+        "params": {"n_iter": None, "top_pct": 5.0, "calibrated": None,
+                   "game": gid, "run_ts": str(board["run_ts"].iloc[0])},
+        "counts": {
+            "player_markets": int(board[["player_id", "market"]].drop_duplicates().shape[0]),
+            "games_of_history": None,
+            "lines_priced": len(rows),
+            "lines_reported": len(top),
+        },
+        "markets": [{"key": k, "label": v["label"], "family": v["family"]}
+                    for k, v in cfg.MARKET_SPECS.items()],
+        "books": sorted({str(x.get("book")) for x in rows if x.get("book")}),
+        "market_breakdown": [],
+        "profiles": [],
+        "edges": top,
+        "all_edges": rows,
+        "results": summary,
+    }
+    return {"game_id": gid, "logged": len(lines), "settled": settled,
+            "summary": summary, "results": keyed, "board": board_payload}
 
 
 def clear_cache() -> None:

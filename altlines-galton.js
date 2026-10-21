@@ -1,24 +1,24 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   "La cola canta" — la animación de simulación de cada partido NBA.
+   La animación de simulación de cada partido NBA: una cancha de básquet.
 
-   Mientras el motor corre en el backend, la tarjeta dibuja un tablero de
-   Galton con los colores de los dos equipos: las tiradas caen por los clavos y
-   se apilan en una distribución sesgada a la derecha. Encima, en fantasma, la
-   curva simétrica del libro (centrada en la mediana de la pila, con el sigma
-   que sale del centro de la distribución). Cada compartimento de la cola que
-   supera a esa curva se enciende: ahí está el edge.
+   Mientras el motor corre en el backend, la cabecera muestra media cancha vista
+   desde arriba: tiros en parábola desde distintos puntos hacia el aro, la red
+   que se sacude con los que entran, y abajo un marcador de LEDs donde cada tiro
+   suma su resultado a la distribución. Encima del marcador, la curva simétrica
+   del libro; las columnas de la cola que la superan se encienden en pistacho.
+   Un reloj de posesión cuenta el tiempo real que lleva la simulación.
 
    Sonido (WebAudio, sin archivos): un pad cálido que respira —sube, se
-   desvanece y vuelve— con un latido grave suave; cuando una tirada cae en la
+   desvanece y vuelve— con un latido grave suave; cuando un tiro cae en la
    cola por encima del libro, el pad se abre y brilla un instante.
 
-   Al terminar, la pila se disuelve en el RESULTADO REAL: la distribución del
+   Al terminar, la cancha se disuelve en el RESULTADO REAL: la distribución del
    mejor pick que encontró el motor (media, mediana, desvío y sesgo reales)
    contra la Normal del libro, con la línea alt marcada y las dos
    probabilidades. El pad da una última respiración larga y se apaga.
 
-   La animación es ilustrativa mientras corre (el cómputo real ocurre en el
-   servidor); el cuadro final no: sale del payload.
+   Los tiros son ilustrativos (el cómputo real ocurre en el servidor); el reloj
+   y el cuadro final no: salen del tiempo transcurrido y del payload.
    ════════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -220,7 +220,14 @@
     },
   };
 
-  // ── Tablero de Galton de una tarjeta ─────────────────────────────────────
+  // ── La cancha: cada tiro es un partido simulado ──────────────────────────
+  // Media cancha vista desde arriba, con el aro a la derecha. Los tiros salen
+  // de distintos puntos, vuelan en parábola (la sombra marca el piso), y cada
+  // uno suma su resultado a la distribución que se arma abajo como un marcador
+  // de LEDs. Encima, la curva simétrica del libro; las columnas de la cola que
+  // la superan se encienden en pistacho. El reloj de posesión muestra el
+  // tiempo REAL que lleva la simulación en el servidor.
+  const ORANGE = '#e97a2c';
   class Galton {
     constructor(canvas) {
       this.c = canvas;
@@ -234,6 +241,7 @@
     reset() {
       this.bins = new Array(BINS).fill(0);
       this.parts = [];
+      this.fx = [];
       this.landed = 0;
       this.glow = new Array(BINS).fill(0);
       this.spawnAcc = 0;
@@ -246,28 +254,43 @@
       }
       this.x.setTransform(dpr, 0, 0, dpr, 0, 0);
       this.w = w; this.h = h;
-      // Geometría: clavos arriba, pila abajo.
-      this.top = 14; this.pegBottom = h * 0.46; this.floor = h - 30;
-      this.binW = w / BINS;
+      // Zona útil: a la derecha del texto de la cabecera (data-plot-left).
+      this.L = w * (Number(this.c.dataset.plotLeft) || 0);
+      this.stripH = Math.max(34, h * 0.24);            // marcador de LEDs abajo
+      this.courtB = h - this.stripH - 6;                // borde inferior de la cancha
+      // Media cancha NBA real (47 × 50 pies) encuadrada como una toma de TV:
+      // llena el ancho del sector y muestra ~32 pies de alto (los laterales
+      // quedan fuera de cuadro). Línea de fondo a la derecha.
+      this.ft = Math.min((w - this.L - 12) / 47, this.courtB / 32);
+      this.baseX = w - 10;
+      this.midX = this.baseX - 47 * this.ft;
+      this.hoopX = this.baseX - 5.25 * this.ft;
+      this.hoopY = this.courtB / 2;
+      this.R3 = 23.75 * this.ft;
+      this.binW = (w - this.L - 20) / BINS;
     }
-    // Una tirada: random walk con un régimen "boom" (12 %) que empuja a la
-    // derecha. Es la tesis en miniatura: mezcla de regímenes ⇒ cola larga.
+    // Un tiro = un partido simulado. Su valor sale de una mezcla de regímenes
+    // (12 % "boom" que empuja a la derecha): la tesis en miniatura.
     spawn() {
       const boom = Math.random() < 0.12;
       const pr = boom ? 0.74 : 0.47;
-      // Posiciones en la grilla de clavos: arranca en 9, cada fila ±1.
-      let b = 9;
-      const path = [b];
-      for (let r = 0; r < ROWS; r++) {
-        b += Math.random() < pr ? 1 : -1;
-        path.push(b);
-      }
-      const span = 2 * ROWS;                       // de 9−ROWS a 9+ROWS
-      const bin = Math.round((b - (9 - ROWS)) / span * (BINS - 1));
-      this.parts.push({ path, bin, t: 0, v: 0.9 + Math.random() * 0.5, boom });
+      let k = 0;
+      for (let r = 0; r < ROWS; r++) if (Math.random() < pr) k++;
+      const bin = Math.round(k / ROWS * (BINS - 1));
+      const th = Math.PI * (0.58 + Math.random() * 0.84);          // de arriba a abajo, por la izquierda
+      const d = this.R3 * (0.28 + Math.random() * 0.82);
+      let sx = this.hoopX + Math.cos(th) * d;
+      let sy = this.hoopY + Math.sin(th) * d;
+      sx = Math.max(this.midX + 8, Math.min(this.hoopX - 18, sx));
+      sy = Math.max(8, Math.min(this.courtB - 8, sy));
+      this.parts.push({
+        sx, sy, bin, boom, t: 0,
+        dur: 0.55 + Math.hypot(this.hoopX - sx, this.hoopY - sy) / 420,
+        make: Math.random() < (boom ? 0.75 : 0.5),
+      });
     }
     book() {
-      // La curva del libro: Normal en la mediana de la pila, sigma del IQR.
+      // La curva del libro: Normal en la mediana del marcador, sigma del IQR.
       const n = this.bins.reduce((a, b) => a + b, 0);
       if (n < 30) return null;
       const q = (p) => { let acc = 0; for (let i = 0; i < BINS; i++) { acc += this.bins[i]; if (acc >= p * n) return i; } return BINS - 1; };
@@ -291,87 +314,162 @@
       x.fillStyle = '#070a06'; x.fillRect(0, 0, w, h);
       x.fillStyle = g; x.fillRect(0, 0, w, h);
     }
-    pegX(pos) { return ((pos - (9 - ROWS)) / (2 * ROWS) * (BINS - 1) + 0.5) * this.binW; }
+    drawCourt() {
+      const { x, L } = this, B = this.courtB, f = this.ft, hx = this.hoopX, hy = this.hoopY;
+      const top = hy - 25 * f, bot = hy + 25 * f, mid = this.midX, base = this.baseX;
+      // Parquet: tablas finas y una luz cálida sobre el aro.
+      x.save();
+      x.beginPath(); x.rect(L, 0, this.w - L, B); x.clip();
+      x.fillStyle = '#120e0a'; x.fillRect(L, 0, this.w - L, B);
+      x.strokeStyle = 'rgba(255, 220, 170, 0.035)'; x.lineWidth = 1;
+      for (let y = 3; y < B; y += Math.max(5, f * 1.6)) { x.beginPath(); x.moveTo(L, y + .5); x.lineTo(this.w, y + .5); x.stroke(); }
+      const spot = x.createRadialGradient(hx, hy, 4, hx, hy, this.R3 * 1.3);
+      spot.addColorStop(0, 'rgba(255, 196, 120, 0.14)'); spot.addColorStop(1, 'rgba(255, 196, 120, 0)');
+      x.fillStyle = spot; x.fillRect(L, 0, this.w - L, B);
+      // Pintura (16 × 19 pies) con el color del local
+      x.fillStyle = hex(this.home, 0.3);
+      x.fillRect(base - 19 * f, hy - 8 * f, 19 * f, 16 * f);
+      x.strokeStyle = 'rgba(240, 235, 225, 0.6)'; x.lineWidth = 1.2;
+      x.strokeRect(mid, top, base - mid, bot - top);                                        // perímetro
+      x.strokeRect(base - 19 * f, hy - 8 * f, 19 * f, 16 * f);                              // pintura
+      x.beginPath(); x.arc(base - 19 * f, hy, 6 * f, Math.PI / 2, Math.PI * 1.5); x.stroke(); // tiro libre
+      x.setLineDash([3, 4]);
+      x.beginPath(); x.arc(base - 19 * f, hy, 6 * f, -Math.PI / 2, Math.PI / 2); x.stroke();
+      x.setLineDash([]);
+      // Triple: rectas en las esquinas (a 22 pies) y arco de 23,75
+      const cy = 22 * f, ang = Math.asin(cy / this.R3), cornerX = hx - Math.cos(ang) * this.R3;
+      x.beginPath(); x.moveTo(base, hy - cy); x.lineTo(cornerX, hy - cy);
+      x.arc(hx, hy, this.R3, Math.PI + ang, Math.PI - ang, true);
+      x.lineTo(base, hy + cy); x.stroke();
+      // Mitad de cancha y círculo central
+      x.beginPath(); x.arc(mid, hy, 6 * f, -Math.PI / 2, Math.PI / 2); x.stroke();
+      x.fillStyle = hex(this.away, 0.35);
+      x.beginPath(); x.arc(mid, hy, 2 * f, -Math.PI / 2, Math.PI / 2); x.fill();
+      x.restore();
+      // Tablero y aro
+      x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 2;
+      x.beginPath(); x.moveTo(base - 4 * f, hy - 3 * f); x.lineTo(base - 4 * f, hy + 3 * f); x.stroke();
+      x.strokeStyle = ORANGE; x.lineWidth = 1.8;
+      x.beginPath(); x.arc(hx, hy, Math.max(4, .75 * f), 0, Math.PI * 2); x.stroke();
+    }
     drawBoard(dt) {
       const { x } = this;
       const fade = this.mode === 'resolving' ? Math.max(0, 1 - this.resolveT * 1.6) : 1;
       if (fade <= 0) return;
       x.save(); x.globalAlpha = fade;
-      // Clavos
-      for (let r = 0; r < ROWS; r++) {
-        const y = this.top + (this.pegBottom - this.top) * r / (ROWS - 1);
-        for (let p = 9 - r; p <= 9 + r; p += 2) {
-          x.fillStyle = 'rgba(255,255,255,0.16)';
-          x.beginPath(); x.arc(this.pegX(p), y, 1.1, 0, Math.PI * 2); x.fill();
-        }
-      }
-      // Partículas
+      this.drawCourt();
+
       if (this.mode === 'simulating') {
-        this.spawnAcc += dt * 120;
-        while (this.spawnAcc > 1 && this.parts.length < 220) { this.spawn(); this.spawnAcc -= 1; }
+        this.spawnAcc += dt * 34;
+        while (this.spawnAcc > 1 && this.parts.length < 48) { this.spawn(); this.spawnAcc -= 1; }
       }
       const book = this.book();
       const alive = [];
       for (const p of this.parts) {
-        p.t += dt * p.v * 1.25;
-        const rowF = p.t * ROWS;
-        if (rowF >= ROWS) {
-          // Cae a la pila.
-          const fy = Math.min(1, (rowF - ROWS) / 3);
-          const sx = this.pegX(p.path[ROWS]), ex = (p.bin + 0.5) * this.binW;   // == sx salvo redondeo
-          const px = sx + (ex - sx) * fy, py = this.pegBottom + (this.floor - this.pegBottom) * fy;
-          if (fy >= 1) {
-            this.bins[p.bin] += 1; this.landed += 1;
-            const tail = !!(book && p.bin > book.med + book.s
-              && this.bins[p.bin] / book.n > normPdf(p.bin, book.med, book.s) * 1.12);
-            if (tail) this.glow[p.bin] = 1;
-            if (tail) Audio.shimmer();
-            continue;
-          }
-          this.dot(px, py, p);
-        } else {
-          const r = Math.floor(rowF), f = rowF - r;
-          const x0 = this.pegX(p.path[r]), x1 = this.pegX(p.path[r + 1]);
-          const y0 = this.top + (this.pegBottom - this.top) * r / (ROWS - 1);
-          const y1 = this.top + (this.pegBottom - this.top) * (r + 1) / (ROWS - 1);
-          this.dot(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f - Math.sin(f * Math.PI) * 4, p);
+        p.t += dt / p.dur;
+        if (p.t >= 1) {
+          this.bins[p.bin] += 1; this.landed += 1;
+          this.fx.push({ kind: p.make ? 'swish' : 'clank', t: 0 });
+          const tail = !!(book && p.bin > book.med + book.s
+            && this.bins[p.bin] / book.n > normPdf(p.bin, book.med, book.s) * 1.12);
+          if (tail) { this.glow[p.bin] = 1; Audio.shimmer(); }
+          continue;
         }
+        this.ball(p);
         alive.push(p);
       }
       this.parts = alive;
-      // Pila
-      const max = Math.max(8, ...this.bins);
-      const H = this.floor - this.pegBottom - 6;
+      this.drawFx(dt);
+      this.drawStrip(dt, book);
+      this.drawClock();
+      x.restore();
+    }
+    ball(p) {
+      const { x } = this;
+      const t = p.t, e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const gx = p.sx + (this.hoopX - p.sx) * e, gy = p.sy + (this.hoopY - p.sy) * e;
+      const dist = Math.hypot(this.hoopX - p.sx, this.hoopY - p.sy);
+      const z = 4 * t * (1 - t) * (10 + dist * 0.3);                   // altura del arco
+      // sombra en el piso
+      x.fillStyle = 'rgba(0,0,0,.38)';
+      x.beginPath(); x.ellipse(gx + z * .18, gy + 2, 3.4, 1.7, 0, 0, Math.PI * 2); x.fill();
+      // pelota
+      const r = Math.max(3.4, this.ft * .62) + z * 0.05, bx = gx, by = gy - z;
+      x.fillStyle = p.boom ? `rgb(${GREEN})` : ORANGE;
+      x.beginPath(); x.arc(bx, by, r, 0, Math.PI * 2); x.fill();
+      x.strokeStyle = 'rgba(20, 10, 4, .55)'; x.lineWidth = .8;
+      x.beginPath(); x.moveTo(bx - r, by); x.lineTo(bx + r, by); x.stroke();
+      x.beginPath(); x.arc(bx, by, r * .62, -Math.PI / 2, Math.PI / 2); x.stroke();
+    }
+    drawFx(dt) {
+      const { x } = this, hx = this.hoopX, hy = this.hoopY;
+      this.fx = this.fx.filter(f => (f.t += dt * 2.4) < 1);
+      for (const f of this.fx) {
+        const a = 1 - f.t;
+        if (f.kind === 'swish') {
+          x.strokeStyle = `rgba(${GREEN}, ${a * .9})`; x.lineWidth = 1.6;
+          x.beginPath(); x.arc(hx, hy, 6.5 + f.t * 12, 0, Math.PI * 2); x.stroke();
+          // la red que se sacude
+          x.strokeStyle = `rgba(255,255,255,${a * .7})`; x.lineWidth = 1;
+          for (let i = -2; i <= 2; i++) {
+            x.beginPath(); x.moveTo(hx + i * 2.4, hy + 5); x.lineTo(hx + i * 1.6 + Math.sin(f.t * 18 + i) * 1.4, hy + 13); x.stroke();
+          }
+        } else {
+          x.fillStyle = `rgba(255, 210, 160, ${a * .8})`;
+          x.beginPath(); x.arc(hx - 7, hy - 4, 1.6 + f.t * 3, 0, Math.PI * 2); x.fill();
+        }
+      }
+    }
+    drawStrip(dt, book) {
+      // Marcador de LEDs: la distribución que se va armando, tiro a tiro.
+      const { x, w, h, L } = this, top = h - this.stripH, bottom = h - 8, H = bottom - top - 4;
+      const left = L + 10, cw = this.binW;
+      x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(L, top - 4, w - L, h - top + 4);
+      const max = Math.max(6, ...this.bins);
+      const cells = Math.max(6, Math.floor(H / 4));
       for (let i = 0; i < BINS; i++) {
-        const bh = this.bins[i] / max * H;
+        const lit = Math.round(this.bins[i] / max * cells);
         const isTail = book && i > book.med + book.s
           && this.bins[i] / book.n > normPdf(i, book.med, book.s) * 1.12;
         this.glow[i] = Math.max(isTail ? 0.35 : 0, this.glow[i] - dt * 1.8);
         const col = i / (BINS - 1) < 0.5 ? this.away : this.home;
-        x.fillStyle = isTail ? `rgba(${GREEN}, ${0.55 + this.glow[i] * 0.45})` : hex(col, 0.55);
-        x.fillRect(i * this.binW + 1, this.floor - bh, this.binW - 2, bh);
-        if (this.glow[i] > 0.05) {
-          x.fillStyle = `rgba(${GREEN}, ${this.glow[i] * 0.25})`;
-          x.fillRect(i * this.binW - 2, this.floor - bh - 6, this.binW + 4, bh + 6);
+        for (let c = 0; c < cells; c++) {
+          const on = c < lit;
+          x.fillStyle = !on ? 'rgba(255,255,255,.04)'
+            : isTail ? `rgba(${GREEN}, ${0.6 + this.glow[i] * 0.4})` : hex(col, 0.85);
+          x.fillRect(left + i * cw + 1, bottom - (c + 1) * 4 + 1, Math.max(1, cw - 2), 3);
         }
       }
-      // Curva fantasma del libro
       if (book) {
-        x.setLineDash([3, 3]); x.strokeStyle = 'rgba(255,255,255,0.55)'; x.lineWidth = 1.2;
+        x.setLineDash([3, 3]); x.strokeStyle = 'rgba(255,255,255,0.6)'; x.lineWidth = 1.1;
         x.beginPath();
         for (let i = 0; i <= 120; i++) {
           const b = i / 120 * (BINS - 1);
-          const y = this.floor - normPdf(b, book.med, book.s) * book.n / max * H;
-          i ? x.lineTo((b + 0.5) * this.binW, y) : x.moveTo((b + 0.5) * this.binW, y);
+          const y = bottom - normPdf(b, book.med, book.s) * book.n / max * cells * 4;
+          const px = left + (b + 0.5) * cw;
+          i ? x.lineTo(px, Math.max(top, y)) : x.moveTo(px, Math.max(top, y));
         }
         x.stroke(); x.setLineDash([]);
       }
-      x.restore();
     }
-    dot(px, py, p) {
-      const { x } = this;
-      x.fillStyle = p.boom ? `rgba(${GREEN}, 0.95)` : 'rgba(235, 240, 245, 0.85)';
-      x.beginPath(); x.arc(px, py, p.boom ? 1.9 : 1.5, 0, Math.PI * 2); x.fill();
+    drawClock() {
+      // Reloj de posesión: el tiempo real que lleva la simulación.
+      if (this.mode !== 'simulating') return;
+      const { x, w } = this;
+      const secs = Math.floor((performance.now() - (this.startedAt || performance.now())) / 1000);
+      const txt = String(secs).padStart(2, '0');
+      const bw = 44, bh = 30, bx = w - bw - 12, by = 8;
+      x.fillStyle = '#0b0b0b'; x.fillRect(bx, by, bw, bh);
+      x.strokeStyle = 'rgba(255,255,255,.12)'; x.strokeRect(bx + .5, by + .5, bw - 1, bh - 1);
+      x.font = `900 24px 'Big Shoulders Display', 'Bebas Neue', sans-serif`;
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillStyle = 'rgba(255, 70, 50, .18)'; x.fillText('88', bx + bw / 2, by + bh / 2 + 1);
+      x.fillStyle = '#ff5a3c'; x.shadowColor = 'rgba(255, 70, 50, .8)'; x.shadowBlur = 8;
+      x.fillText(txt, bx + bw / 2, by + bh / 2 + 1);
+      x.shadowBlur = 0;
+      x.font = `700 8px 'Archivo', sans-serif`; x.fillStyle = 'rgba(255,255,255,.55)';
+      x.fillText('SIM', bx + bw / 2, by + bh + 7);
+      x.textAlign = 'start'; x.textBaseline = 'alphabetic';
     }
     // ── Cuadro final: la distribución real del mejor pick ───────────────────
     setFinal(row) {
@@ -398,7 +496,11 @@
       const reveal = this.mode === 'resolving' ? Math.min(1, Math.max(0, (this.resolveT - 0.2) / 0.8)) : 1;
       const ease = 1 - Math.pow(1 - reveal, 3);
       const top = 34, base = this.h - 26, H = base - top;
-      const X = v => (v - f.lo) / (f.hi - f.lo) * (w - 20) + 10;
+      // data-plot-left: fracción del ancho que queda libre a la izquierda
+      // (la cabecera del partido pone su texto ahí). Los rótulos van a la derecha.
+      const L = w * (Number(this.c.dataset.plotLeft) || 0);
+      const right = L > 0;
+      const X = v => (v - f.lo) / (f.hi - f.lo) * (w - 20 - L) + 10 + L;
       const N = 160, xs = [], ym = [], yb = [];
       let mx = 0;
       for (let i = 0; i <= N; i++) {
@@ -408,7 +510,7 @@
       }
       const Y = d => base - d / mx * H;
       x.save();
-      x.beginPath(); x.rect(0, 0, 10 + (w - 20) * ease, this.h); x.clip();
+      x.beginPath(); x.rect(0, 0, L + 10 + (w - 20 - L) * ease, this.h); x.clip();
       // Área del modelo con los colores de los equipos
       const g = x.createLinearGradient(0, 0, w, 0);
       g.addColorStop(0, hex(this.away, 0.5)); g.addColorStop(1, hex(this.home, 0.5));
@@ -445,9 +547,11 @@
       x.save(); x.globalAlpha = ease;
       x.font = '600 11px system-ui, sans-serif'; x.fillStyle = '#fff';
       x.shadowColor = 'rgba(0,0,0,.9)'; x.shadowBlur = 6;
-      x.fillText(String(f.player || '').slice(0, 26), 10, 16);
+      const tx = (t) => right ? w - 10 - x.measureText(t).width : 10;
+      const who = String(f.player || '').slice(0, 26);
+      x.fillText(who, tx(who), 16);
       x.font = '10px system-ui, sans-serif'; x.fillStyle = 'rgba(235,240,245,.85)';
-      x.fillText(f.label, 10, 29);
+      x.fillText(f.label, tx(f.label), 29);
       const txt = `modelo ${(f.pm * 100).toFixed(1)}% · libro ${(f.pf * 100).toFixed(1)}%`;
       x.fillStyle = `rgba(${GREEN}, 1)`; x.font = '600 10px system-ui, sans-serif';
       const tw = x.measureText(txt).width;
@@ -466,7 +570,14 @@
     last = t;
     let busy = false;
     boards.forEach((b, c) => {
-      if (!c.isConnected) { boards.delete(c); return; }
+      if (!c.isConnected) {
+        // La cabecera se redibujó: el canvas viejo suelta su parte del sonido.
+        if (b.mode === 'simulating') Audio.padUse(-1);
+        clearTimeout(b.pending);
+        if (resizer) resizer.unobserve(c);
+        boards.delete(c);
+        return;
+      }
       if (b.mode === 'resolving') {
         b.resolveT += dt / 1.4;
         if (b.resolveT >= 1) b.mode = 'final';
@@ -476,10 +587,24 @@
     raf = busy ? requestAnimationFrame(loop) : 0;
   }
   const kick = () => { if (!raf) { last = 0; raf = requestAnimationFrame(loop); } };
+  // Un cuadro quieto (inicio o resultado) se dibuja una vez; si el lienzo
+  // cambia de tamaño (se armó la página, rotó el teléfono, cambió la ventana)
+  // hay que redibujarlo o queda estirado.
+  const resizer = window.ResizeObserver ? new ResizeObserver(entries => {
+    entries.forEach(en => {
+      const b = boards.get(en.target);
+      if (b && !en.target.isConnected) { resizer.unobserve(en.target); boards.delete(en.target); return; }
+      if (b && (b.mode === 'final' || b.mode === 'idle') && en.contentRect.width > 0) b.frame(0);
+    });
+  }) : null;
   const get = (canvas) => {
     if (!canvas) return null;
     let b = boards.get(canvas);
-    if (!b) { b = new Galton(canvas); boards.set(canvas, b); }
+    if (!b) {
+      b = new Galton(canvas);
+      boards.set(canvas, b);
+      if (resizer) resizer.observe(canvas);
+    }
     return b;
   };
 
@@ -492,6 +617,7 @@
       if (b.mode === 'idle') {
         // Una pila de muestra para que la tarjeta no esté vacía.
         b.reset();
+        b.size();
         for (let i = 0; i < 260; i++) { b.spawn(); const p = b.parts.pop(); b.bins[p.bin] += 1; }
       }
       b.frame(0);

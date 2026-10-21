@@ -166,6 +166,32 @@ LIVE_LOGS_TTL_S   = 6 * 3600       # current season; past seasons never expire
 APPLY_TAIL_CALIBRATION = False
 TAIL_CALIBRATION_JSON = DATA_DIR / "tail_calibration.json"
 
+# ── Game context (altlines/context.py) ───────────────────────────────────────
+# One multiplier per (player, market) on the projected volume/level, applied by
+# simulation.project_player(level_mult=…). Each flag was kept or dropped by the
+# walk-forward backtest (`tools/backtest.py --variants …`, README §5): only
+# what lowered out-of-sample log-loss is on.
+CONTEXT_REST = False          # back-to-back / 1 day / 2+ days of rest
+CONTEXT_HOME = False          # home vs road
+CONTEXT_OPP = False           # opponent's pace + defense, per market
+CONTEXT_INJURIES = False      # rotation teammates OUT (ESPN injury report)
+# Shrinkage: player-specific rest/home effects lean on the league effect until
+# the player has ~K games in that situation; the opponent effect leans on 1.0
+# until ~K player-games against that team.
+CTX_K_PLAYER = 40.0
+CTX_K_OPP = 200.0
+CTX_PREV_SEASON_W = 0.5       # last season's games count half in the pools
+CTX_MULT_MIN, CTX_MULT_MAX = 0.85, 1.15
+# Teammates out. A teammate counts as OUT when his typical minutes (last 10
+# games) are ≥ INJ_OUT_MIN; the active rotation is everyone ≥ INJ_ACTIVE_MIN.
+INJ_OUT_MIN = 24.0
+INJ_ACTIVE_MIN = 10.0
+INJ_REDIST = 0.6              # share of the freed minutes that reaches the rotation
+INJ_SAME_POS_FRAC = 0.6       # …of which this share stays within the position
+INJ_MAX_MIN = 42.0            # minutes × (1 − min/42): headroom weighting
+INJ_MULT_MAX = 1.5
+INJ_REPORT_TTL_S = 30 * 60
+
 # ── Simulation defaults ───────────────────────────────────────────────────────
 N_SIM_DEFAULT      = 20_000   # spec asks for ≥ 10,000; 20k is cheap insurance
 RANDOM_SEED        = 20261018

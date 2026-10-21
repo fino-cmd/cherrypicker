@@ -144,12 +144,20 @@ def league_prior_var(spec: dict, mean: float) -> float | None:
 
 
 def project_player(logs: pd.DataFrame, spec: dict, halflife: float = 6.0,
-                   halflife_var: float | None = None) -> dict:
+                   halflife_var: float | None = None,
+                   level_mult: float = 1.0) -> dict:
     """Turn one player's log history for one market into simulation parameters.
 
     Method-of-moments on the player's OWN recency-weighted logs. Swap in a
     Bayesian/EM fit if you prefer; this returned dict is the only contract the
     simulator needs.
+
+    `level_mult` is tonight's context (altlines/context.py: rest, home/away,
+    opponent, teammates out) as one multiplier of the VOLUME. It scales
+    vol_mu and the level together — the mean is pinned to the level after the
+    simulation, so scaling the volume alone would be undone — and both
+    variances by the same factor (var ∝ mean, the league prior's law), so the
+    per-unit shape (regimes, conversion rate) is untouched.
     """
     logs = logs.sort_values("date") if "date" in logs.columns else logs
     v = pd.to_numeric(logs["value"], errors="coerce").to_numpy(float)
@@ -182,6 +190,8 @@ def project_player(logs: pd.DataFrame, spec: dict, halflife: float = 6.0,
     value_mean = max(0.0, LEVEL_BLEND_FAST * _wmean(v, w)
                      + (1.0 - LEVEL_BLEND_FAST) * float(np.mean(v)))
     value_var = _wvar(v, w_var)
+    m = float(level_mult) if level_mult and np.isfinite(level_mult) else 1.0
+    value_mean *= m
     target_mean = value_mean * (1.0 - p_inactive)
 
     # Empirical-Bayes shrinkage of the variance toward the market prior. A
@@ -192,6 +202,7 @@ def project_player(logs: pd.DataFrame, spec: dict, halflife: float = 6.0,
     prior_var = league_prior_var(spec, value_mean)
     if prior_var and np.isfinite(value_var):
         value_var = shrink_w * value_var + (1.0 - shrink_w) * prior_var
+    value_var *= m
 
     # ── Volume (opportunity) distribution ─────────────────────────────────────
     # Same blend as the level: a stable opportunity estimate, lightly weighted
@@ -201,6 +212,8 @@ def project_player(logs: pd.DataFrame, spec: dict, halflife: float = 6.0,
     vol_var = _wvar(u, w_var)
     if not np.isfinite(vol_var) or vol_var <= 0:
         vol_var = vol_mu * 1.5
+    vol_mu *= m
+    vol_var *= m
 
     params = {
         "n_games": n,
@@ -208,6 +221,7 @@ def project_player(logs: pd.DataFrame, spec: dict, halflife: float = 6.0,
         "vol_mu": vol_mu,
         "vol_var": float(vol_var),
         "p_inactive": p_inactive,
+        "level_mult": m,
     }
 
     # ── Per-unit behaviour differs by family ──────────────────────────────────

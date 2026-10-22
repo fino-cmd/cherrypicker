@@ -234,9 +234,16 @@ def run(demo: bool = False,
 
     # ── 2. Simulate ───────────────────────────────────────────────────────────
     print(f"[2/4] Simulating {n_iter:,} iterations per player-market...")
+    level_mults = {(str(r["player_id"]), r["market"]): float(r["mult"])
+                   for r in ((live_meta or {}).get("context") or [])}
+    if level_mults:
+        moved = sum(abs(m - 1.0) > 1e-9 for m in level_mults.values())
+        outs = sorted({n for r in live_meta["context"] for n in r.get("teammates_out") or []})
+        print(f"      contexto del partido: {moved}/{len(level_mults)} jugador-mercados ajustados"
+              + (f"; OUT: {', '.join(outs)}" if outs else ""))
     summary_df, sims_store = simulate_universe(
         logs_df, n_iter=n_iter, seed=seed, halflife=halflife,
-        halflife_var=halflife_var)
+        halflife_var=halflife_var, level_mults=level_mults)
     print(f"      {len(summary_df)} player-markets, "
           f"{int(summary_df['n_games'].sum())} games of history.")
 

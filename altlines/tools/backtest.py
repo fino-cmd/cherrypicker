@@ -49,6 +49,7 @@ import pandas as pd
 from scipy import stats
 
 from altlines import config as cfg
+from altlines import context as ctxmod
 from altlines import live
 from altlines.slate import NBA_TEAMS
 from altlines.simulation import (
@@ -113,6 +114,97 @@ def _season_games(athlete_id: str, season: int) -> list[dict]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 1b. Context variants (altlines/context.py)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Built once per worker process from the disk cache (no pickling of big frames).
+_CTX: dict = {}
+
+
+def _init_context() -> None:
+    if not _CTX:
+        games = ctxmod.load_cached_games()
+        _CTX["model"] = ctxmod.ContextModel(games)
+        _CTX["book"] = ctxmod.TeamBook(games)
+
+
+def parse_variant(name: str) -> tuple[tuple[str, ...], float | None]:
+    """'base' | 'rest' | 'home' | 'opp' | 'ctx' (= rest+home+opp) | 'inj' |
+    'inj@0.3' | 'all' (= ctx+inj) | 'lvl@1.02' (placebo: the same multiplier
+    for every game), combinable with '+'.
+    Returns (context factors used, injury redistribution or None)."""
+    use: list[str] = []
+    redist = None
+    for tok in name.split("+"):
+        tok = tok.strip()
+        if tok in ("base", ""):
+            continue
+        if tok == "ctx":
+            use += ["rest", "home", "opp"]
+        elif tok == "all":
+            use += ["rest", "home", "opp"]
+            redist = cfg.INJ_REDIST
+        elif tok.startswith("inj"):
+            redist = float(tok.split("@", 1)[1]) if "@" in tok else cfg.INJ_REDIST
+        elif tok in ("rest", "home", "opp"):
+            use.append(tok)
+        elif tok.startswith("lvl@"):          # placebo: a constant level shift
+            float(tok[4:])
+            use.append(tok)
+        else:
+            raise ValueError(f"variante desconocida: {tok}")
+    return tuple(dict.fromkeys(use)), redist
+
+
+def vcol(name: str) -> str:
+    return "p_" + name.replace("+", "_").replace("@", "").replace(".", "")
+
+
+def _target_context(a: dict, season: int, target: dict, prior: list[dict],
+                    variants: list[str]) -> tuple[dict, dict]:
+    """{variant: {market: mult}} for one game, plus diagnostics."""
+    from altlines.slate import normalize_tricode
+    parsed = {v: parse_variant(v) for v in variants}
+    day = ctxmod._day(target["date"])
+    rest_days = day - ctxmod._day(prior[-1]["date"]) if prior else None
+    opp = normalize_tricode(target.get("opponent"))
+    home = int(target.get("home_away") or 0)
+    model = _CTX["model"]
+    f = {m: model.factors(a["athlete_id"], m, season, day, opp, home, rest_days)
+         for m in LADDERS}
+    for use, _ in parsed.values():
+        for k in use:
+            if k.startswith("lvl@"):
+                for m in LADDERS:
+                    f[m][k] = float(k[4:])
+    diag = {"n_out": 0, "inj_boost_min": 0.0}
+    inj: dict[float, float] = {}
+    if any(r is not None for _, r in parsed.values()):
+        d_prior = [ctxmod._day(g["date"]) for g in prior]
+        cut = d_prior[-3] if len(d_prior) >= 3 else (d_prior[0] if d_prior else day)
+        out, active = _CTX["book"].game_context(
+            a["athlete_id"], normalize_tricode(target.get("team")), season, day,
+            str(target["event_id"]), cut)
+        typ = float(np.mean([g["min"] for g in prior[-10:]])) if prior else 0.0
+        active = [x for x in active if x[0] != a["athlete_id"]]
+        active.append((a["athlete_id"], typ, ctxmod._pos(a.get("position"))))
+        diag["n_out"] = len(out)
+        for _, r in parsed.values():
+            if r is None or r in inj:
+                continue
+            boost = ctxmod.redistribute(out, active, a["athlete_id"], redist=r) if typ > 0 else 0.0
+            inj[r] = float(np.clip((typ + boost) / typ, 1.0, cfg.INJ_MULT_MAX)) if typ > 0 else 1.0
+            if r == cfg.INJ_REDIST:
+                diag["inj_boost_min"] = boost
+    mults = {}
+    for v, (use, r) in parsed.items():
+        mults[v] = {m: (ctxmod.combine(f[m], use) if use else 1.0) * (inj[r] if r is not None else 1.0)
+                    for m in LADDERS}
+    diag["f"] = f
+    return mults, diag
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 2. One player, walk-forward
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -148,15 +240,31 @@ def backtest_player(job: dict) -> list[dict]:
         gap = (pd.Timestamp(target["date"]) - logs["date"].max()).days
         if gap > cfg.LIVE_STALE_DAYS:
             halflife = max(halflife, cfg.LIVE_STALE_HALFLIFE)
+        variants = job.get("variants") or []
+        if variants:
+            _init_context()
+            vmults, diag = _target_context(a, season, target, prior, variants)
         for market, ladder in LADDERS.items():
             spec = cfg.get_spec(market)
             grp = logs[logs["market"] == market]
             if len(grp) < 5:
                 continue
+            # Same RNG stream for every variant (common random numbers): the
+            # differences between variants are the context, not Monte Carlo noise.
+            stream = f"{market}|{target['date']}"
             try:
                 params = project_player(grp, spec, halflife=halflife)
                 sims = calibrate_player(params, spec, n_iter=n_iter,
-                                        rng=player_rng(seed, pid, f"{market}|{target['date']}"))
+                                        rng=player_rng(seed, pid, stream))
+                vsims: dict[str, np.ndarray] = {}
+                by_mult: dict[float, np.ndarray] = {1.0: sims}
+                for v in variants:
+                    mlt = round(float(vmults[v][market]), 6)
+                    if mlt not in by_mult:
+                        pv = project_player(grp, spec, halflife=halflife, level_mult=mlt)
+                        by_mult[mlt] = calibrate_player(pv, spec, n_iter=n_iter,
+                                                        rng=player_rng(seed, pid, stream))
+                    vsims[v] = by_mult[mlt]
             except Exception:  # noqa: BLE001 - one bad history must not kill the run
                 continue
             summ = summarize(sims)
@@ -166,7 +274,7 @@ def backtest_player(job: dict) -> list[dict]:
             main = float(np.floor(np.median(sims)) + 0.5)
             y = _outcome(target, market)
             for t in ladder:
-                rows.append({
+                row = {
                     "player_id": pid, "player": a["name"], "date": target["date"],
                     "market": market, "threshold": t, "profile": profile,
                     "n_hist": len(grp), "short_minutes": bool(short),
@@ -174,7 +282,17 @@ def backtest_player(job: dict) -> list[dict]:
                     "p_naive": float(stats.norm.sf(t, mu, sd)),
                     "p_book": casino_curve_prob(t, main, spec),
                     "hit": int(y > t), "value": y,
-                })
+                }
+                if variants:
+                    for v in variants:
+                        row[vcol(v)] = float((vsims[v] > t).mean())
+                        row["m_" + vcol(v)[2:]] = float(vmults[v][market])
+                    f = diag["f"][market]
+                    row.update({"n_out": diag["n_out"],
+                                "inj_boost_min": round(diag["inj_boost_min"], 2),
+                                "f_rest": round(f["rest"], 4), "f_home": round(f["home"], 4),
+                                "f_opp": round(f["opp"], 4)})
+                rows.append(row)
     return rows
 
 
@@ -340,6 +458,60 @@ def fit_calibration(df: pd.DataFrame, holdout_frac: float = 0.4) -> tuple[dict, 
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 4b. Context variants: before / after
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _delta_line(name: str, g: pd.DataFrame, col: str) -> str:
+    b_ll, v_ll = logloss(g["p_model"], g["hit"]), logloss(g[col], g["hit"])
+    b_br, v_br = brier(g["p_model"], g["hit"]), brier(g[col], g["hit"])
+    # Paired per-row difference → standard error of the log-loss change.
+    y = g["hit"].to_numpy(float)
+    pb, pv = _clip(g["p_model"]), _clip(g[col])
+    d = -(y * np.log(pv) + (1 - y) * np.log(1 - pv)) + (y * np.log(pb) + (1 - y) * np.log(1 - pb))
+    # Rows of one player-game-market are correlated: cluster the SE by them.
+    cl = pd.Series(d).groupby([g["player_id"].to_numpy(), g["date"].to_numpy(),
+                               g["market"].to_numpy()]).sum()
+    se = float(cl.std(ddof=1) * np.sqrt(len(cl)) / len(d)) if len(cl) > 1 else np.nan
+    return (f"  {name:<14} {len(g):>8} {b_ll:>9.5f} {v_ll:>9.5f} {v_ll - b_ll:>+10.5f} "
+            f"{se:>8.5f} {b_br:>9.5f} {v_br:>9.5f} {v_br - b_br:>+10.6f}")
+
+
+def compare_variants(df: pd.DataFrame, variants: list[str], holdout_frac: float = 0.4) -> str:
+    """Log-loss / Brier of every variant against the base engine (p_model):
+    total, per market, early vs late games, games with teammates out, and the
+    tail reliability."""
+    head = (f"  {'grupo':<14} {'n':>8} {'LL base':>9} {'LL var':>9} {'ΔLL':>10} "
+            f"{'±SE':>8} {'Br base':>9} {'Br var':>9} {'ΔBrier':>10}")
+    cut = df["date"].quantile(1 - holdout_frac, interpolation="nearest")
+    out = []
+    for v in variants:
+        col = vcol(v)
+        if col not in df.columns or v == "base":
+            continue
+        mcol = "m_" + col[2:]
+        lines = [f"── Variante {v} ({col}) vs motor base ──────────────────────", head,
+                 _delta_line("TOTAL", df, col),
+                 _delta_line("1º 60% fechas", df[df["date"] < cut], col),
+                 _delta_line("últ. 40%", df[df["date"] >= cut], col)]
+        for mk, g in df.groupby("market"):
+            lines.append(_delta_line(mk, g, col))
+        if "n_out" in df.columns:
+            g = df[df["n_out"] > 0]
+            if len(g):
+                lines.append(_delta_line("con OUT", g, col))
+        if mcol in df.columns:
+            m = df[mcol]
+            lines.append(f"  multiplicador: media {m.mean():.4f}, p05 {m.quantile(.05):.3f}, "
+                         f"p95 {m.quantile(.95):.3f}, ≠1 en {(m.sub(1).abs() > 1e-9).mean():.0%} de filas")
+        rb, rv = reliability(df, "p_model"), reliability(df, col)
+        lines.append("  pred/obs por bucket   " + "  ".join(
+            f"{a.bucket}: {a.ratio:.2f}→{b.ratio:.2f}" for a, b in zip(rb.itertuples(), rv.itertuples())
+            if a.n and b.n))
+        out.append("\n".join(lines))
+    return "\n\n".join(out)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 5. CLI
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -360,8 +532,29 @@ def main(argv: list[str] | None = None) -> int:
                    help="drop target games under the minutes floor (injury exits)")
     p.add_argument("--no-save", action="store_true",
                    help="do not write tail_calibration.json / the predictions file")
+    p.add_argument("--variants", default="",
+                   help="context variants to measure against the base engine, e.g. "
+                        "rest,home,opp,ctx,inj,inj@0.3,all (altlines/context.py). With "
+                        "variants the calibration map is NOT refitted; predictions go to "
+                        "backtest_context_predictions.csv.gz")
+    p.add_argument("--rescore", default="",
+                   help="re-score a saved context predictions file (no simulation)")
     args = p.parse_args(argv)
     t0 = time.time()
+    variants = [v.strip() for v in args.variants.split(",") if v.strip()]
+    for v in variants:
+        parse_variant(v)                      # fail fast on a typo
+    if args.rescore:
+        df = pd.read_csv(args.rescore, parse_dates=["date"])
+        if not variants:
+            variants = [c[2:] for c in df.columns
+                        if c.startswith("p_") and c not in ("p_model", "p_naive", "p_book", "p_cal")]
+            # column names lost '+', '@' and '.': print them as stored
+            df = df.rename(columns={f"p_{v}": vcol(v) for v in variants})
+        if args.conditional:
+            df = df[~df["short_minutes"]].reset_index(drop=True)
+        print(compare_variants(df, variants))
+        return 0
 
     if args.teams.lower() == "cached":
         teams, cache_only = _cached_teams(), True
@@ -374,7 +567,7 @@ def main(argv: list[str] | None = None) -> int:
 
     jobs = [{"player": a, "season": args.season, "n_iter": args.n_iter,
              "seed": args.seed, "min_games": args.min_games,
-             "min_minutes": args.min_minutes} for a in players]
+             "min_minutes": args.min_minutes, "variants": variants} for a in players]
     print(f"[2/4] Walk-forward desde el partido {args.min_games} de {args.season} "
           f"(historia {args.season - 1}+{args.season}, sólo jugadores con ≥"
           f"{args.min_games + 5} PJ y mediana ≥{args.min_minutes:g} min), "
@@ -419,6 +612,16 @@ def main(argv: list[str] | None = None) -> int:
     print(tail_ratio_by(df, "profile").to_string(index=False))
     print("\n── Normal ingenua: pred/obs en la cola, por mercado ──────────")
     print(tail_ratio_by(df, "market", "p_naive").to_string(index=False))
+
+    if variants:
+        print("\n[4/4] Contexto: cada variante contra el motor base (mismas sims, CRN)\n")
+        print(compare_variants(df, variants))
+        if not args.no_save:
+            pred_path = cfg.DATA_DIR / "backtest_context_predictions.csv.gz"
+            df.to_csv(pred_path, index=False, compression="gzip")
+            print(f"\nGuardado: {pred_path.relative_to(cfg.ROOT)}")
+        print(f"Listo en {time.time() - t0:.0f}s.")
+        return 0
 
     print("\n[4/4] Mapa de calibración p_model → p_real (isotónica vs Platt, hold-out temporal)")
     maps, hold = fit_calibration(df)

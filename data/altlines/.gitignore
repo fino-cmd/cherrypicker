@@ -3,3 +3,4 @@ picks.db
 picks.db-*
 # Walk-forward backtest predictions (regenerate: python -m altlines.tools.backtest)
 backtest_predictions.csv.gz
+backtest_context_predictions.csv.gz

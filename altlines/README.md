@@ -503,6 +503,120 @@ Tres advertencias:
 Las predicciones crudas quedan en `data/altlines/backtest_predictions.csv.gz`
 (gitignored, ~16 MB), para reagrupar sin volver a simular.
 
+### Contexto del partido: rival, lesiones, descanso, localía (`altlines/context.py`)
+
+El motor proyecta a cada jugador sólo con su historial. `context.py` le suma el
+partido de esta noche como **un multiplicador por (jugador, mercado)** que
+`project_player(level_mult=…)` aplica al volumen (`vol_mu`) y al nivel, con las
+varianzas escaladas igual (var ∝ media). Escalar sólo `vol_mu` no alcanza: la
+simulación fija la media al nivel proyectado y lo desharía.
+
+Cada efecto se mide igual, con los logs de ESPN cacheados (cero créditos): por
+partido-jugador, `valor ÷ media de sus 20 partidos anteriores`, agrupado y
+siempre **con datos anteriores a la fecha**:
+
+| Flag (`config.py`) | Qué hace | Shrinkage |
+|---|---|---|
+| `CONTEXT_OPP` | ratio del rival por mercado (ritmo + defensa juntos) | hacia 1,0 con `CTX_K_OPP = 200` partidos-jugador; la temporada anterior pesa 0,5 |
+| `CONTEXT_INJURIES` | compañeros de rotación OUT (≥ 24 min en sus últimos 10) → sus minutos se reparten 60 % dentro de la posición y 40 % entre todos, ∝ minutos × margen (1 − min/42); sólo `INJ_REDIST` llega a la rotación | tope 1,5× |
+| `CONTEXT_REST` | back-to-back / 1 día / 2+ | efecto de liga + el del jugador, `CTX_K_PLAYER = 40` |
+| `CONTEXT_HOME` | local / visitante | ídem |
+
+Un OUT cuenta sólo si jugó para **ese** equipo y sigue en él (en el backtest:
+vuelve a jugar para él más adelante; en vivo: figura en el reporte de lesiones),
+y si estuvo en alguno de los 3 últimos partidos del jugador. Si lleva semanas
+afuera, la EWMA ya absorbió su ausencia y no es noticia. En el backtest, el OUT
+es "jugador de rotación que no jugó ese partido", que es la aproximación pedida.
+
+**Medición** (`python -m altlines.tools.backtest --teams ALL --variants opp,inj@0.2,…`,
+2026-10-21). Las mismas 537.978 predicciones de arriba y las mismas
+simulaciones (números aleatorios comunes por jugador-mercado-fecha), así que la
+diferencia es sólo el contexto. El motor base reproduce el log-loss 0,23738.
+`ΔLL` < 0 = mejor; `±SE` agrupado por jugador-partido-mercado. Las fechas se
+parten 60/40 para ver si el efecto se sostiene en el tramo final.
+
+| Variante | ΔLL total (±SE) | ΔLL 1º 60 % | ΔLL últ. 40 % | ΔBrier | Veredicto |
+|---|---:|---:|---:|---:|---|
+| descanso | +0,00038 (0,00008) | +0,00030 | +0,00051 | +0,00012 | **fuera** |
+| local/visitante | +0,00039 (0,00007) | +0,00047 | +0,00027 | +0,00012 | **fuera** |
+| rival | −0,00093 (0,00009) | −0,00081 | −0,00111 | −0,00029 | **activo** |
+| descanso+local+rival | −0,00020 (0,00013) | −0,00008 | −0,00037 | −0,00006 | — |
+| lesiones, redist 0,2 | −0,00086 (0,00008) | −0,00092 | −0,00078 | −0,00027 | **activo** |
+| lesiones, redist 0,3 | −0,00093 (0,00012) | −0,00099 | −0,00085 | −0,00029 | empata con 0,2 |
+| lesiones, redist 0,6 | −0,00001 (0,00021) | −0,00008 | +0,00008 | −0,00000 | demasiado |
+| lesiones, redist 1,0 | +0,00264 (0,00030) | +0,00259 | +0,00272 | +0,00086 | demasiado |
+| placebo: nivel ×1,02 a todos | +0,00015 (0,00006) | +0,00018 | +0,00011 | +0,00002 | control |
+| **rival + lesiones 0,2 (config)** | **−0,00177 (0,00012)** | **−0,00174** | **−0,00180** | **−0,00054** | **activo** |
+
+Por mercado, con rival + lesiones 0,2 (ΔLL): puntos −0,00243, PRA −0,00307,
+asistencias −0,00140, rebotes −0,00069, triples −0,00071. Mejora en los cinco.
+En el 43 % de filas con algún compañero OUT, ΔLL = −0,00317.
+
+Calibración por bucket (pred/obs), motor base → rival + lesiones 0,2:
+
+| Bucket | 35–50 % | 20–35 % | 10–20 % | 5–10 % | 2–5 % | < 2 % |
+|---|---:|---:|---:|---:|---:|---:|
+| base | 0,96× | 0,93× | 0,92× | 0,92× | 0,97× | 1,00× |
+| rival + lesiones | 0,98× | 0,97× | 0,97× | 1,00× | 1,09× | 1,09× |
+
+Cómo leerlo:
+
+- **El rival es el único ajuste "de calendario" que sirve**: mejora en las dos
+  mitades y en los cinco mercados. Descanso y localía empeoran incluso con
+  shrinkage: el efecto real es más chico que el ruido con que se estima por
+  jugador.
+- **Lesiones: la tesis 3 se sostiene.** Cuando falta un titular, el suplente
+  rinde por encima de su historial. El placebo descarta que sea sólo "subir el
+  nivel": un ×1,02 parejo empeora el total, mientras que el ajuste por
+  lesiones, con un multiplicador medio parecido (1,016), lo mejora. En las filas
+  con OUT gana 2,3× más que el placebo (−0,00202 vs −0,00087).
+- **Pero redistribuir de más rompe la calibración** (0,6 y 1,0 empeoran: los
+  minutos liberados se van más a la rotación profunda de lo que parece).
+  `INJ_REDIST = 0,2` es la pendiente de minutos reales sobre el boost predicho
+  en 2024-25, fijada **antes** de mirar el backtest. 0,3 queda a 0,00005 (un
+  tercio de SE) e infla más la cola < 2 % (1,16× vs 1,09×), así que queda 0,2.
+- **Costo:** el sesgo conservador del motor (0,92×) desaparece, y las colas
+  2–5 % y < 2 % pasan de 1,0× a 1,09×. `MAX_DECIMAL_ODDS` sigue cortando la
+  zona donde eso pesa.
+
+**En modo real** (`live.build_live_dataset`): para cada partido se calcula el
+multiplicador de cada jugador con el reporte de lesiones de ESPN
+(`site.api.espn.com/…/nba/injuries`, público, caché 30 min; sólo cuenta
+`status = Out`). La rotación activa de un equipo con un OUT sale de sus
+gamelogs de ESPN (caché). Las tablas de rival se arman con todos los gamelogs
+cacheados (temporada actual + la anterior a 0,5). El resultado queda en
+`live_meta["context"]` (factores, compañeros OUT y `mult`) y `run_pipeline` lo
+pasa a `simulate_universe(level_mults=…)`; la tabla resumen trae `level_mult`.
+Si algo falla, el tablero sale igual, sin contexto.
+
+**Advertencia importante: el anclaje.** El tablero real mueve la mediana del
+motor a la línea principal del mercado (`anchor_to_line`). Así, en vivo, el
+ajuste de **nivel** se pierde casi entero: lo que sobrevive es el cambio de
+dispersión, el filtro `level_ok` (ahora el modelo y el mercado discrepan menos
+cuando el libro ya movió la principal por una baja) y la mezcla motor-mercado.
+El backtest mide el motor **sin anclar**, porque no hay líneas principales
+históricas. Para aprovechar la tesis 3 de lleno (el libro mueve la principal
+del suplente pero no re-tarifa su escalera alternativa), el próximo paso es
+medir con picks liquidados si conviene anclar menos cuando hay un OUT.
+
+**Repaso sobre las noches reales liquidadas**
+(`python -m altlines.tools.context_replay`): reconstruye el tablero de cada
+partido de `picks.db` con las cuotas **cacheadas** (0 créditos), historial
+cortado el día anterior y el reporte de lesiones que ESPN adjunta al resumen del
+partido. Compara las variantes sobre las mismas líneas:
+
+| Variante | líneas | LL motor | LL mezcla | Brier motor | tablero |
+|---|---:|---:|---:|---:|---|
+| base | 180 | 0,4748 | 0,4608 | 0,1521 | 0-11 |
+| rival | 180 | 0,4761 | 0,4611 | 0,1524 | 0-10 |
+| lesiones | 180 | 0,4748 | 0,4608 | 0,1521 | 0-11 |
+| config (rival + lesiones) | 180 | 0,4761 | 0,4611 | 0,1524 | 0-10 |
+
+BOS@DET y PHI@NYK, noche inaugural. Ningún OUT calificó: Carter y Prince
+jugaron 2025-26 en otros equipos, y los de PHI no eran de rotación. Por eso
+"lesiones" = base, y el rival mueve el LL en el cuarto decimal. Dos partidos no
+deciden nada; el 0-11 del tablero no viene del contexto.
+
 ### El libro, reproducido
 
 `casino_sigma` (en `config.py`) es el sigma genérico del libro por mercado —

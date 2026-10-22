@@ -336,6 +336,30 @@ _ESPN_INJURIES = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/i
 _ID_RE = re.compile(r"/id/(\d+)")
 
 
+def game_injuries(event_id: str) -> list[dict]:
+    """The injury list ESPN attaches to one game's summary (for replays of a
+    finished night: the league report has moved on by then)."""
+    from altlines import live
+    from altlines.slate import normalize_tricode
+    cached = live._cache_get("injuries", f"game_{event_id}", None)
+    if cached is not None:
+        return cached
+    data = live._get_json("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary",
+                          params={"event": event_id}).json()
+    out = []
+    for team in data.get("injuries") or []:
+        tr = normalize_tricode((team.get("team") or {}).get("abbreviation"))
+        for inj in team.get("injuries") or []:
+            a = inj.get("athlete") or {}
+            m = next((_ID_RE.search(str(ln.get("href") or "")) for ln in a.get("links") or []
+                      if _ID_RE.search(str(ln.get("href") or ""))), None)
+            if m:
+                out.append({"athlete_id": m.group(1), "name": a.get("displayName") or "",
+                            "team": tr, "position": "", "status": str(inj.get("status") or "")})
+    live._cache_put("injuries", f"game_{event_id}", out)
+    return out
+
+
 def fetch_injuries(refresh: bool = False) -> list[dict]:
     """League-wide ESPN injury report: [{athlete_id, name, team, position, status}].
 
@@ -391,17 +415,23 @@ def _model_for(season: int) -> ContextModel | None:
     return model
 
 
+def _abbr(team) -> str | None:
+    return team.get("abbreviation") if isinstance(team, dict) else team
+
+
 def _pos(p: str) -> str:
     p = (p or "F").upper()
     return p[0] if p[0] in "GFC" else "F"
 
 
 def live_multipliers(players: list[dict], tonight: str, season: int,
-                     home_team: str, away_team: str) -> list[dict]:
+                     home_team: str, away_team: str,
+                     injuries: list[dict] | None = None) -> list[dict]:
     """Context multipliers for the players of ONE game.
 
     `players`: [{player_id, athlete_id, team, position, games}] where `games`
-    are that player's raw ESPN games (both seasons). Returns one dict per
+    are that player's raw ESPN games (both seasons). `injuries` overrides the
+    league report (a replay passes the game's own list). Returns one dict per
     (player, market) with the factors and the final `mult` the engine applies.
     """
     use = tuple(k for k, on in (("rest", cfg.CONTEXT_REST), ("home", cfg.CONTEXT_HOME),
@@ -411,7 +441,10 @@ def live_multipliers(players: list[dict], tonight: str, season: int,
     from altlines import live
     day = _day(tonight)
     model = _model_for(season) if use else None
-    injuries = fetch_injuries() if cfg.CONTEXT_INJURIES else []
+    if injuries is None:
+        injuries = fetch_injuries() if cfg.CONTEXT_INJURIES else []
+    elif not cfg.CONTEXT_INJURIES:
+        injuries = []
     out_by_team: dict[str, list[dict]] = {}
     for inj in injuries:
         if inj["status"].lower() == "out":
@@ -432,13 +465,17 @@ def live_multipliers(players: list[dict], tonight: str, season: int,
                      live.fetch_athlete_games(aid, season, current=True)
                      + live.fetch_athlete_games(aid, season - 1, current=False))
             games = sorted((g for g in games if g.get("min") and g["min"] > 0
-                            and g.get("date") and not g.get("playoffs")),
+                            and g.get("date") and g["date"] < tonight[:10]
+                            and not g.get("playoffs")),
                            key=lambda g: g["date"])[-10:]
             if len(games) < 5:
                 continue
             typ = float(np.mean([g["min"] for g in games]))
             if aid in out_ids:
-                if typ >= cfg.INJ_OUT_MIN:
+                # Same rule as the backtest: his minutes must have been THIS
+                # team's (a newcomer's absence takes nothing from anyone's history).
+                from altlines.slate import normalize_tricode
+                if typ >= cfg.INJ_OUT_MIN and normalize_tricode(_abbr(games[-1].get("team"))) == team:
                     out_list.append((typ, _pos(a["position"]), a["name"], games[-1]["date"]))
             elif typ >= cfg.INJ_ACTIVE_MIN:
                 active.append((aid, typ, _pos(a["position"])))
@@ -446,8 +483,10 @@ def live_multipliers(players: list[dict], tonight: str, season: int,
 
     rows = []
     for p in players:
+        # Strictly before tonight: a backfill of a past night must not see it.
         games = sorted((g for g in p["games"] if g.get("min") and g["min"] > 0
-                        and g.get("date") and not g.get("playoffs")), key=lambda g: g["date"])
+                        and g.get("date") and g["date"] < tonight[:10]
+                        and not g.get("playoffs")), key=lambda g: g["date"])
         if not games:
             continue
         rest_days = day - _day(games[-1]["date"])

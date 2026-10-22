@@ -320,6 +320,10 @@ def match_event(game: dict, events: list[dict]) -> dict | None:
     return best
 
 
+# Replays (tools/context_replay.py) set this to `gid -> injury list` so a past
+# night uses that game's own injury report instead of today's.
+CONTEXT_INJURY_OVERRIDE = None
+
 _LAST_QUOTA: dict = {"remaining": None, "used": None, "last_cost": None, "ts": None}
 
 
@@ -457,7 +461,8 @@ def build_live_dataset(slate: dict, game: str | None = None,
 
     log_rows: list[dict] = []
     odds_frames: list[pd.DataFrame] = []
-    meta = {"games": [], "unmatched_names": [], "no_event": [], "quota": None}
+    meta = {"games": [], "unmatched_names": [], "no_event": [], "quota": None,
+            "context": []}
 
     for g in games:
         gid = str(g["game_id"])
@@ -498,6 +503,7 @@ def build_live_dataset(slate: dict, game: str | None = None,
         odds_frames.append(odds)
 
         n_players = 0
+        ctx_players = []
         for k in odds["key"].unique():
             a = roster[k]
             pid = f"ESPN-{a['athlete_id']}"
@@ -510,6 +516,20 @@ def build_live_dataset(slate: dict, game: str | None = None,
             if rows:
                 n_players += 1
                 log_rows += rows
+                ctx_players.append({"player_id": pid, "athlete_id": a["athlete_id"],
+                                    "team": a["team"], "position": a["position"],
+                                    "games": games_hist})
+        # Tonight's context (rest, home/away, opponent, teammates OUT): one
+        # multiplier per (player, market) for simulation.project_player. Only
+        # the flags in config.CONTEXT_* that passed the backtest are on.
+        try:
+            from altlines import context as ctx_mod
+            tonight = str(slate.get("date") or g.get("tip_off") or "")[:10]
+            meta["context"] += ctx_mod.live_multipliers(
+                ctx_players, tonight, season_now, home_tr, away_tr,
+                injuries=(CONTEXT_INJURY_OVERRIDE(gid) if CONTEXT_INJURY_OVERRIDE else None))
+        except Exception as exc:  # noqa: BLE001 - context must never sink the board
+            logger.warning("context failed for %s: %s", gid, exc)
         meta["games"].append({"game_id": gid, "event_id": ev["id"],
                               "players": n_players, "lines": int(len(odds)),
                               "books": sorted(odds["book"].unique().tolist())})

@@ -171,10 +171,14 @@ TAIL_CALIBRATION_JSON = DATA_DIR / "tail_calibration.json"
 # simulation.project_player(level_mult=…). Each flag was kept or dropped by the
 # walk-forward backtest (`tools/backtest.py --variants …`, README §5): only
 # what lowered out-of-sample log-loss is on.
+# Backtest 2025-26 (538k predictions, ΔLL vs base engine, first 60 % / last 40 %
+# of dates): rest +0.00030/+0.00051 and home +0.00047/+0.00027 → worse, OFF;
+# opp −0.00081/−0.00111 → ON; injuries (redist 0.2) −0.00092/−0.00078 → ON;
+# opp + injuries −0.00174/−0.00180.
 CONTEXT_REST = False          # back-to-back / 1 day / 2+ days of rest
 CONTEXT_HOME = False          # home vs road
-CONTEXT_OPP = False           # opponent's pace + defense, per market
-CONTEXT_INJURIES = False      # rotation teammates OUT (ESPN injury report)
+CONTEXT_OPP = True            # opponent's pace + defense, per market
+CONTEXT_INJURIES = True       # rotation teammates OUT (ESPN injury report)
 # Shrinkage: player-specific rest/home effects lean on the league effect until
 # the player has ~K games in that situation; the opponent effect leans on 1.0
 # until ~K player-games against that team.
@@ -186,7 +190,10 @@ CTX_MULT_MIN, CTX_MULT_MAX = 0.85, 1.15
 # games) are ≥ INJ_OUT_MIN; the active rotation is everyone ≥ INJ_ACTIVE_MIN.
 INJ_OUT_MIN = 24.0
 INJ_ACTIVE_MIN = 10.0
-INJ_REDIST = 0.6              # share of the freed minutes that reaches the rotation
+# Share of the freed minutes that reaches the rotation. 0.2 = the slope of real
+# minutes on predicted boost in 2024-25 (no backtest data); 0.3 scored the same
+# (within 1 SE) but fattens the < 2 % tail more; 0.6 and 1.0 were worse.
+INJ_REDIST = 0.2
 INJ_SAME_POS_FRAC = 0.6       # …of which this share stays within the position
 INJ_MAX_MIN = 42.0            # minutes × (1 − min/42): headroom weighting
 INJ_MULT_MAX = 1.5

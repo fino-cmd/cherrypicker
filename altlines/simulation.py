@@ -191,8 +191,6 @@ def project_player(logs: pd.DataFrame, spec: dict, halflife: float = 6.0,
                      + (1.0 - LEVEL_BLEND_FAST) * float(np.mean(v)))
     value_var = _wvar(v, w_var)
     m = float(level_mult) if level_mult and np.isfinite(level_mult) else 1.0
-    value_mean *= m
-    target_mean = value_mean * (1.0 - p_inactive)
 
     # Empirical-Bayes shrinkage of the variance toward the market prior. A
     # 12-game sample can easily show a 1.5x inflated sd by chance; extrapolating
@@ -202,7 +200,10 @@ def project_player(logs: pd.DataFrame, spec: dict, halflife: float = 6.0,
     prior_var = league_prior_var(spec, value_mean)
     if prior_var and np.isfinite(value_var):
         value_var = shrink_w * value_var + (1.0 - shrink_w) * prior_var
+    # Context last, after the prior (which already scales with the mean).
+    value_mean *= m
     value_var *= m
+    target_mean = value_mean * (1.0 - p_inactive)
 
     # ── Volume (opportunity) distribution ─────────────────────────────────────
     # Same blend as the level: a stable opportunity estimate, lightly weighted
@@ -596,8 +597,12 @@ def simulate_universe(logs: pd.DataFrame, markets: list[str] | None = None,
                       n_iter: int = N_SIM_DEFAULT,
                       seed: int = RANDOM_SEED,
                       halflife: float = 6.0,
-                      halflife_var: float | None = None) -> tuple[pd.DataFrame, dict]:
+                      halflife_var: float | None = None,
+                      level_mults: dict | None = None) -> tuple[pd.DataFrame, dict]:
     """Simulate every (player, market) present in `logs`.
+
+    `level_mults` = {(player_id, market): multiplier} from altlines/context.py
+    (tonight's rest / home / opponent / teammates out); missing keys = 1.0.
 
     Returns:
         summary_df  — one row per player-market with the full distribution
@@ -615,7 +620,8 @@ def simulate_universe(logs: pd.DataFrame, markets: list[str] | None = None,
         spec = get_spec(market)
         try:
             params = project_player(grp, spec, halflife=halflife,
-                                    halflife_var=halflife_var)
+                                    halflife_var=halflife_var,
+                                    level_mult=(level_mults or {}).get((str(pid), market), 1.0))
             # Per-player stream: makes this player's result independent of who
             # else is in `logs`, so a single game simulates identically to the
             # league-wide board (see player_rng).
@@ -637,6 +643,7 @@ def simulate_universe(logs: pd.DataFrame, markets: list[str] | None = None,
             "proj_mean":   round(params["target_mean"], 2),
             "proj_usage":  round(params["vol_mu"], 2),
             "p_inactive":  round(params["p_inactive"], 3),
+            "level_mult":  round(params["level_mult"], 4),
             "profile":     profile_label(summary, spec),
         }
         row.update(summary)

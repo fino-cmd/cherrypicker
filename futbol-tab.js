@@ -912,23 +912,35 @@
   // seguro y el total de remates más parejo. El detalle completo, en el partido.
   function highlights(m) {
     const items = [];
+    const pl = (id) => m.players.find(x => x.player_id === id);
     const mp = (state.data.picks || []).filter(k => k.event_id === m.event_id).sort((x, y) => (y.edge || 0) - (x.edge || 0));
-    mp.slice(0, 2).forEach(k => items.push({ kind: 'pick', icon: I.tick, title: `${surname(k.player)} · ${lineLabel(k.stat, k.line)}`,
-      sub: `${Math.round(k.p_model * 10)}/10 · jugala desde ${odd(k.min_odds)} · ${bookName(k.best_book)} paga ${odd(k.best_price)}` }));
+    mp.slice(0, 2).forEach(k => items.push({ kind: 'pick', p: pl(k.player_id), team: teamOf(m, k.team_id),
+      title: `${surname(k.player)} · ${lineLabel(k.stat, k.line)}`,
+      sub: `${Math.round(k.p_model * 10)}/10 · jugala desde ${odd(k.min_odds)}`, book: k.best_book, price: k.best_price, ok: k.best_price >= k.min_odds }));
     const sure = [];
     m.players.forEach(p => p.lines.forEach(l => { if (l.p_model >= 0.78 && l.p_model <= 0.95) sure.push({ p, l }); }));
     sure.sort((x, y) => (y.l.line - x.l.line) || (y.l.p_model - x.l.p_model));
     sure.filter(x => !mp.some(k => k.player_id === x.p.player_id && k.stat === x.l.stat && k.line === x.l.line)).slice(0, 2)
-      .forEach(({ p, l }) => items.push({ kind: 'sure', icon: I.check, title: `${surname(p.player)} · ${lineLabel(l.stat, l.line)}`, sub: `${Math.round(l.p_model * 10)}/10 · lo más firme del partido` }));
+      .forEach(({ p, l }) => items.push({ kind: 'sure', p, team: teamOf(m, p.team_id), title: `${surname(p.player)} · ${lineLabel(l.stat, l.line)}`,
+        sub: `${Math.round(l.p_model * 10)}/10 · lo más firme del partido`, book: l.best_book, price: l.best_price, ok: l.best_price != null && l.best_price >= l.min_odds }));
     const tl = [];
     ['home', 'away'].forEach(sd => Object.entries(m.teams[sd].shots_over || {}).forEach(([ln, pr]) => tl.push({ t: m.teams[sd], ln, pr })));
     const even = tl.sort((x, y) => Math.abs(x.pr - 0.6) - Math.abs(y.pr - 0.6))[0];
-    if (even) items.push({ kind: 'team', icon: I.pitch, title: `${even.t.name} · más de ${String(even.ln).replace('.', ',')} remates`, sub: `${Math.round(even.pr * 100)} de cada 100 partidos` });
+    if (even) items.push({ kind: 'team', team: even.t, title: `${even.t.name} · más de ${String(even.ln).replace('.', ',')} remates`, sub: `${Math.round(even.pr * 100)} de cada 100 partidos` });
     if (!items.length) return '';
+    const face = (it) => it.kind === 'team'
+      ? `<span class="fb-hl-face is-team"><img src="${logo(it.team.team_id)}" alt="" onerror="this.remove()"></span>`
+      : `<span class="fb-hl-face">${it.p && it.p.photo ? `<img src="${esc(it.p.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<i>${esc(initials(it.p ? it.p.player : it.title))}</i>
+          ${it.team ? `<img class="fb-hl-crest" src="${logo(it.team.team_id)}" alt="" onerror="this.remove()">` : ''}</span>`;
     return `
       <div class="fb-hl">
         <div class="fb-hl-head"><b>Destacados</b><small>lo mejor de la simulación · todo en "Ver partido completo"</small></div>
-        ${items.map(it => `<div class="fb-hl-item fb-hl-item--${it.kind}">${it.icon}<span><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></span></div>`).join('')}
+        ${items.map(it => `
+          <div class="fb-hl-item fb-hl-item--${it.kind}">
+            ${face(it)}
+            <span class="fb-hl-txt"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></span>
+            ${it.price != null && it.book ? `<span class="fb-hl-odd${it.ok ? ' is-ok' : ''}" title="Mejor cuota: ${esc(bookName(it.book))}">${bookBadge(it.book, 'is-sm')}<b>${odd(it.price)}</b></span>` : ''}
+          </div>`).join('')}
       </div>`;
   }
   function fxPanel(m) {
@@ -1160,6 +1172,35 @@
         ${!confirmed && ps < 90 ? `<small>${ps}%</small>` : ''}
       </div>`;
   }
+  // Cancha dibujada en el mismo sistema que los jugadores (0–100 de ancho,
+  // 0–130 de alto). En la Premier va en perspectiva: más angosta arriba, y a
+  // los jugadores se los acomoda con la misma cuenta, así nunca quedan afuera.
+  // margen lateral arriba (perspectiva): más suave en el teléfono para que los nombres entren
+  const pTop = () => (window.innerWidth < 769 ? 8 : 18);
+  const pxy = (x, y, tilt) => {                      // x 0–100 dentro de la cancha, y 0–130
+    const P = pTop(), t = y / 130, l = tilt ? P - (P - 2) * t : 2, r = tilt ? 100 - l : 98;
+    return [(l + (x / 100) * (r - l)).toFixed(2), y.toFixed(2)];
+  };
+  function pitchLines(tilt) {
+    const pt = (x, y) => pxy(x, y, tilt).join(' ');
+    const box = (x0, x1, y0, y1) => `M${pt(x0, y0)}L${pt(x0, y1)}L${pt(x1, y1)}L${pt(x1, y0)}`;
+    const arc = (y, up) => { const [ax, ay] = pxy(38, y, tilt), [bx] = pxy(62, y, tilt); return `M${ax} ${ay}A${((bx - ax) / 2).toFixed(2)} 8 0 0 ${up ? 1 : 0} ${bx} ${ay}`; };
+    return `
+          <svg class="fb-xp-lines" viewBox="0 0 100 130" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M${pt(0, 3)}L${pt(100, 3)}L${pt(100, 127)}L${pt(0, 127)}Z" />
+            <path d="${box(29, 71, 3, 17)}" /><path d="${box(40, 60, 3, 8)}" />
+            <path d="${box(29, 71, 127, 113)}" /><path d="${box(40, 60, 127, 122)}" />
+            <path d="${arc(17, false)}" /><path d="${arc(113, true)}" />
+          </svg>`;
+  }
+  // Un jugador ubicado sobre la cancha rectangular → sobre la cancha en perspectiva.
+  function persp(d) {
+    const y130 = (d.y / 100) * 130;
+    const xin = ((d.x - 2) / 96) * 100;
+    const [x] = pxy(xin, y130, true);
+    return { ...d, x: Number(x) };
+  }
+
   function pitch(m) {
     const lu = m.lineup || {};
     if (!lu.home && !lu.away) return '';
@@ -1182,16 +1223,9 @@
         </div>
         <div class="fb-xt-row">${tab('home')}${tab('away')}</div>
         <div class="fb-xp">
-          <svg class="fb-xp-lines" viewBox="0 0 100 130" preserveAspectRatio="none" aria-hidden="true">
-            <rect x="2" y="2" width="96" height="126" />
-            <line x1="2" y1="2" x2="98" y2="2" />
-            <path d="M30 2v15h40V2M41 2v6h18V2" />
-            <path d="M30 128v-15h40v15M41 128v-6h18v6" />
-            <path d="M38 17a12 9 0 0 0 24 0" />
-            <path d="M38 113a12 9 0 0 1 24 0" />
-          </svg>
+          ${pitchLines(m.league === 'eng')}
           <span class="fb-xp-form">${esc(xi.formation || '')}</span>
-          ${placeXI(xi).map(d => xiDot(d, m, conf)).join('')}
+          ${placeXI(xi).map(d => xiDot(m.league === 'eng' ? persp(d) : d, m, conf)).join('')}
         </div>
         <p class="fb-note">En cada círculo: <b>remates esperados</b>${conf ? '' : '. El % de abajo es su chance de ser titular; el borde punteado marca las dudas'}.
           ${doubts.length ? ` Dudas: ${doubts.map(p => `<b>${esc(surname(p.player))}</b>`).join(', ')}.` : ''}

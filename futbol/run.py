@@ -143,56 +143,23 @@ def simulate_event(ev: dict, ctx: dict, squad: list[dict] | None) -> tuple[dict,
             "sot_over": {str(l): round(fm.p_over(t["sot_dist"], l), 3) for l in cfg.TEAM_SOT_LINES},
         }
     picks, players_out = [], []
+    meta = {"lg": lg, "ev": ev, "confirmed": confirmed}
     for p in sorted(sim["players"], key=lambda x: -x["shots_mean"]):
         if p["exp_minutes"] < 15 or p["pos_group"] == "G":
             continue
-        lines = []
+        starter_like = confirmed and p["p_start"] >= 1.0 or (not confirmed and p["p_start"] >= SUBPLUS_MIN_START)
+        entries = []
         for stat, ls in (("shots", cfg.SHOT_LINES), ("sot", cfg.SOT_LINES)):
             for line in ls:
                 pm = fm.p_over(p[f"{stat}_dist"], line)
                 if pm < 0.02:
                     continue
-                starter_like = confirmed and p["p_start"] >= 1.0 or (not confirmed and p["p_start"] >= SUBPLUS_MIN_START)
                 psp = fm.p_over(p[f"{stat}_sp_dist"], line) if starter_like else pm
-                prices = {}
-                if not mo.empty:
-                    q = mo[(mo["player_id"] == p["player_id"]) & (mo["stat"] == stat)
-                           & (np.isclose(mo["line"], line))]
-                    for r in q.itertuples():
-                        # Cordura: una cuota 3× la justa del modelo es casi
-                        # siempre un cruce de jugador equivocado.
-                        if r.price > SANITY_X / pm:
-                            ctx["suspicious"].append((p["player"], stat, line, r.book, r.price))
-                            continue
-                        prices[r.book] = {"price": r.price, "p_book": round(float(r.p_book), 3)}
-                fair = 1.0 / pm
-                best = max(prices.items(), key=lambda kv: kv[1]["price"]) if prices else None
-                row = {"stat": stat, "line": line, "p_model": round(pm, 3),
-                       "fair_odds": round(fair, 2), "min_odds": round(fair * (1 + MIN_EDGE), 2),
-                       "p_sub": round(psp, 3), "fair_sub": round(1.0 / psp, 2),
-                       "min_sub": round(1.0 / psp * (1 + MIN_EDGE), 2),
-                       "books": prices,
-                       "best_book": best[0] if best else None,
-                       "best_price": best[1]["price"] if best else None}
-                if best:
-                    row["edge"] = round(pm * best[1]["price"] - 1.0, 3)
-                lines.append(row)
-                base = {"league": lg, "event_id": ev["event_id"], "date": ev["date"],
-                        "match": f"{ev['home']} vs {ev['away']}", "player": p["player"],
-                        "player_id": p["player_id"], "team_id": p["team_id"],
-                        "pos": p["pos_group"], "role": p.get("role"), "exp_minutes": round(p["exp_minutes"]),
-                        "lineup": confirmed, **row}
-                if best and PICK_P_MIN <= pm <= PICK_P_MAX and best[1]["price"] >= row["min_odds"]:
-                    picks.append({**base, "mode": "normal"})
-                elif starter_like and psp > pm + 0.005:
-                    # Con suplente: mejor casa que ofrece la promo y su precio.
-                    sp = {b: v for b, v in prices.items() if b in SUBPLUS_BOOKS}
-                    bsp = max(sp.items(), key=lambda kv: kv[1]["price"]) if sp else None
-                    if bsp and PICK_P_MIN <= psp <= PICK_P_MAX and bsp[1]["price"] >= row["min_sub"]:
-                        picks.append({**base, "mode": "sub", "p_model": row["p_sub"],
-                                      "fair_odds": row["fair_sub"], "min_odds": row["min_sub"],
-                                      "best_book": bsp[0], "best_price": bsp[1]["price"],
-                                      "edge": round(psp * bsp[1]["price"] - 1.0, 3)})
+                entries.append((stat, line, pm, psp))
+        info = {"player_id": p["player_id"], "player": p["player"], "team_id": p["team_id"],
+                "pos": p["pos_group"], "role": p.get("role"), "exp_minutes": round(p["exp_minutes"])}
+        lines, pk = _price_player(meta, info, entries, starter_like, mo, ctx["suspicious"])
+        picks += pk
         players_out.append({
             "player_id": p["player_id"], "player": p["player"], "team_id": p["team_id"],
             "side": p["side"], "pos": p["pos_group"], "role": p.get("role"), "phi": round(p.get("phi", 0.0), 3),
@@ -209,10 +176,118 @@ def simulate_event(ev: dict, ctx: dict, squad: list[dict] | None) -> tuple[dict,
         "total": {"shots": round(sim["total"]["shots_mean"], 2), "sot": round(sim["total"]["sot_mean"], 2)},
         "players": players_out,
         "keepers": {s_: team_keepers(ctx["players"], ev[f"{s_}_id"], ctx["photo_of"]) for s_ in ("home", "away")},
+        "name_ids": cands,                    # para cruzar nombres de las casas al repreciar
         "computed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "ev": ev,
     }
     return match, picks
+
+
+def _price_player(meta: dict, info: dict, entries, starter_like: bool, mo: pd.DataFrame,
+                  suspicious: list) -> tuple[list[dict], list[dict]]:
+    """Cuotas de las casas contra las probabilidades del modelo → líneas y jugadas
+    de un jugador. Sirve tanto al simular como al repreciar con cuotas nuevas."""
+    lg, ev, confirmed = meta["lg"], meta["ev"], meta["confirmed"]
+    lines, picks = [], []
+    p = info
+    for stat, line, pm, psp in entries:
+        prices = {}
+        if not mo.empty:
+            q = mo[(mo["player_id"] == p["player_id"]) & (mo["stat"] == stat)
+                   & (np.isclose(mo["line"], line))]
+            for r in q.itertuples():
+                # Cordura: una cuota 3× la justa del modelo es casi
+                # siempre un cruce de jugador equivocado.
+                if r.price > SANITY_X / pm:
+                    suspicious.append((p["player"], stat, line, r.book, r.price))
+                    continue
+                prices[r.book] = {"price": r.price, "p_book": round(float(r.p_book), 3)}
+        fair = 1.0 / pm
+        best = max(prices.items(), key=lambda kv: kv[1]["price"]) if prices else None
+        row = {"stat": stat, "line": line, "p_model": round(pm, 3),
+               "fair_odds": round(fair, 2), "min_odds": round(fair * (1 + MIN_EDGE), 2),
+               "p_sub": round(psp, 3), "fair_sub": round(1.0 / psp, 2),
+               "min_sub": round(1.0 / psp * (1 + MIN_EDGE), 2),
+               "books": prices,
+               "best_book": best[0] if best else None,
+               "best_price": best[1]["price"] if best else None}
+        if best:
+            row["edge"] = round(pm * best[1]["price"] - 1.0, 3)
+        lines.append(row)
+        base = {"league": lg, "event_id": ev["event_id"], "date": ev["date"],
+                "match": f"{ev['home']} vs {ev['away']}", "player": p["player"],
+                "player_id": p["player_id"], "team_id": p["team_id"],
+                "pos": p["pos"], "role": p.get("role"), "exp_minutes": p["exp_minutes"],
+                "lineup": confirmed, **row}
+        if best and PICK_P_MIN <= pm <= PICK_P_MAX and best[1]["price"] >= row["min_odds"]:
+            picks.append({**base, "mode": "normal"})
+        elif starter_like and psp > pm + 0.005:
+            # Con suplente: mejor casa que ofrece la promo y su precio.
+            sp = {b: v for b, v in prices.items() if b in SUBPLUS_BOOKS}
+            bsp = max(sp.items(), key=lambda kv: kv[1]["price"]) if sp else None
+            if bsp and PICK_P_MIN <= psp <= PICK_P_MAX and bsp[1]["price"] >= row["min_sub"]:
+                picks.append({**base, "mode": "sub", "p_model": row["p_sub"],
+                              "fair_odds": row["fair_sub"], "min_odds": row["min_sub"],
+                              "best_book": bsp[0], "best_price": bsp[1]["price"],
+                              "edge": round(psp * bsp[1]["price"] - 1.0, 3)})
+    return lines, picks
+
+
+def _name_ids(m: dict, players: pd.DataFrame | None = None) -> dict:
+    """Nombres del plantel → id, para partidos guardados antes de tener name_ids:
+    el mismo grupo que usa la simulación (lista oficial, o los que jugaron los
+    últimos partidos de cada equipo)."""
+    out = {}
+    if m.get("official_squad"):
+        for s_ in m["official_squad"]:
+            out[espn.norm_name(s_["player"])] = s_["player_id"]
+    elif players is not None and not players.empty:
+        for sd in ("home", "away"):
+            tid = str(m["ev"][f"{sd}_id"])
+            t = players[players["team_id"].astype(str) == tid]
+            recent = t.drop_duplicates("event_id").sort_values("date")["event_id"].tolist()[-cfg.LINEUP_LOOKBACK:]
+            for r in t[t["event_id"].isin(recent)].itertuples():
+                out[espn.norm_name(r.player)] = str(r.player_id)
+    for p in m.get("players") or []:
+        out[espn.norm_name(p["player"])] = p["player_id"]
+    for sd in ("home", "away"):
+        for p in ((m.get("lineup") or {}).get(sd) or {}).get("players") or []:
+            out.setdefault(espn.norm_name(p["player"]), p["player_id"])
+        for p in (m.get("keepers") or {}).get(sd) or []:
+            out.setdefault(espn.norm_name(p["player"]), p["player_id"])
+    return out
+
+
+def _reprice(result: dict, odds: pd.DataFrame, skip: str | None = None,
+             players: pd.DataFrame | None = None) -> list[dict]:
+    """Con cuotas nuevas, recalcula precios y jugadas de toda la jornada usando
+    las probabilidades que ya calculó el modelo (no vuelve a simular)."""
+    if odds.empty:
+        return []
+    new_picks = []
+    keep = [k for k in result["picks"] if k["event_id"] == skip]
+    for m in result["matches"]:
+        if m["event_id"] == skip or not m.get("ev"):
+            continue
+        ev = m["ev"]
+        fx = op.match_fixture(ev, odds)
+        mo = odds[odds["fixture_id"] == fx] if fx else pd.DataFrame()
+        if not mo.empty:
+            cands = m.get("name_ids") or _name_ids(m, players)
+            mo = mo.assign(player_id=mo["player_key"].map(lambda k: op.match_player(k, cands)))
+        confirmed = bool(m.get("lineup_confirmed"))
+        meta = {"lg": m["league"], "ev": ev, "confirmed": confirmed}
+        pk_m = []
+        for p in m["players"]:
+            starter_like = confirmed and p["p_start"] >= 1.0 or (not confirmed and p["p_start"] >= SUBPLUS_MIN_START)
+            entries = [(l["stat"], l["line"], l["p_model"], l.get("p_sub", l["p_model"])) for l in p["lines"]]
+            p["lines"], pk = _price_player(meta, p, entries, starter_like, mo, [])
+            pk_m += pk
+        m["oddspapi_fixture"] = fx
+        m["priced_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        new_picks += _cap_picks(pk_m)
+    result["picks"] = keep + new_picks
+    return new_picks
 
 
 def _market_anchor(ev: dict, ctx: dict, fx) -> dict | None:
@@ -270,6 +345,35 @@ def run(leagues=None, days: int = 4, refresh_odds: bool = False, use_lineups: bo
     return result
 
 
+def _teams_with_xi(m: dict, squad: list[dict]) -> set:
+    """Equipos del partido que ya tienen titulares en `squad`."""
+    ids = {str(m["ev"]["home_id"]), str(m["ev"]["away_id"])}
+    return {str(s["team_id"]) for s in squad or [] if s.get("starter")} & ids
+
+
+# ESPN es gratis: cerca del partido se le pregunta seguido.
+ESPN_EVERY_NEAR_S, ESPN_EVERY_FAR_S, NEAR_MIN = 40, 240, 75
+_espn_last: dict[str, float] = {}
+
+
+def _espn_due(m: dict, now) -> bool:
+    import time as _time
+    mins = (pd.Timestamp(m["date"]) - now).total_seconds() / 60
+    every = ESPN_EVERY_NEAR_S if mins <= NEAR_MIN else ESPN_EVERY_FAR_S
+    if _time.time() - _espn_last.get(m["event_id"], 0) < every:
+        return False
+    _espn_last[m["event_id"]] = _time.time()
+    return True
+
+
+def _lineup_complete(m: dict) -> bool:
+    """Ya están los titulares de LOS DOS equipos (ESPN a veces publica uno primero)."""
+    if len(_teams_with_xi(m, m.get("official_squad") or [])) == 2:
+        return True
+    lu_ = m.get("lineup") or {}
+    return bool(m.get("lineup_confirmed")) and all((lu_.get(sd) or {}).get("confirmed") for sd in ("home", "away"))
+
+
 def check_lineups(window_h: float = LINEUP_WINDOW_H, verbose: bool = False) -> list[dict]:
     """Partidos de la jornada que confirmaron formación desde la última vez:
     se re-simulan SOLO esos, con la formación real. No gasta cuotas."""
@@ -278,7 +382,7 @@ def check_lineups(window_h: float = LINEUP_WINDOW_H, verbose: bool = False) -> l
     result = json.loads(JORNADA.read_text(encoding="utf-8"))
     now = pd.Timestamp.now(tz="UTC")
     pending = [m for m in result["matches"]
-               if not m.get("lineup_confirmed") and not m.get("lineup_official") and m.get("ev")
+               if not _lineup_complete(m) and m.get("ev")
                and -0.5 <= (pd.Timestamp(m["date"]) - now).total_seconds() / 3600 <= window_h]
     # Prioritarios para el cupo de API-Football: los que seguís y los que tienen jugadas.
     try:
@@ -289,8 +393,11 @@ def check_lineups(window_h: float = LINEUP_WINDOW_H, verbose: bool = False) -> l
     cands = None
     newly = []
     for m in pending:
+        if not _espn_due(m, now):
+            continue
         squad, source = espn.lineup(m["ev"]), "espn"
-        if not any(s["starter"] for s in squad) and af.should_ask(m["ev"], m["event_id"] in fav or m["event_id"] in with_picks):
+        have_both = len(_teams_with_xi(m, squad) | _teams_with_xi(m, m.get("official_squad") or [])) == 2
+        if not have_both and af.should_ask(m["ev"], m["event_id"] in fav or m["event_id"] in with_picks):
             # ESPN todavía no la tiene: API-Football (la LPF sale ~40-60' antes ahí).
             if cands is None:
                 _, hp = espn.build_history(list(af.AF_LEAGUES), verbose=False)
@@ -299,13 +406,21 @@ def check_lineups(window_h: float = LINEUP_WINDOW_H, verbose: bool = False) -> l
                 for r in hp.itertuples():
                     cands.setdefault(str(r.team_id), {})[espn.norm_name(r.player)] = str(r.player_id)
             try:
-                squad, source = af.lineup(m["ev"], cands), "api-football"
+                af_sq = af.lineup(m["ev"], cands)
+                if len(_teams_with_xi(m, af_sq)) > len(_teams_with_xi(m, squad)):
+                    squad, source = af_sq, "api-football"
             except Exception as exc:  # noqa: BLE001 - sin cupo o sin red: sigue con ESPN
                 if verbose:
                     print(f"  API-Football: {exc}")
-                squad = []
         if any(s["starter"] for s in squad):
-            newly.append((m, squad, source))
+            # Si ya teníamos un equipo, sólo cuenta como novedad si aparece el otro;
+            # y no se pierde el que ya estaba si esta fuente trae uno solo.
+            old_sq = m.get("official_squad") or []
+            have, got = _teams_with_xi(m, old_sq), _teams_with_xi(m, squad)
+            if got <= have:
+                continue
+            keep = [s for s in old_sq if str(s["team_id"]) in have - got]
+            newly.append((m, squad + keep, source))
     if not newly:
         return []
     # NO se re-simula solo: se guarda la alineación oficial y se avisa. La
@@ -327,7 +442,41 @@ def check_lineups(window_h: float = LINEUP_WINDOW_H, verbose: bool = False) -> l
                         "picks": 0, "source": source, "simulated": False})
     result["lineups_checked_at"] = now.isoformat(timespec="seconds")
     _save(result)
+    _notify_lineups(newly, fav, with_picks, now)
     return updated
+
+
+def _notify_lineups(newly, fav: set, with_picks: set, now) -> None:
+    """Aviso al celular cuando están los titulares de los dos equipos, en los
+    partidos que seguís o que tienen jugadas."""
+    from futbol import notify
+    for m, _sq, source in newly:
+        if not _lineup_complete(m) or m.get("lineup_notified"):
+            continue
+        if m["event_id"] not in fav and m["event_id"] not in with_picks:
+            continue
+        mins = int((pd.Timestamp(m["date"]) - now).total_seconds() // 60)
+        lu_ = m.get("lineup") or {}
+        forms = " · ".join(f"{m['ev'][sd]} {(lu_.get(sd) or {}).get('formation') or ''}".strip() for sd in ("home", "away"))
+        n = sum(1 for k in _jornada_picks() if k["event_id"] == m["event_id"])
+        msg = (f"{forms}\nEmpieza en {mins} min." if mins > 0 else f"{forms}\nYa empezó.") + \
+              (f" Tiene {n} jugada{'s' if n != 1 else ''}: tocá Simular para recalcularlas." if n else " Tocá Simular para recalcular.")
+        if notify.send(f"Titulares: {m['ev']['home']} vs {m['ev']['away']}", msg, tags=["soccer"]):
+            m["lineup_notified"] = True
+    if any(m.get("lineup_notified") for m, _s, _src in newly):
+        res = json.loads(JORNADA.read_text(encoding="utf-8"))
+        done = {m["event_id"] for m, _s, _src in newly if m.get("lineup_notified")}
+        for x in res["matches"]:
+            if x["event_id"] in done:
+                x["lineup_notified"] = True
+        _save(res)
+
+
+def _jornada_picks() -> list[dict]:
+    try:
+        return json.loads(JORNADA.read_text(encoding="utf-8")).get("picks", [])
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _log_picks(picks: list[dict]) -> None:
@@ -382,6 +531,12 @@ def simulate_one(event_id: str, custom: dict | None = None) -> dict:
     old_picks = sum(1 for k in result["picks"] if k["event_id"] == event_id)
     # La alineación oficial que ya encontró el vigía (ESPN o API-Football); si no, se pregunta a ESPN.
     squad = _custom_squad(old, custom) if custom else (old.get("official_squad") or espn.lineup(ev))
+    # Cuotas al día para comparar: si tienen más de 90' se piden de nuevo (3
+    # consultas, todas las ligas), con tope diario. Si no, se usan las guardadas.
+    try:
+        odds_info = op.maybe_refresh()
+    except Exception as exc:  # noqa: BLE001 - sin red o sin cupo: se simula con las guardadas
+        odds_info = {"refreshed": False, "reason": f"error: {exc}", "age_s": op.cache_age_s()}
     ctx = _context([ev["league"]], False, cfg.N_SIM, allow_fetch=False)
     match, mp = simulate_event(ev, ctx, squad)
     if custom:
@@ -396,10 +551,16 @@ def simulate_one(event_id: str, custom: dict | None = None) -> dict:
                      lineup_source=old.get("lineup_source"), lineup_official_at=old.get("lineup_official_at"))
     result["matches"] = [match if x["event_id"] == event_id else x for x in result["matches"]]
     result["picks"] = [k for k in result["picks"] if k["event_id"] != event_id] + mp
+    repriced = []
+    if odds_info.get("refreshed"):
+        # Cuotas nuevas: el resto de la jornada se reprecia sin volver a simular.
+        repriced = _reprice(result, ctx["odds"], skip=event_id, players=ctx["players"])
     _save(result)
     if not custom:
         _log_picks(mp)
-    return {"custom": bool(custom), "before": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
+    if repriced:
+        _log_picks(repriced)
+    return {"custom": bool(custom), "odds": odds_info, "before": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
                        "lineup_confirmed": old.get("lineup_confirmed"),
                        "picks": old_picks},
             "after": {"teams": {s_: {k: match["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},

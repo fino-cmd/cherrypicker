@@ -43,6 +43,8 @@ ODDSPAPI_BASE = "https://api.oddspapi.io/v4"
 # Betsson remates y al arco (Brasil y Premier).
 BOOKS = ["bet365.bet.ar", "betano", "betsson"]
 ODDS_TTL_S = 3 * 3600          # una jornada no se vuelve a pedir en 3 h
+ODDS_MAX_AGE_SIM_S = 90 * 60   # al tocar Simular, cuotas con más de 90' se piden de nuevo
+ODDS_REFRESH_DAY_CAP = 3       # como mucho 3 actualizaciones por día (9 consultas de OddsPapi)
 
 
 def oddspapi_key() -> str | None:

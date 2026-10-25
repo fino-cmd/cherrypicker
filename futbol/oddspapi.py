@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from difflib import SequenceMatcher
 
 import httpx
@@ -31,6 +32,7 @@ STAT_OF = {"players-shots": "shots", "players-shotsongoal": "sot",
 # sirven de ancla para el volumen de remates (futbol.market).
 MATCH_TYPES = {"1x2", "totals"}
 LAST_RAW: dict[str, list[dict]] = {}     # casa → respuesta (recortada) de la última lectura
+_FETCHED = [False]                       # ¿la última fetch_all consultó a OddsPapi?
 
 
 def _get(path: str, **params):
@@ -104,6 +106,7 @@ def fetch_book(book: str, refresh: bool = False, allow_fetch: bool = True) -> li
         return []
     DIR.mkdir(parents=True, exist_ok=True)
     data = _get("odds-by-tournaments", bookmaker=book, tournamentIds=ids, oddsFormat="decimal")
+    _FETCHED[0] = True
     # Se guarda sólo lo que usamos (los remates): la respuesta entera pesa ~20 MB.
     mk = markets()
     slim = []
@@ -165,7 +168,60 @@ def parse(data: list[dict], book: str) -> pd.DataFrame:
     return df
 
 
+def _local_day() -> str:
+    return datetime.now().strftime("%Y-%m-%d")       # día de acá (la PC está en Argentina)
+
+
+def refreshes_today() -> int:
+    try:
+        u = json.loads((DIR / "usage.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return 0
+    return int((u.get("refresh_days") or {}).get(_local_day(), 0))
+
+
+def _count_refresh() -> None:
+    f = DIR / "usage.json"
+    try:
+        u = json.loads(f.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        u = {}
+    day = _local_day()
+    u["refresh_days"] = {day: int((u.get("refresh_days") or {}).get(day, 0)) + 1}
+    f.write_text(json.dumps(u), encoding="utf-8")
+
+
+def cache_age_s() -> float | None:
+    """Antigüedad de las cuotas guardadas (la casa más vieja), en segundos."""
+    ids = "_".join(str(v["oddspapi"]) for v in cfg.LEAGUES.values())
+    ages = []
+    for book in cfg.BOOKS:
+        f = DIR / f"odds_{book}_{ids}.json"
+        if not f.exists():
+            return None
+        ages.append(time.time() - f.stat().st_mtime)
+    return max(ages) if ages else None
+
+
+def maybe_refresh(max_age_s: float | None = None, day_cap: int | None = None) -> dict:
+    """Al simular: si las cuotas tienen más de `max_age_s`, se piden de nuevo
+    (3 consultas, todas las ligas de una), salvo que ya se llegó al tope del día."""
+    max_age_s = cfg.ODDS_MAX_AGE_SIM_S if max_age_s is None else max_age_s
+    day_cap = cfg.ODDS_REFRESH_DAY_CAP if day_cap is None else day_cap
+    age = cache_age_s()
+    if age is not None and age <= max_age_s:
+        return {"refreshed": False, "reason": "fresh", "age_s": round(age), "today": refreshes_today(), "cap": day_cap}
+    if refreshes_today() >= day_cap or not cfg.oddspapi_key():
+        return {"refreshed": False, "reason": "cap" if cfg.oddspapi_key() else "nokey",
+                "age_s": None if age is None else round(age), "today": refreshes_today(), "cap": day_cap}
+    fetch_all(refresh=True)
+    age2 = cache_age_s()
+    return {"refreshed": _FETCHED[0], "reason": "refreshed" if _FETCHED[0] else "error",
+            "age_s": None if age2 is None else round(age2), "today": refreshes_today(), "cap": day_cap}
+
+
 def fetch_all(refresh: bool = False, allow_fetch: bool = True) -> pd.DataFrame:
+    _FETCHED[0] = False
     frames = []
     for book in cfg.BOOKS:
         try:
@@ -174,6 +230,8 @@ def fetch_all(refresh: bool = False, allow_fetch: bool = True) -> pd.DataFrame:
             frames.append(parse(raw, book))
         except Exception as exc:  # noqa: BLE001 - una casa caída no corta las demás
             print(f"  OddsPapi {book}: {exc}")
+    if _FETCHED[0]:
+        _count_refresh()
     frames = [f for f in frames if not f.empty]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 

@@ -60,7 +60,7 @@
   };
 
   const state = {
-    data: null, view: 'recs', league: 'all', team: 'all',
+    data: null, view: 'matches', league: 'all', team: 'all',
     fav: new Set(store.get('fb-fav', [])),   // partidos marcados con estrella
     xiSides: {},                             // partido → equipo que muestra la alineación
     custom: store.get('fb-dt', {}),          // Modo DT: alineaciones propias guardadas (partido → lado)
@@ -76,7 +76,7 @@
     results: null,      // /api/futbol/results: récord y picks liquidados
     open: new Set(),    // jugadores desplegados en "Quién remata"
     wsAll: false,       // mostrar todos los jugadores del partido
-    back: 'recs',       // a dónde vuelve la flecha de un partido
+    back: 'matches',       // a dónde vuelve la flecha de un partido
   };
 
   // ── Formato ───────────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@
     render();
     try {
       state.data = await fetchJornada(qs);
-      if (!isSection(state.view) && !matchById(state.view)) state.view = 'recs';
+      if (!isSection(state.view) && !matchById(state.view)) state.view = 'matches';
       const keys = new Set((state.data.picks || []).map(pickKey));
       state.slip = new Set([...state.slip].filter(k => keys.has(k)));
       store.set('fb-slip', [...state.slip]); savePrefs();
@@ -785,12 +785,12 @@
         ${icon}<span>${label}</span>${badge != null && badge !== '' ? `<b>${badge}</b>` : ''}
       </button>`;
     const mine = myMatches().length;
-    return item('recs', I.spark, 'Recomendados', recommended().length || '')
-      + `<button class="fb-nav-i fb-nav-fav${cur === 'mine' ? ' is-on' : ''}" data-ev="mine" aria-current="${cur === 'mine' ? 'page' : 'false'}" aria-label="Favoritos: ${mine}">
-        <span class="fb-fav-ct">${I.starFill}<b>${mine}</b></span><span>Favoritos</span></button>`
-      + item('picks', I.tick, 'Jugadas', live || '')
+    return item('picks', I.tick, 'Jugadas', live || '')
+      + item('recs', I.spark, 'Recomendados', recommended().length || '')
       + item('matches', I.pitch, 'Partidos', matches().length || '')
-      + item('results', I.trophy, 'Resultados', sm && sm.settled ? `${sm.won}–${sm.lost}` : '');
+      + item('results', I.trophy, 'Resultados', sm && sm.settled ? `${sm.won}–${sm.lost}` : '')
+      + `<button class="fb-nav-i fb-nav-fav fb-nav-star${cur === 'mine' ? ' is-on' : ''}" data-ev="mine" aria-current="${cur === 'mine' ? 'page' : 'false'}" aria-label="Favoritos: ${mine}" title="Favoritos">
+        ${I.starFill}${mine ? `<b>${mine}</b>` : ''}</button>`;
   }
   const navTop = () => `<nav class="fb-nav" aria-label="Fútbol">${navItems()}</nav>`;
   const navBottom = () => (state.data ? `<nav class="fb-tabbar" aria-label="Fútbol">${navItems()}</nav>` : '');
@@ -847,7 +847,7 @@
       const n = state.sim.queue.indexOf(m.event_id) + 1;
       return `<div class="fb-simrun is-queued${big ? ' is-big' : ''}"><span>${I.clock}En cola (${n}) · empieza cuando termine la anterior</span></div>`;
     }
-    return `<button class="fb-simbtn${big ? '' : ' is-small'}" data-sim="${esc(m.event_id)}">${I.play}<span><b>Simular partido</b><small>20.000 veces con la formación más reciente · seguís usando la app</small></span></button>`;
+    return `<button class="fb-simbtn${big ? '' : ' is-small'}" data-sim="${esc(m.event_id)}">${I.play}<span><b>Simular partido</b><small>20.000 veces con la formación y las cuotas más recientes · seguís usando la app</small></span></button>`;
   }
   function simulateMatch(id, custom = null) {
     if (!matchById(id) || simState(id)) return;
@@ -897,7 +897,12 @@
         return Math.abs(d) < 0.05 ? 'igual' : `${d > 0 ? '+' : '−'}${num1(Math.abs(d))}`;
       };
       const lu = res.custom ? 'con tu alineación' : a.lineup_confirmed ? 'con la formación confirmada' : 'con las formaciones probables';
-      toast(`${I.check}<span><b>Simulación lista · ${esc(name)}</b>${lu} · remates ${delta('home')} / ${delta('away')} · ${a.picks} jugada${a.picks === 1 ? '' : 's'} <u>Ver partido</u></span>`, id);
+      const oi = res.odds || {};
+      const oage = oi.age_s == null ? '' : (oi.age_s < 3600 ? `${Math.max(1, Math.round(oi.age_s / 60))} min` : `${Math.round(oi.age_s / 3600)} h`);
+      const otx = oi.refreshed ? ` · cuotas nuevas (${oi.today}/${oi.cap} hoy), jornada repreciada`
+        : oi.reason === 'cap' ? ` · cuotas de hace ${oage}: ya se actualizaron ${oi.cap} veces hoy`
+        : oage ? ` · cuotas de hace ${oage}` : '';
+      toast(`${I.check}<span><b>Simulación lista · ${esc(name)}</b>${lu} · remates ${delta('home')} / ${delta('away')} · ${a.picks} jugada${a.picks === 1 ? '' : 's'}${otx} <u>Ver partido</u></span>`, id);
     } catch (e) {
       toast(`<span><b>No se pudo simular ${esc(name)}</b>${esc(e.message || String(e))}</span>`);
     } finally {
@@ -1746,12 +1751,24 @@
   }
 
   // ── Formaciones: chequeo cada 3 min mientras la pestaña está a la vista ──
-  const LINEUP_POLL_MS = 3 * 60 * 1000;
+  const LINEUP_POLL_MS = 60 * 1000;
   let pollTimer = null;
-  function toast(html, evId) {
+  // Avisos con la identidad de cada liga: la del partido, o la que estás mirando.
+  function toastLeague(evId) {
+    const m = evId && matchById(evId);
+    if (m) return m.league;
+    if (state.league && state.league !== 'all') return state.league;
+    const b = (document.body.className.match(/lg-(arg|bra|eng)/) || [])[1];
+    return b || null;
+  }
+  function toast(html, evId, lg = null) {
     let box = document.getElementById('fb-toasts');
     if (!box) { box = Object.assign(document.createElement('div'), { id: 'fb-toasts', className: 'fb-toasts' }); document.body.appendChild(box); }
-    const t = Object.assign(document.createElement('div'), { className: 'fb-toast' + (evId ? ' is-link' : ''), innerHTML: html });
+    lg = lg || toastLeague(evId);
+    const mark = lg === 'bra' ? `<img src="assets/bra/cbf.png" alt="">` : lg ? `<img src="${leagueOf(lg).logo}" alt="">` : '';
+    const t = Object.assign(document.createElement('div'), {
+      className: 'fb-toast' + (lg ? ` fb-toast--lg lg-${lg}` : ' fb-toast--app') + (evId ? ' is-link' : ''),
+      innerHTML: `<i class="fb-toast-mark">${mark}</i>${html}` });
     if (evId) t.addEventListener('click', () => { if (document.body.dataset.sport === 'futbol') go(evId); t.remove(); });
     box.appendChild(t);
     setTimeout(() => t.classList.add('is-out'), evId ? 9000 : 7000);

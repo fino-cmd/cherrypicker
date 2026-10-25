@@ -5182,6 +5182,7 @@ def get_futbol_jornada(refresh: bool = False, refresh_odds: bool = False,
             try:
                 lg = [x for x in (leagues or "").split(",") if x] or None
                 data = frun.run(lg, days=days, refresh_odds=refresh_odds, verbose=False)
+                _fb_usage_cache["t"] = 0.0        # el contador de créditos se refresca ya
             finally:
                 _fb_lock.release()
         else:
@@ -5241,7 +5242,9 @@ def _fb_simulate(event_id: str, custom: dict | None):
 # Vigía de formaciones: el servidor pregunta solo cada 2 minutos (ESPN y, para
 # la LPF, API-Football) aunque nadie tenga la app abierta, y re-simula el
 # partido apenas sale la formación. También liquida los picks terminados.
-FB_WATCH_EVERY_S = 120
+FB_WATCH_EVERY_S = 30          # el chequeo decide por partido cuándo preguntar (40" cerca del partido)
+FB_SETTLE_EVERY_S = 120
+_fb_settle_last = [0.0]
 _fb_photo_last = [0.0]
 
 
@@ -5273,7 +5276,9 @@ def _fb_watch_loop():
             upd = frun.check_lineups()
             if upd:
                 logger.info("Formaciones nuevas: %s", ", ".join(f"{u['match']} ({u.get('source')})" for u in upd))
-            fpl.settle()
+            if _t.time() - _fb_settle_last[0] > FB_SETTLE_EVERY_S:
+                _fb_settle_last[0] = _t.time()
+                fpl.settle()
             # Fotos de API-Football: un tramo de planteles por hora (con tope diario).
             if _t.time() - _fb_photo_last[0] > 3600:
                 _fb_photo_last[0] = _t.time()

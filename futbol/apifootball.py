@@ -32,14 +32,15 @@ from futbol.espn import norm_name
 
 BASE = "https://v3.football.api-sports.io"
 DIR = cfg.CACHE_DIR / "apifootball"
-AF_LEAGUES = {"arg": 128}           # ligas donde ESPN llega tarde (formaciones)
+AF_LEAGUES = {"arg": 128, "bra": 71, "eng": 39}   # formaciones: las tres ligas
 PHOTO_LEAGUES = {"arg": 128, "bra": 71, "eng": 39}   # fotos: las tres ligas
 PHOTO_TEAMS_PER_DAY = 20            # planteles por día (1 consulta cada uno)
 PHOTO_REFRESH_DAYS = 30             # un plantel se vuelve a pedir al mes
-AF_BEFORE_MIN = 70                  # empezar a preguntar 70' antes
+AF_BEFORE_MIN = 65                  # empezar a preguntar 65' antes
 AF_EVERY_MIN = 5                    # cada cuánto, por partido
 AF_DAILY_CAP = 90                   # nunca pasar de esto (el plan da 100)
 AF_PRIORITY_RESERVE = 25            # con menos cupo que esto, sólo prioritarios
+PHOTO_KEEP_FREE = 60                # las fotos sólo usan cupo si quedan más que esto (para formaciones)
 FIXTURES_TTL_S = 6 * 3600
 MIN_GAP_S = 6.5
 _last_call = [0.0]
@@ -211,7 +212,9 @@ def lineup(ev: dict, cands_by_team: dict[str, dict[str, str]]) -> list[dict]:
         resp = _get("fixtures/lineups", fixture=fx["id"])
         if not resp or not any(t.get("startXI") for t in resp):
             return []
-        f.write_text(json.dumps(resp), encoding="utf-8")
+        # Se guarda sólo cuando están los dos equipos (si no, se vuelve a preguntar).
+        if len(resp) >= 2 and all(t.get("startXI") for t in resp):
+            f.write_text(json.dumps(resp), encoding="utf-8")
     from futbol.oddspapi import team_similarity
     out = []
     for t in resp:
@@ -279,7 +282,7 @@ def photos_step(matches: list[dict], players, max_teams: int = PHOTO_TEAMS_PER_D
         done = {}
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     used_today = sum(1 for v in done.values() if v.get("date") == today)
-    budget = min(max_teams - used_today, AF_DAILY_CAP - usage_today() - AF_PRIORITY_RESERVE)
+    budget = min(max_teams - used_today, AF_DAILY_CAP - usage_today() - PHOTO_KEEP_FREE)
     if budget <= 0:
         return 0
     # Equipos de ESPN → id de API-Football, por los partidos de la jornada.

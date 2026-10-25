@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Big+Shoulders+Display:wght@600;700;800;900&family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Onest:wght@400;500;600;700&family=Saira+Condensed:wght@600;700;800&family=Saira:wght@600;700;800&family=Outfit:wght@500;600;700;800&family=Rubik:wght@500;600;700;800;900&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=78" />
-  <link rel="stylesheet" href="futbol-tab.css?v=47" />
+  <link rel="stylesheet" href="styles.css?v=81" />
+  <link rel="stylesheet" href="futbol-tab.css?v=54" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -827,10 +827,11 @@
       <a href="#">Cómo Funciona</a>
       <a href="#">Precios</a>
     </div>
-    <button class="lp-login-btn" onclick="goToApp()">Ingresar</button>
+    <button class="lp-login-btn lp-login-btn--hot" onclick="goToApp('futbol')">Entrar →</button>
   </nav>
 
   <!-- HERO -->
+  <button class="lp-enter-bar" onclick="goToApp('futbol')"><span aria-hidden="true">⚽</span> Entrar a Fútbol <span aria-hidden="true">→</span></button>
   <section class="lp-hero">
 
     <!-- Left: copy -->
@@ -844,7 +845,18 @@
         </h1>
       </div>
       <p class="lp-hero-sub">el modelo definitivo de predicción<br/>de ponches para MLB</p>
-      <button class="lp-launch-btn" onclick="goToApp()">ingresar</button>
+      <div class="lp-enter">
+        <button class="lp-enter-main" onclick="goToApp('futbol')" autofocus>
+          <span class="lp-enter-ball" aria-hidden="true">⚽</span>
+          <span class="lp-enter-txt"><b>Entrar a Fútbol</b><small>Remates · LPF, Brasileirão y Premier</small></span>
+          <span class="lp-enter-arrow" aria-hidden="true">→</span>
+        </button>
+        <div class="lp-enter-alt">
+          <button onclick="goToApp('nba')">NBA · Pickstachio</button>
+          <button onclick="goToApp('mlb')">MLB · Ponches</button>
+        </div>
+        <p class="lp-enter-hint">o apretá <kbd>Enter</kbd></p>
+      </div>
     </div>
 
     <!-- Right: visual panel -->
@@ -1707,8 +1719,8 @@
 
   <script src="altlines-galton.js?v=11"></script>
   <script src="pickstachio.js?v=14"></script>
-  <script src="futbol-tab.js?v=33"></script>
-  <script src="app.js?v=93"></script>
+  <script src="futbol-tab.js?v=35"></script>
+  <script src="app.js?v=94"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const d = document.getElementById('props-date');

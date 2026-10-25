@@ -60,7 +60,7 @@
   };
 
   const state = {
-    data: null, view: 'mine', league: 'all', team: 'all',
+    data: null, view: 'recs', league: 'all', team: 'all',
     fav: new Set(store.get('fb-fav', [])),   // partidos marcados con estrella
     xiSides: {},                             // partido → equipo que muestra la alineación
     fxOpen: new Set(),                       // partidos desplegados en las listas
@@ -74,7 +74,7 @@
     results: null,      // /api/futbol/results: récord y picks liquidados
     open: new Set(),    // jugadores desplegados en "Quién remata"
     wsAll: false,       // mostrar todos los jugadores del partido
-    back: 'mine',       // a dónde vuelve la flecha de un partido
+    back: 'recs',       // a dónde vuelve la flecha de un partido
   };
 
   // ── Formato ───────────────────────────────────────────────────────────────
@@ -132,6 +132,7 @@
     clock: `<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4.3l2.8 1.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
     starFill: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.9l5-.7z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>`,
     play: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 4.5v11l9-5.5z" fill="currentColor"/></svg>`,
+    spark: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5l1.7 4.6 4.8 1.7-4.8 1.7L10 15.1l-1.7-4.6-4.8-1.7 4.8-1.7zM15.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" fill="currentColor"/></svg>`,
     swap: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h11l-3-3M16 13H5l3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     tick: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 6.5h13v3a2 2 0 000 4v3h-13v-3a2 2 0 000-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 6.5v10" stroke="currentColor" stroke-width="1.4" stroke-dasharray="1.6 1.8"/></svg>`,
     pitch: `<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 4v12" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`,
@@ -171,7 +172,7 @@
     render();
     try {
       state.data = await fetchJornada(qs);
-      if (!isSection(state.view) && !matchById(state.view)) state.view = 'mine';
+      if (!isSection(state.view) && !matchById(state.view)) state.view = 'recs';
       const keys = new Set((state.data.picks || []).map(pickKey));
       state.slip = new Set([...state.slip].filter(k => keys.has(k)));
       store.set('fb-slip', [...state.slip]); savePrefs();
@@ -770,7 +771,7 @@
   //  Navegación: Jugadas · Partidos · Resultados (arriba en escritorio,
   //  abajo al alcance del pulgar en el teléfono).
   // ════════════════════════════════════════════════════════════════════════
-  const SECTIONS = ['mine', 'picks', 'matches', 'results'];
+  const SECTIONS = ['recs', 'mine', 'picks', 'matches', 'results'];
   const isSection = (v) => SECTIONS.includes(v);
   function navItems() {
     const d = state.data || {};
@@ -782,7 +783,8 @@
         ${icon}<span>${label}</span>${badge != null && badge !== '' ? `<b>${badge}</b>` : ''}
       </button>`;
     const mine = myMatches().length;
-    return `<button class="fb-nav-i fb-nav-fav${cur === 'mine' ? ' is-on' : ''}" data-ev="mine" aria-current="${cur === 'mine' ? 'page' : 'false'}" aria-label="Favoritos: ${mine}">
+    return item('recs', I.spark, 'Recomendados', recommended().length || '')
+      + `<button class="fb-nav-i fb-nav-fav${cur === 'mine' ? ' is-on' : ''}" data-ev="mine" aria-current="${cur === 'mine' ? 'page' : 'false'}" aria-label="Favoritos: ${mine}">
         <span class="fb-fav-ct">${I.starFill}<b>${mine}</b></span><span>Favoritos</span></button>`
       + item('picks', I.tick, 'Jugadas', live || '')
       + item('matches', I.pitch, 'Partidos', matches().length || '')
@@ -975,8 +977,47 @@
       </div>`;
   }
 
+  // ── Recomendados: los partidos donde el modelo ve más valor, mirando a los
+  // dos equipos (jugadas de los dos lados, volumen de remates, dominio).
+  function recommended() {
+    if (!state.data) return [];
+    const ms = matches().filter(m => !untilTxt(m.date).past);
+    const avg = {};
+    ms.forEach(m => { (avg[m.league] ||= []).push(m.total.shots); });
+    Object.keys(avg).forEach(k => { const v = avg[k]; avg[k] = v.reduce((a, b) => a + b, 0) / v.length; });
+    return ms.map(m => {
+      const ks = (state.data.picks || []).filter(k => k.event_id === m.event_id);
+      const side = (tid) => ks.filter(k => k.team_id === tid);
+      const hp = side(m.teams.home.team_id), ap = side(m.teams.away.team_id);
+      const edge = ks.reduce((a, k) => a + Math.max(0, k.edge || 0), 0);
+      const both = hp.length && ap.length;
+      const extraShots = m.total.shots - (avg[m.league] || m.total.shots);
+      const share = m.teams.home.shots / Math.max(0.1, m.teams.home.shots + m.teams.away.shots);
+      const dom = Math.abs(share - 0.5);
+      const score = edge * 10 + ks.length * 0.6 + (both ? 2.5 : 0) + Math.max(0, extraShots) / 2.5 + (dom > 0.12 ? 1 : 0);
+      const reasons = [];
+      if (both) reasons.push({ t: `Valor en los dos equipos: ${hp.length} ${m.teams.home.abbr} · ${ap.length} ${m.teams.away.abbr}`, c: 'both' });
+      else if (ks.length) reasons.push({ t: `${ks.length} jugada${ks.length > 1 ? 's' : ''} con valor`, c: 'pick' });
+      if (extraShots >= 1.5) reasons.push({ t: `Muchos remates: ${num1(m.total.shots)} esperados (+${num1(extraShots)} sobre la liga)`, c: 'vol' });
+      if (dom > 0.12) { const t = share > 0.5 ? m.teams.home : m.teams.away; reasons.push({ t: `${t.name} domina: ${Math.round(Math.max(share, 1 - share) * 100)} % de los remates`, c: 'dom' }); }
+      return { m, score, reasons };
+    }).filter(r => r.score >= 1.5 && r.reasons.length).sort((a, b) => b.score - a.score).slice(0, 10);
+  }
+  function recsView() {
+    const recs = recommended().filter(r => state.league === 'all' || r.m.league === state.league);
+    return `
+      ${leagueHero(state.league)}
+      <header class="fb-sec-head">
+        <h2>Recomen<em>dados</em></h2>
+        <p>Los partidos donde la simulación encontró más valor: jugadas en los dos equipos, mucho volumen de remates o un equipo que domina.</p>
+      </header>
+      ${leagueChips()}
+      ${recs.length ? `<div class="fb-fx-list">${recs.map(r => fixture(r.m, `<div class="fb-recs">${r.reasons.map(x => `<span class="fb-rec-chip fb-rec-chip--${x.c}">${esc(x.t)}</span>`).join('')}</div>`)).join('')}</div>`
+        : '<div class="fb-empty">Por ahora ningún partido se destaca. Mirá todos en <b>Partidos</b>.</div>'}`;
+  }
+
   // ── Partidos: tablero de duelos por día ─────────────────────────────────
-  function fixture(m) {
+  function fixture(m, extra = '') {
     const h = m.teams.home, a = m.teams.away;
     const u = untilTxt(m.date);
     const share = h.shots / Math.max(0.1, h.shots + a.shots);
@@ -996,12 +1037,13 @@
         </span>
         <span class="fb-fx-bar" aria-hidden="true"><i style="height:${Math.round(share * 100)}%"></i></span>
         <span class="fb-fx-tags">
-          ${luPending(m) ? `<span class="fb-lu fb-lu--new" title="Salió la alineación oficial: tocá Simular">${I.check}XI nuevo</span>` : m.lineup_confirmed ? `<span class="fb-lu fb-lu--ok">${I.check}XI</span>` : '<span class="fb-lu">Est.</span>'}
+          ${luPending(m) ? `<span class="fb-lu fb-lu--new" title="Salió la alineación oficial: tocá Simular">Titulares oficiales</span>` : m.lineup_confirmed ? `<span class="fb-lu fb-lu--ok">Titulares confirmados</span>` : '<span class="fb-lu">Titulares sin confirmar</span>'}
           ${np ? `<span class="fb-fx-np"><b>${np}</b> jugada${np > 1 ? 's' : ''}</span>` : ''}
           ${starBtn(m.event_id)}
         </span>
         ${simState(m.event_id) === 'running' ? `<span class="fb-fx-simbar" data-simprog="${esc(m.event_id)}"><i style="width:0%"></i></span>` : ''}
       </div>
+      ${extra}
       ${state.fxOpen.has(m.event_id) ? fxPanel(m) : ''}
       </div>`;
   }
@@ -1261,14 +1303,13 @@
     const chips = (arr) => arr.map(([l, p]) => `<span><small>+${String(l).replace('.', ',')}</small>${Math.round(p * 10)}/10</span>`).join('');
     return `
       <div class="fb-mv-top">
-        <button class="fb-back" data-ev="${esc(state.back)}">${I.back}${({ mine: 'Favoritos', picks: 'Jugadas', results: 'Resultados' })[state.back] || 'Partidos'}</button>
+        <button class="fb-back" data-ev="${esc(state.back)}">${I.back}${({ recs: 'Recomendados', mine: 'Favoritos', picks: 'Jugadas', results: 'Resultados' })[state.back] || 'Partidos'}</button>
         ${starBtn(m.event_id)}
         <span class="fb-kicker fb-kicker--lg"><img src="${leagueOf(m.league).logo}" alt="" onerror="this.remove()">${esc(leagueOf(m.league).name)} · ${esc(dateTxt)} · ${hhmm(m.date)}</span>
       </div>
       ${leagueBand(m)}
       ${duel(m)}
       ${simControl(m, true)}
-      ${m.computed_at ? `<div class="fb-simage">${I.clock}Simulado ${esc(ago(m.computed_at))}${m.lineup_confirmed ? ' · con formación confirmada' : ' · con formaciones probables'}</div>` : ''}
       <div class="fb-match-flags">
         ${luPending(m)
           ? `<span class="fb-flag fb-flag--new fb-flag--lu">${I.check}Salió la alineación oficial · tocá <b>Simular partido</b> para recalcular con ella</span>`
@@ -1311,11 +1352,12 @@
     const m = isSection(state.view) ? null : matchById(state.view);
     // Tema de liga: el partido abierto, el último desplegado en la lista, o la liga filtrada.
     // Tema: el partido abierto; si no, la liga elegida; si no, el partido desplegado en la lista visible.
-    const opened = !m && state.league === 'all' && ['mine', 'matches'].includes(state.view)
+    const opened = !m && state.league === 'all' && ['recs', 'mine', 'matches'].includes(state.view)
       && state.lastOpen && state.fxOpen.has(state.lastOpen) ? matchById(state.lastOpen) : null;
     const theme = m ? m.league : state.league !== 'all' ? state.league : opened ? opened.league : null;
     ['eng', 'arg', 'bra'].forEach(id => document.body.classList.toggle(`lg-${id}`, theme === id));
     const view = m ? matchView(m)
+      : state.view === 'recs' ? recsView()
       : state.view === 'mine' ? mineView()
       : state.view === 'matches' ? matchesView()
       : state.view === 'results' ? resultsView()
@@ -1347,6 +1389,34 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
     const chip = document.querySelector(`.fb-mstrip-list [data-ev="${CSS.escape(view)}"]`);
     if (chip) chip.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+
+  // Desplegar / retraer un partido con la misma animación de ida y de vuelta.
+  const FX_MS = 280;
+  function toggleFx(id, wrap) {
+    const panel = wrap && wrap.querySelector('.fb-fxp');
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (state.fxOpen.has(id)) {
+      const close = () => { state.fxOpen.delete(id); if (state.lastOpen === id) state.lastOpen = [...state.fxOpen].pop() || null; render(); };
+      if (!panel || reduce) return close();
+      panel.style.height = panel.scrollHeight + 'px';
+      panel.classList.add('is-closing');
+      wrap.classList.add('is-closing');
+      void panel.offsetHeight;                       // fija la altura antes de animar
+      panel.style.height = '0px';
+      setTimeout(close, FX_MS);
+      return;
+    }
+    state.fxOpen.add(id); state.lastOpen = id;
+    render();
+    if (reduce) return;
+    const np = document.querySelector(`.fb-fx[data-fx="${CSS.escape(id)}"]`)?.closest('.fb-fx-wrap')?.querySelector('.fb-fxp');
+    if (!np) return;
+    const h = np.scrollHeight;
+    np.style.height = '0px'; np.classList.add('is-opening');
+    void np.offsetHeight;
+    np.style.height = h + 'px';
+    setTimeout(() => { np.style.height = ''; np.classList.remove('is-opening'); }, FX_MS);
   }
 
   function onClick(e) {
@@ -1391,7 +1461,7 @@
     const bl = t.closest('[data-balls]');
     if (bl) { const k = bl.dataset.balls; state.ballOpen = state.ballOpen === k ? null : k; render(); return; }
     const fx = t.closest('[data-fx]');
-    if (fx && !t.closest('[data-fav]')) { const id = fx.dataset.fx; if (state.fxOpen.has(id)) { state.fxOpen.delete(id); if (state.lastOpen === id) state.lastOpen = [...state.fxOpen].pop() || null; } else { state.fxOpen.add(id); state.lastOpen = id; } render(); return; }
+    if (fx && !t.closest('[data-fav]')) { toggleFx(fx.dataset.fx, fx.closest('.fb-fx-wrap')); return; }
     const xs = t.closest('[data-xi]');
     if (xs) { state.xiSides[xs.dataset.xiev] = xs.dataset.xi; render(); return; }
     const sim = t.closest('[data-sim]');

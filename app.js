@@ -100,12 +100,22 @@ function errRow(id, msg) {
 
 // ── Page Navigation ────────────────────────────────────────────────────────────
 
-function goToApp() {
+// Entrar a la app: directo al deporte elegido (Fútbol por defecto).
+function goToApp(sport = 'futbol') {
   document.getElementById('page-landing').classList.remove('active');
   const app = document.getElementById('page-app');
   app.style.display = 'flex';
-  showSection('pitcher-props', null);
+  _applySport(sport);
 }
+
+// En el launcher, Enter entra directo a Fútbol.
+document.addEventListener('keydown', (e) => {
+  const landing = document.getElementById('page-landing');
+  if (e.key === 'Enter' && landing && landing.classList.contains('active')
+      && !e.target.closest('input, textarea, button')) {
+    goToApp('futbol');
+  }
+});
 
 function goToLanding() {
   document.getElementById('page-app').style.display = 'none';

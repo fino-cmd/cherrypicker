@@ -128,6 +128,7 @@ function showSection(name, el) {
   if (name === 'todays-picks') loadTodaysPicks();
   if (name === 'matchup-tool') loadMatchupTool();
   if (name === 'altlines') loadAltLines();
+  if (name === 'futbol' && window.loadFutbol) window.loadFutbol();
 }
 
 // ── MATCHUP TOOL ──────────────────────────────────────────────────────────────
@@ -4207,7 +4208,7 @@ async function submitRetroPick(ev) {
    atributo data-sport (los que no lo llevan son MLB).
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SPORT_DEFAULT_SECTION = { mlb: 'pitcher-props', nba: 'altlines' };
+const SPORT_DEFAULT_SECTION = { mlb: 'pitcher-props', nba: 'altlines', futbol: 'futbol' };
 
 function currentSport() {
   return document.body.dataset.sport || 'mlb';
@@ -4242,7 +4243,7 @@ function _applySport(sport) {
 
   // Cierra el buscador de pitchers: no aplica en NBA
   const searchWrap = document.getElementById('topbar-search-wrap');
-  if (searchWrap) searchWrap.style.display = (sport === 'nba') ? 'none' : '';
+  if (searchWrap) searchWrap.style.display = (sport === 'mlb') ? '' : 'none';
 
   showSection(SPORT_DEFAULT_SECTION[sport] || 'pitcher-props', null);
 }
@@ -4270,6 +4271,8 @@ async function _sportMorph(sport, origin, apply) {
   veil.className = `sport-morph sport-morph--${sport}`;
   veil.innerHTML = sport === 'nba'
     ? `<div class="sport-morph-logo">${_PST_ICON}<div>PICK<span>STACHIO</span></div></div>`
+    : sport === 'futbol'
+    ? `<div class="sport-morph-logo">${window.FB_BALL_ICON || ''}<div>RE<span>MATES</span></div></div>`
     : `<div class="sport-morph-logo"><img src="cherries.png" alt=""><div>CHERRY<span>PICK</span></div></div>`;
   document.body.appendChild(veil);
   const logo = veil.querySelector('.sport-morph-logo');
@@ -4498,11 +4501,16 @@ async function loadSlate(date = _alDate, opts = {}) {
     _alSlate = await res.json();
     // El backend puede haber corrido la fecha al día más cercano con partidos.
     _alDate = _alSlate.date;
+    _alHydrateFromStore();
+    _alWatchResults();
     if (_alSelected && !(_alSlate.games || []).some(g => g.game_id === _alSelected)) {
       _alSelected = null;
     }
     renderSlate();
     renderAltLines();
+    // Los partidos ya empezados con picks: sus resultados, en segundo plano.
+    (_alSlate.games || []).filter(_alNeedsResults)
+      .forEach(g => { if (_alGameResults[g.game_id]) _alAttachResults(g.game_id); });
   } catch (e) {
     console.error('AltLines slate fetch failed', e);
     document.querySelectorAll('.js-rail-list').forEach(el => {
@@ -4587,10 +4595,14 @@ function _alRowStateHtml(g, state) {
     }
     const n = ((res && res.edges) || []).length;
     const best = _alBestEv(res);
+    if (g.state === 'in') {
+      return `<span class="rail-state rail-state--live" title="En juego: los resultados se actualizan solos"><i></i>Vivo</span>`;
+    }
     return `<span class="rail-state rail-state--done" title="${n} pistachos · mejor EV ${best === null ? '—' : best.toFixed(0) + '%'}">
       <b>${n}</b><small>pist.</small></span>`;
   }
   if (state === 'error') return `<span class="rail-state rail-state--err">Error</span>`;
+  if (state === 'loading') return `<span class="rail-state rail-state--sim"><i></i></span>`;
   if (state === 'noprops') {
     return `<span class="rail-state rail-state--off">${g.state === 'post' ? 'Final' : 'Sin cuotas'}</span>`;
   }
@@ -4861,6 +4873,10 @@ async function simulateGame(gid, opts = {}) {
     return null;
   }
 
+  // Partido terminado con picks guardados: se lee del registro, al instante.
+  // No hay nada que simular, así que tampoco hay animación.
+  if (_alFromLog(_alGame(gid))) return _alOpenFromLog(gid, opts);
+
   // Abrir el partido apenas se toca: la cabecera muestra su simulación.
   if (!opts.silent) {
     _alSelected = gid;
@@ -4887,26 +4903,15 @@ async function simulateGame(gid, opts = {}) {
     if (opts.refreshOdds) q.set('refresh_odds', 'true');
     q.set('source', _alSource);
     q.set('calibrated', _alCalibrated ? 'true' : 'false');
-    const g0 = _alGame(gid);
-    if (_alFromLog(g0)) {
-      // Partido terminado: las casas ya bajaron sus líneas. Se reabre el
-      // tablero que guardó el registro de picks, con su resultado.
-      const r = await fetch(`${API}/api/altlines/results?game=${encodeURIComponent(gid)}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
-      if (!j.board) throw new Error('No hay picks guardados de este partido.');
-      j.board.game = g0;
-      _alGameResults[gid] = j.board;
-    } else {
-      const res = await fetch(`${API}/api/altlines/edges?${q}`);
-      if (!res.ok) {
-        let detail = `HTTP ${res.status}`;
-        try { const j = await res.json(); if (j && j.detail) detail = j.detail; } catch (_) { }
-        throw new Error(detail);
-      }
-      _alGameResults[gid] = await res.json();
-      if (_alSource === 'live') _alAttachResults(gid);   // en segundo plano
+    const res = await fetch(`${API}/api/altlines/edges?${q}`);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const j = await res.json(); if (j && j.detail) detail = j.detail; } catch (_) { }
+      throw new Error(detail);
     }
+    _alGameResults[gid] = await res.json();
+    _alSimSave(gid);
+    if (_alSource === 'live') _alAttachResults(gid);     // en segundo plano
     _alLeague = null;                           // el tablero global quedó viejo
     _alSetCardState(gid, 'done');
     if (!opts.silent) _alSelectGame(gid);
@@ -5318,6 +5323,86 @@ async function refreshAltLines() {
  * modelo da lo mismo; lo que cambia el resultado es el modelo (calibrado o
  * crudo) o datos nuevos.
  */
+// ── Memoria de lo simulado (navegador) ──────────────────────────────────────
+// Una simulación se ve UNA vez: el resultado queda guardado en este
+// navegador (24 h) y, al volver a entrar, el partido se abre al instante y
+// sin animación. Sólo "Re-simular" (o cambiar de modelo) vuelve a correrla.
+const AL_SIM_STORE = 'al-sims-v1';
+const AL_SIM_TTL_MS = 24 * 3600 * 1000;
+const AL_SIM_MAX = 16;
+
+function _alSimKey(gid) {
+  return `${_alSource}|${_alDate || ''}|${gid}|${_alCalibrated ? 'cal' : 'raw'}`;
+}
+
+function _alSimStoreRead() {
+  try { return JSON.parse(localStorage.getItem(AL_SIM_STORE) || '{}') || {}; }
+  catch (_) { return {}; }
+}
+
+function _alSimSave(gid) {
+  const d = _alGameResults[gid];
+  if (!d) return;
+  const all = _alSimStoreRead();
+  all[_alSimKey(gid)] = { ts: Date.now(), d };
+  // Se quedan los más nuevos; si el navegador no tiene lugar, se tiran los
+  // más viejos hasta que entre.
+  let keys = Object.keys(all).sort((a, b) => all[b].ts - all[a].ts);
+  keys.slice(AL_SIM_MAX).forEach(k => delete all[k]);
+  keys = keys.slice(0, AL_SIM_MAX);
+  while (keys.length) {
+    try { localStorage.setItem(AL_SIM_STORE, JSON.stringify(all)); return; }
+    catch (_) { delete all[keys.pop()]; }
+  }
+}
+
+function _alSimLoad(gid) {
+  const hit = _alSimStoreRead()[_alSimKey(gid)];
+  if (!hit || Date.now() - hit.ts > AL_SIM_TTL_MS) return null;
+  return hit.d;
+}
+
+function _alSimForget(gid) {
+  const all = _alSimStoreRead();
+  delete all[_alSimKey(gid)];
+  try { localStorage.setItem(AL_SIM_STORE, JSON.stringify(all)); } catch (_) { }
+}
+
+// Al cargar la pizarra: lo que ya se simuló vuelve de la memoria.
+function _alHydrateFromStore() {
+  ((_alSlate && _alSlate.games) || []).forEach(g => {
+    if (_alGameResults[g.game_id]) return;
+    const d = _alSimLoad(g.game_id);
+    if (d) _alGameResults[g.game_id] = d;
+  });
+}
+
+// ── Resultados en vivo ──────────────────────────────────────────────────────
+// Mientras un partido con picks se juega (o recién terminó y falta liquidar),
+// se piden sus resultados cada 90 s, sin tocar nada.
+const AL_RESULTS_EVERY_MS = 90 * 1000;
+let _alResultsTimer = null;
+
+function _alNeedsResults(g) {
+  if (!g || _alSource !== 'live') return false;
+  const d = _alGameResults[g.game_id];
+  if (!d && !(g.logged > 0)) return false;
+  const rec = d && d.results && d.results.top;
+  const pending = !rec || rec.pending > 0 || (rec.win + rec.loss + rec.push + rec.void) === 0;
+  const started = g.state === 'in' || g.state === 'post'
+    || (g.tip_off && Date.now() > new Date(g.tip_off).getTime());
+  return started && pending;
+}
+
+function _alWatchResults() {
+  clearInterval(_alResultsTimer);
+  _alResultsTimer = setInterval(() => {
+    if (document.hidden || currentSport() !== 'nba') return;
+    ((_alSlate && _alSlate.games) || []).filter(_alNeedsResults)
+      .forEach(g => { if (_alGameResults[g.game_id]) _alAttachResults(g.game_id); });
+  }, AL_RESULTS_EVERY_MS);
+}
+
 // ── Resultados: lo que pasó con los picks guardados ─────────────────────────
 
 // Un partido se abre desde el registro (y no simulando) cuando es modo Real,
@@ -5341,12 +5426,25 @@ async function _alAttachResults(gid) {
     const d = _alGameResults[gid];
     if (!d || !j || !j.results) return;
     d.results = j.summary;
-    const mark = (rows) => (rows || []).forEach(row => {
+    const fresh = [];
+    const mark = (rows, top) => (rows || []).forEach(row => {
       const hit = j.results[_alResultKey(row)];
-      if (hit && hit.outcome) Object.assign(row, { outcome: hit.outcome, actual: hit.actual, pnl: hit.pnl });
+      if (!hit || !hit.outcome) return;
+      if (top && row.outcome !== hit.outcome) fresh.push(_alResultKey(row));
+      Object.assign(row, { outcome: hit.outcome, actual: hit.actual, pnl: hit.pnl });
     });
-    mark(d.edges); mark(d.all_edges);
+    mark(d.edges, true); mark(d.all_edges, false);
+    _alSimSave(gid);
     if (!j.settled) return;
+    if (fresh.length && window.Pickstachio) {
+      Pickstachio.flash(fresh);
+      const rec = j.summary && j.summary.top;
+      const g = _alGame(gid);
+      if (rec && g && typeof _showToast === 'function') {
+        _showToast(`${g.away.tricode} @ ${g.home.tricode}: ${rec.win} ganados · ${rec.loss} perdidos · `
+          + `${rec.pnl > 0 ? '+' : ''}${_alNum(rec.pnl, 2)}u`, rec.pnl >= 0 ? 'ok' : 'error');
+      }
+    }
     _alRows(gid).forEach(row => {
       const slot = row.querySelector('.js-rail-state');
       const g = _alGame(gid);
@@ -5369,9 +5467,38 @@ function _alHeroResultText(res) {
   return `${n} pistachos abiertos · el mejor, dibujado contra la curva del libro`;
 }
 
+async function _alOpenFromLog(gid, opts = {}) {
+  const g0 = _alGame(gid);
+  if (!opts.silent) {
+    _alSelected = gid;
+    _alScope = 'game';
+    _alMarkSelected();
+  }
+  _alSetCardState(gid, 'loading');
+  try {
+    const r = await fetch(`${API}/api/altlines/results?game=${encodeURIComponent(gid)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    if (!j.board) throw new Error('No hay picks guardados de este partido.');
+    j.board.game = g0;
+    _alGameResults[gid] = j.board;
+    _alSimSave(gid);
+    _alLeague = null;
+    _alSetCardState(gid, 'done');
+    if (!opts.silent) _alSelectGame(gid);
+    return j.board;
+  } catch (e) {
+    _alSetCardState(gid, 'error', e.message);
+    return null;
+  } finally {
+    _alUpdateSimAllBtn();
+  }
+}
+
 function resimulateGame(gid = _alSelected) {
   if (!gid) return;
   delete _alGameResults[gid];
+  _alSimForget(gid);
   _alLeague = null;
   return simulateGame(gid, { refresh: true });
 }
@@ -5386,8 +5513,11 @@ function altLinesCalibration(on) {
   _alGameResults = {};
   _alLeague = null;
   _altLinesData = null;
+  // Lo que ya se simuló con este modelo vuelve de la memoria del navegador.
+  _alHydrateFromStore();
   renderSlate();
-  if (keep) resimulateGame(keep);
+  if (keep && _alGameResults[keep]) _alSelectGame(keep);
+  else if (keep) resimulateGame(keep);
   else renderAltLines();
 }
 

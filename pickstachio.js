@@ -15,7 +15,8 @@
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, Number.isFinite(v) ? v : 0));
 
-  const state = { market: 'all', live: false, teams: {}, cards: [] };
+  const state = { market: 'all', live: false, teams: {}, cards: [], flash: new Set() };
+  const resultKey = (r) => `${r.player_id}|${r.market}|${String(r.side).toUpperCase()}|${Number(r.point)}`;
 
   // ── Íconos (trazo, heredan currentColor) ──────────────────────────────────
   const I = {
@@ -137,6 +138,13 @@
   // Frente: el color sólido del equipo con trama de imprenta, el logo como
   // marca de agua, la foto recortada del jugador y la apuesta en una franja
   // negra. Dorso (se gira al tocarlo): por qué es un pistacho.
+  // "Paul Reed Jr" → "Reed Jr": el sufijo no es el apellido.
+  const SUFFIX = /^(jr|sr|ii|iii|iv|v)\.?$/i;
+  function surname(full) {
+    const w = String(full || '').trim().split(/\s+/);
+    if (w.length > 2 && SUFFIX.test(w[w.length - 1])) return w.slice(-2).join(' ');
+    return w[w.length - 1] || '';
+  }
   const MKT_ABBR = { points: 'PTS', rebounds: 'REB', assists: 'AST', threes: '3PM', pra: 'PRA' };
   const SILHOUETTE = `<svg class="pst-ghost" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 30c19 0 33 15 33 35s-14 38-33 38-33-18-33-38 14-35 33-35zM34 200c2-42 28-74 66-74s64 32 66 74z"/></svg>`;
 
@@ -153,8 +161,8 @@
     const t = TIERS[m.tier];
     const team = state.teams[String(r.team || '').toUpperCase()] || {};
     const name = String(r.player || '').trim().split(/\s+/);
-    const first = name.length > 1 ? name.slice(0, -1).join(' ') : '';
-    const last = name[name.length - 1] || '';
+    const last = surname(r.player);
+    const first = name.slice(0, Math.max(0, name.indexOf(last.split(' ')[0]))).join(' ');
     const longLast = last.length > 7 ? ' pst-last--long' : '';
     return `
       <div class="pst-face pst-front">
@@ -242,8 +250,9 @@
     state.cards[i] = { r, m, color };
     const label = `${r.player}: ${m.over ? 'over' : 'under'} ${r.point} ${MARKET_SHORT[r.market] || ''}, ${american(r.decimal_odds)}. Score ${m.score}.`;
     const oc = OUTCOME[r.outcome];
+    const fresh = oc && state.flash.has(resultKey(r)) ? ' pst-cube--fresh' : '';
     return `
-      <div class="pst-cube pst-cube--${m.tier}${oc ? ' pst-cube--' + oc.cls : ''}" style="--team:${esc(color)};--i:${i}" data-idx="${i}"
+      <div class="pst-cube pst-cube--${m.tier}${oc ? ' pst-cube--' + oc.cls : ''}${fresh}" style="--team:${esc(color)};--i:${i}" data-idx="${i}"
            role="button" tabindex="0" aria-haspopup="dialog" aria-label="${esc(label)} Abrir la ficha."
            onclick="Pickstachio.open(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();Pickstachio.open(this);}"
            onpointermove="Pickstachio.tilt(this, event)" onpointerleave="Pickstachio.tilt(this)">
@@ -351,6 +360,45 @@
     el.style.setProperty('--mx', `${Math.round(px * 100)}%`);
   }
 
+  // Barra de resultados: de un vistazo, qué se ganó y qué se perdió. Una
+  // ficha por pick (en el mismo orden que los cromos); tocarla abre su cromo.
+  const MARK = {
+    won: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    lost: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    push: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    void: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    pending: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" fill="currentColor"/></svg>',
+  };
+  function resultsStrip(all, shown) {
+    const rows = all.map(x => x.r);
+    if (!rows.some(r => OUTCOME[r.outcome])) return '';
+    const n = (o) => rows.filter(r => r.outcome === o).length;
+    const pending = rows.filter(r => !OUTCOME[r.outcome]).length;
+    const pnl = rows.reduce((s, r) => s + (Number(r.pnl) || 0), 0);
+    const chips = shown.map((x, i) => {
+      const r = x.r, oc = OUTCOME[r.outcome];
+      const cls = oc ? oc.cls : 'pending';
+      const last = surname(r.player);
+      const tip = oc ? `${oc.label}${r.actual != null ? ` · terminó en ${Number(r.actual)}` : ''}` : 'Pendiente';
+      return `<button class="pst-rchip pst-rchip--${cls}${state.flash.has(resultKey(r)) ? ' pst-rchip--fresh' : ''}"
+          onclick="Pickstachio.openIdx(${i})" title="${esc(tip)}">
+          ${MARK[cls]}<span>${esc(last)}</span><b>${m_ou(r)} ${esc(Number(r.point).toFixed(1))}</b><small>${esc(MKT_ABBR[r.market] || '')}</small>
+        </button>`;
+    }).join('');
+    return `
+      <section class="pst-results" aria-label="Resultados de los picks">
+        <div class="pst-results-sum">
+          <span class="pst-results-w"><b>${n('win')}</b> ganados</span>
+          <span class="pst-results-l"><b>${n('loss')}</b> perdidos</span>
+          ${n('push') ? `<span><b>${n('push')}</b> push</span>` : ''}
+          ${pending ? `<span class="pst-results-p"><b>${pending}</b> pendientes</span>` : ''}
+          <span class="pst-results-u ${pnl >= 0 ? 'pst-results-w' : 'pst-results-l'}"><b>${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}u</b></span>
+        </div>
+        <div class="pst-results-chips">${chips}</div>
+      </section>`;
+  }
+  const m_ou = (r) => String(r.side).toUpperCase() === 'OVER' ? 'O' : 'U';
+
   function glossary() {
     const rows = [
       [I.nut, 'Pistacho', 'Una línea alternativa donde el modelo le encuentra valor al precio del libro. El libro la ve cerrada; nosotros le vemos la grieta.'],
@@ -398,6 +446,7 @@
     const tab = (k, label) => `<button class="pst-tab ${state.market === k ? 'pst-tab--on' : ''}"
         onclick="Pickstachio.filter('${esc(k)}')">${esc(label)}</button>`;
     return `
+      ${resultsStrip(all, shown)}
       <div class="pst-bar-top-row">
         <nav class="pst-tabs" aria-label="Mercado">${tab('all', 'Todos')}${markets.map(k => tab(k, MARKET_SHORT[k] || k)).join('')}</nav>
         <p class="pst-tally"><b>${count('gold')}</b> dorados <i>/</i> <b>${count('open')}</b> abiertos <i>/</i> <b>${count('shell')}</b> cáscaras
@@ -415,6 +464,18 @@
     filter(k) { state.market = k; if (typeof renderAltLines === 'function') renderAltLines(); },
     reset() { state.market = 'all'; },
     open,
+    openIdx(i) {
+      const el = document.querySelector(`.pst-cube[data-idx="${Number(i)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: REDUCED ? 'auto' : 'smooth' });
+      setTimeout(() => open(el), REDUCED ? 0 : 320);
+    },
+    // Resultados recién llegados: se marcan para el sello animado del próximo
+    // dibujo y se olvidan enseguida (un sello no se repite al volver a entrar).
+    flash(keys) {
+      (keys || []).forEach(k => state.flash.add(k));
+      setTimeout(() => state.flash.clear(), 2500);
+    },
     close,
     tilt,
     ghost: SILHOUETTE,

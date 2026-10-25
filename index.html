@@ -6,8 +6,9 @@
   <title>CherryPick — MLB Betting Analytics</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Big+Shoulders+Display:wght@600;700;800;900&family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=77" />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Big+Shoulders+Display:wght@600;700;800;900&family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Onest:wght@400;500;600;700&family=Saira+Condensed:wght@600;700;800&family=Outfit:wght@500;600;700;800&family=Rubik:wght@500;600;700;800;900&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=78" />
+  <link rel="stylesheet" href="futbol-tab.css?v=36" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -1090,6 +1091,13 @@
           <span class="pst-word-sub">NBA · Alt Lines</span>
         </span>
       </span>
+      <span class="brand-futbol" aria-label="Fútbol · Remates">
+        <svg class="fb-mark" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19" fill="#eef3f7"/><path d="M24 15.5l7.4 5.4-2.8 8.7h-9.2l-2.8-8.7z" fill="#0b1620"/><path d="M24 15.5V7.2M31.4 20.9l7.8-2.6M28.6 29.6l4.8 6.7M19.4 29.6l-4.8 6.7M16.6 20.9l-7.8-2.6" stroke="#0b1620" stroke-width="2" stroke-linecap="round"/><circle cx="24" cy="24" r="19" fill="none" stroke="#5cc8ff" stroke-width="2"/></svg>
+        <span class="fb-word">
+          <span class="fb-word-main">Remates</span>
+          <span class="fb-word-sub">Tiros y tiros al arco</span>
+        </span>
+      </span>
     </div>
 
     <!-- ── SPORT TABS ── MLB (modelo de ponches) vs NBA (motor AltLines) ─────── -->
@@ -1104,10 +1112,17 @@
         <span class="sport-tab-mark">NBA</span>
         <span class="sport-tab-sub">Pickstachio</span>
       </button>
+      <button class="sport-tab" id="sport-tab-futbol" role="tab"
+              aria-selected="false" data-sport="futbol" onclick="showSport('futbol')">
+        <span class="sport-tab-mark">Fútbol</span>
+        <span class="sport-tab-sub">Remates</span>
+      </button>
     </div>
 
     <!-- Herramientas de Pickstachio (datos, créditos, sonido): las llena app.js -->
     <div class="nba-tools" id="nba-tools"></div>
+    <!-- Estado y herramientas de Fútbol (cuotas, recalcular): las llena futbol-tab.js -->
+    <div class="fb-topbar-tools" id="fb-topbar-tools"></div>
 
     <div class="topbar-actions">
       <!-- Search toggle -->
@@ -1169,6 +1184,8 @@
       </nav>
       <!-- Riel de partidos de Pickstachio: lo llena app.js -->
       <div class="nba-rail" id="nba-rail" aria-label="Partidos de la noche"></div>
+      <!-- Riel de la jornada de fútbol: lo llena futbol-tab.js -->
+      <div class="fb-rail" id="fb-rail" aria-label="Partidos de la jornada"></div>
       <div class="sb-bottom">
         <div class="sb-help">
           <div class="sb-help-icon">?</div>
@@ -1647,6 +1664,11 @@
       <!-- populated by app.js -->
     </section>
 
+    <!-- ── FÚTBOL — remates y remates al arco (paquete futbol/) ──
+         Lo llena futbol-tab.js (loadFutbol). -->
+    <section id="section-futbol" class="app-section" data-sport="futbol" style="display:none">
+    </section>
+
     </main>
   </div><!-- /.app-body -->
 
@@ -1684,8 +1706,9 @@
 </div>
 
   <script src="altlines-galton.js?v=11"></script>
-  <script src="pickstachio.js?v=12"></script>
-  <script src="app.js?v=91"></script>
+  <script src="pickstachio.js?v=14"></script>
+  <script src="futbol-tab.js?v=29"></script>
+  <script src="app.js?v=93"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const d = document.getElementById('props-date');

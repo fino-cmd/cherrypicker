@@ -5123,3 +5123,282 @@ def get_altlines_slate(
     except Exception as e:                                  # noqa: BLE001
         logger.error("GET /api/altlines/slate error: %s", e)
         raise HTTPException(500, str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FÚTBOL TAB — GET /api/futbol/jornada
+# Modelo de remates y remates al arco (paquete futbol/, raíz del repo)
+# ══════════════════════════════════════════════════════════════════════════════
+# Igual que AltLines: import perezoso dentro del handler (un problema en el
+# paquete futbol/ nunca impide que arranque la API de MLB) y `def` común para
+# que la simulación corra en el threadpool.
+#
+#   (sin parámetros)      lee data/futbol/jornada.json (instantáneo)
+#   refresh=true          vuelve a correr la jornada (ESPN + simulación)
+#   refresh_odds=true     además pide cuotas nuevas a OddsPapi (3 consultas)
+#
+# Ojo: con refresh=true, si el caché de cuotas tiene más de ODDS_TTL_S el
+# paquete las vuelve a pedir igual. `odds.would_fetch` se lo avisa a la UI
+# para que pida confirmación antes.
+
+import threading as _fb_threading
+
+_fb_lock = _fb_threading.Lock()
+
+
+def _futbol_odds_meta():
+    from futbol import config as fcfg
+    from futbol import oddspapi as fop
+    ids = "_".join(str(v["oddspapi"]) for v in fcfg.LEAGUES.values())
+    now = time.time()
+    books, would_fetch = {}, False
+    for book in ("bet365.bet.ar", "betano", "betsson"):
+        f = fop.DIR / f"odds_{book}_{ids}.json"
+        age = (now - f.stat().st_mtime) if f.exists() else None
+        books[book] = None if age is None else round(age)
+        if age is None or age >= fcfg.ODDS_TTL_S:
+            would_fetch = True
+    return {"ttl_s": fcfg.ODDS_TTL_S, "age_s": books, "would_fetch": would_fetch,
+            "cost_per_refresh": 3, "plan_month": 250,
+            "has_key": bool(fcfg.oddspapi_key())}
+
+
+@app.get("/api/futbol/jornada")
+def get_futbol_jornada(refresh: bool = False, refresh_odds: bool = False,
+                       days: int = 4, leagues: str | None = None):
+    try:
+        from futbol import config as fcfg
+        from futbol import photos as fphotos
+        from futbol import run as frun
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("futbol package unavailable: %s", e)
+        raise HTTPException(500, f"Modelo de fútbol no disponible: {e}")
+
+    f = fcfg.DATA_DIR / "jornada.json"
+    try:
+        if refresh or refresh_odds or not f.exists():
+            if not _fb_lock.acquire(blocking=False):
+                raise HTTPException(409, "Ya se está recalculando la jornada")
+            try:
+                lg = [x for x in (leagues or "").split(",") if x] or None
+                data = frun.run(lg, days=days, refresh_odds=refresh_odds, verbose=False)
+            finally:
+                _fb_lock.release()
+        else:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        # Fotos buscadas después de correr la jornada (python -m futbol.photos)
+        store = fphotos._load()
+        for m in data.get("matches", []):
+            for p in m.get("players", []):
+                e = store.get(str(p["player_id"])) or {}
+                if e.get("url") and (e.get("src") == "api-football" or not p.get("photo")):
+                    p["photo"] = e["url"]
+        data["odds"] = _futbol_odds_meta()
+        data["running"] = _fb_lock.locked()
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/futbol/jornada error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+# "Simular partido": vuelve a simular un solo partido (formación al día de
+# ESPN, cuotas guardadas: no gasta OddsPapi).
+@app.get("/api/futbol/simulate")
+def simulate_futbol_match(event_id: str):
+    try:
+        from futbol import run as frun
+    except Exception as e:                                  # noqa: BLE001
+        raise HTTPException(500, f"Modelo de fútbol no disponible: {e}")
+    if not _fb_lock.acquire(blocking=False):
+        raise HTTPException(409, "Ya se está calculando algo, probá en un minuto")
+    _fb_status.update(running=event_id, since=time.time())
+    try:
+        return frun.simulate_one(event_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/futbol/simulate error: %s", e)
+        raise HTTPException(500, str(e))
+    finally:
+        _fb_status.update(running=None, since=None)
+        _fb_lock.release()
+
+
+# Vigía de formaciones: el servidor pregunta solo cada 2 minutos (ESPN y, para
+# la LPF, API-Football) aunque nadie tenga la app abierta, y re-simula el
+# partido apenas sale la formación. También liquida los picks terminados.
+FB_WATCH_EVERY_S = 120
+_fb_photo_last = [0.0]
+
+
+def _fb_photos_step(max_teams: int | None = None) -> int:
+    from futbol import apifootball as faf
+    from futbol import config as fcfg
+    from futbol import espn as fespn
+    f = fcfg.DATA_DIR / "jornada.json"
+    if not f.exists() or not faf.key():
+        return 0
+    data = json.loads(f.read_text(encoding="utf-8"))
+    _, players = fespn.build_history(list(fcfg.LEAGUES), verbose=False)
+    kw = {"max_teams": max_teams} if max_teams else {}
+    n = faf.photos_step(data.get("matches", []), players, **kw)
+    if n:
+        logger.info("Fotos de API-Football: %d jugadores", n)
+    return n
+
+
+def _fb_watch_loop():
+    import time as _t
+    while True:
+        _t.sleep(FB_WATCH_EVERY_S)
+        if not _fb_lock.acquire(blocking=False):
+            continue
+        try:
+            from futbol import picklog as fpl
+            from futbol import run as frun
+            upd = frun.check_lineups()
+            if upd:
+                logger.info("Formaciones nuevas: %s", ", ".join(f"{u['match']} ({u.get('source')})" for u in upd))
+            fpl.settle()
+            # Fotos de API-Football: un tramo de planteles por hora (con tope diario).
+            if _t.time() - _fb_photo_last[0] > 3600:
+                _fb_photo_last[0] = _t.time()
+                _fb_photos_step()
+        except Exception as e:                              # noqa: BLE001 - el vigía nunca se cae
+            logger.warning("Vigía de formaciones: %s", e)
+        finally:
+            _fb_lock.release()
+
+
+@app.on_event("startup")
+async def _fb_start_watch():
+    _fb_threading.Thread(target=_fb_watch_loop, name="fb-lineups", daemon=True).start()
+
+
+# Consumo de las APIs pagas/limitadas, para el visor de créditos de la barra.
+#  · API-Football: /status no gasta cupo → dato exacto del día.
+#  · The Odds API: /v4/sports no gasta créditos y trae used/remaining en cabeceras.
+#  · OddsPapi: no expone su consumo → lo contamos nosotros (desde que se activó).
+_fb_usage_cache = {"t": 0.0, "data": None}
+
+
+@app.get("/api/usage")
+def get_api_usage(fresh: bool = False):
+    if not fresh and _fb_usage_cache["data"] and time.time() - _fb_usage_cache["t"] < 300:
+        return _fb_usage_cache["data"]
+    import httpx as _hx
+    out = {}
+    try:
+        from futbol import apifootball as faf
+        k = faf.key()
+        if k:
+            r = _hx.get(f"{faf.BASE}/status", headers={"x-apisports-key": k}, timeout=15)
+            req = ((r.json() or {}).get("response") or {}).get("requests") or {}
+            out["apifootball"] = {"name": "API-Football", "used": req.get("current"), "limit": req.get("limit_day"),
+                                  "period": "hoy", "exact": True, "use": "Formaciones LPF y fotos"}
+    except Exception as e:                                  # noqa: BLE001
+        out["apifootball"] = {"name": "API-Football", "error": str(e)}
+    try:
+        from futbol import oddspapi as fop
+        u = fop.usage()
+        out["oddspapi"] = {"name": "OddsPapi", **u, "use": "Cuotas de remates (fútbol)"}
+    except Exception as e:                                  # noqa: BLE001
+        out["oddspapi"] = {"name": "OddsPapi", "error": str(e)}
+    try:
+        k = os.getenv("THE_ODDS_API_KEY") or os.getenv("ODDS_API_KEY")
+        if k:
+            r = _hx.get("https://api.the-odds-api.com/v4/sports", params={"apiKey": k}, timeout=15)
+            used, rem = r.headers.get("x-requests-used"), r.headers.get("x-requests-remaining")
+            if used is not None and rem is not None:
+                out["theoddsapi"] = {"name": "The Odds API", "used": int(float(used)), "limit": int(float(used)) + int(float(rem)),
+                                     "period": "mes", "exact": True, "use": "Cuotas MLB y NBA"}
+    except Exception as e:                                  # noqa: BLE001
+        out["theoddsapi"] = {"name": "The Odds API", "error": str(e)}
+    _fb_usage_cache.update(t=time.time(), data=out)
+    return out
+
+
+# Estado liviano para que todos los dispositivos (PC, celular) se enteren de
+# los cambios sin bajar la jornada entera: versión de la jornada y de las
+# preferencias, y qué partido se está simulando ahora.
+_fb_status = {"running": None, "since": None}
+
+
+def _fb_mtime(name: str) -> float | None:
+    from futbol import config as fcfg
+    f = fcfg.DATA_DIR / name
+    return f.stat().st_mtime if f.exists() else None
+
+
+@app.get("/api/futbol/status")
+def get_futbol_status():
+    return {"version": _fb_mtime("jornada.json"), "prefs_version": _fb_mtime("prefs.json"),
+            "running": _fb_status["running"], "running_since": _fb_status["since"],
+            "busy": _fb_lock.locked(), "now": time.time()}
+
+
+# Preferencias compartidas entre dispositivos: partidos con estrella y boleta.
+@app.get("/api/futbol/prefs")
+def get_futbol_prefs():
+    from futbol import config as fcfg
+    f = fcfg.DATA_DIR / "prefs.json"
+    try:
+        data = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    except Exception:                                       # noqa: BLE001
+        data = {}
+    return {"fav": data.get("fav", []), "slip": data.get("slip", []), "version": _fb_mtime("prefs.json")}
+
+
+class _FbPrefs(BaseModel):
+    fav: list[str] = []
+    slip: list[str] = []
+
+
+@app.put("/api/futbol/prefs")
+def put_futbol_prefs(p: _FbPrefs):
+    from futbol import config as fcfg
+    fcfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    f = fcfg.DATA_DIR / "prefs.json"
+    f.write_text(json.dumps({"fav": sorted(set(p.fav))[:500], "slip": sorted(set(p.slip))[:500]}), encoding="utf-8")
+    return {"ok": True, "version": _fb_mtime("prefs.json")}
+
+
+# Resultados de los picks de fútbol: liquida contra ESPN lo que ya terminó y
+# devuelve el récord (data/futbol/picks.db, lo llena futbol.run).
+@app.get("/api/futbol/results")
+def get_futbol_results(days: int = 10):
+    try:
+        from futbol import picklog
+    except Exception as e:                                  # noqa: BLE001
+        raise HTTPException(500, f"Modelo de fútbol no disponible: {e}")
+    try:
+        settled = picklog.settle()
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("futbol settle error: %s", e)
+        settled = 0
+    return {"settled_now": settled, "summary": picklog.summary(),
+            "summary_recent": picklog.summary(days), "picks": picklog.recent(days)}
+
+
+# Formaciones: ESPN las publica ~1 h antes. La UI llama esto cada pocos
+# minutos; sólo consulta ESPN por los partidos que empiezan en las próximas
+# 2 h y re-simula los que confirmaron formación. No gasta cuotas.
+@app.get("/api/futbol/lineups/check")
+def check_futbol_lineups():
+    try:
+        from futbol import run as frun
+    except Exception as e:                                  # noqa: BLE001
+        raise HTTPException(500, f"Modelo de fútbol no disponible: {e}")
+    if not _fb_lock.acquire(blocking=False):
+        return {"updated": [], "busy": True}
+    try:
+        updated = frun.check_lineups()
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/futbol/lineups/check error: %s", e)
+        raise HTTPException(500, str(e))
+    finally:
+        _fb_lock.release()
+    return {"updated": updated, "busy": False,
+            "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z"}

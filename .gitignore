@@ -29,3 +29,10 @@ backups/
 
 # AltLines on-disk API cache (odds/rosters/game logs)
 data/altlines/cache/
+
+# Futbol: caches de ESPN/OddsPapi/fotos y salidas generadas
+data/futbol/cache/
+data/futbol/jornada.json
+data/futbol/backtest_predictions.csv.gz
+data/futbol/picks.db
+data/futbol/prefs.json

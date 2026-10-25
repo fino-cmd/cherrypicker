@@ -48,6 +48,19 @@ for _stream in (sys.stdout, sys.stderr):
 MIN_EDGE = 0.05
 # Picks: líneas "jugables" (ni regalos ni loterías).
 PICK_P_MIN, PICK_P_MAX = 0.30, 0.85
+# Jugadas del mismo partido se ganan o se pierden juntas (si el partido sale
+# trabado, caen todas). Tope: la mejor por jugador y pocas por partido.
+PICKS_PER_PLAYER, PICKS_PER_MATCH = 1, 3
+
+
+def _cap_picks(picks: list[dict]) -> list[dict]:
+    out, per_player = [], {}
+    for k in sorted(picks, key=lambda k: -(k.get("edge") or 0)):
+        if per_player.get(k["player_id"], 0) >= PICKS_PER_PLAYER or len(out) >= PICKS_PER_MATCH:
+            continue
+        per_player[k["player_id"]] = per_player.get(k["player_id"], 0) + 1
+        out.append(k)
+    return out
 SANITY_X = 3.0
 # Suplente+ (bet365), Suplente de Oro (Betano), Suplente (Betsson): si el
 # titular sale, la apuesta sigue con el que entra y se suman los dos. Sólo
@@ -83,13 +96,23 @@ def _context(leagues, refresh_odds: bool, n_sim: int, allow_fetch: bool = True) 
             "photo_of": photos._load(), "n_sim": n_sim, "suspicious": []}
 
 
+def team_keepers(players, team_id: str, photo_of: dict | None = None, n: int = 4) -> list[dict]:
+    """Arqueros que usó el equipo últimamente (para cambiar el arquero en Modo DT)."""
+    g = players[(players["team_id"].astype(str) == str(team_id)) & players["pos"].astype(str).str.upper().isin(["G", "GK"])]
+    if g.empty:
+        return []
+    g = g.sort_values("date").groupby("player_id").tail(1).sort_values("date", ascending=False).head(n)
+    return [{"player_id": str(x.player_id), "player": x.player, "team_id": str(team_id), "pos": "G",
+             "photo": (photo_of or {}).get(str(x.player_id), {}).get("url")} for x in g.itertuples()]
+
+
 def simulate_event(ev: dict, ctx: dict, squad: list[dict] | None) -> tuple[dict, list[dict]]:
     """Un partido → (bloque del partido para el JSON, picks)."""
     lg = ev["league"]
     if lg not in ctx["tms"]:
         ctx["tms"][lg] = fm.fit_team_model(ctx["teams"][ctx["teams"]["league"] == lg], ctx["asof"])
     tm = ctx["tms"][lg]
-    squad = squad or []
+    squad = lu.fill_positions(squad or [], ctx["players"])
     confirmed = any(s["starter"] for s in squad)
     by_team, lineup = {}, {}
     for side in ("home", "away"):
@@ -178,12 +201,14 @@ def simulate_event(ev: dict, ctx: dict, squad: list[dict] | None) -> tuple[dict,
             "sot": round(p["sot_mean"], 2), "share90": round(p["share90"], 3),
             "acc": round(p["acc"], 3), "minutes_history": round(p["n_min"]),
             "photo": ctx["photo_of"].get(str(p["player_id"]), {}).get("url"), "lines": lines})
+    picks = _cap_picks(picks)
     match = {
         "event_id": ev["event_id"], "league": lg, "league_name": cfg.LEAGUES[lg]["name"],
         "date": ev["date"], "venue": ev.get("venue"), "lineup_confirmed": confirmed,
         "lineup": lineup, "oddspapi_fixture": fx, "teams": teams_out, "market": market,
         "total": {"shots": round(sim["total"]["shots_mean"], 2), "sot": round(sim["total"]["sot_mean"], 2)},
         "players": players_out,
+        "keepers": {s_: team_keepers(ctx["players"], ev[f"{s_}_id"], ctx["photo_of"]) for s_ in ("home", "away")},
         "computed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "ev": ev,
     }
@@ -286,7 +311,12 @@ def check_lineups(window_h: float = LINEUP_WINDOW_H, verbose: bool = False) -> l
     # NO se re-simula solo: se guarda la alineación oficial y se avisa. La
     # simulación con ese XI corre cuando el usuario toca "Simular partido".
     updated = []
+    hist_players = None
     for m, squad, source in newly:
+        if any(s["starter"] and lu._no_pos(s.get("pos")) for s in squad):
+            if hist_players is None:
+                _, hist_players = espn.build_history(list(cfg.LEAGUES), verbose=False)
+            squad = lu.fill_positions(squad, hist_players)
         m["official_squad"] = squad
         m["lineup_official"] = True
         m["lineup_source"] = source
@@ -307,7 +337,38 @@ def _log_picks(picks: list[dict]) -> None:
         print(f"  registro de picks: {exc}")
 
 
-def simulate_one(event_id: str) -> dict:
+def _custom_squad(old: dict, custom: dict) -> list[dict]:
+    """Modo DT: arma el plantel con el XI que eligió el usuario (titulares) y el
+    resto del plantel como suplentes. El equipo que no tocó usa la oficial o la probable."""
+    ev = old["ev"]
+    squad = []
+    for side in ("home", "away"):
+        tid = str(ev[f"{side}_id"])
+        mine = (custom or {}).get(side) or {}
+        if mine.get("players"):
+            xi = [{"team_id": tid, "formation": mine.get("formation"), "formation_place": i + 1,
+                   "player_id": str(p["player_id"]), "player": p.get("player"), "starter": 1,
+                   "pos": p.get("pos"), "pos_group": espn.position_group(p.get("pos"))}
+                  for i, p in enumerate(mine["players"][:11])]
+        else:
+            off = [s_ for s_ in (old.get("official_squad") or []) if s_["team_id"] == tid and s_.get("starter")]
+            if off:
+                xi = off
+            else:
+                lu_ = (old.get("lineup") or {}).get(side) or {}
+                xi = [{"team_id": tid, "formation": lu_.get("formation"), "formation_place": p.get("place"),
+                       "player_id": str(p["player_id"]), "player": p.get("player"), "starter": 1,
+                       "pos": p.get("pos"), "pos_group": espn.position_group(p.get("pos"))}
+                      for p in lu_.get("players") or []]
+        ids = {x["player_id"] for x in xi}
+        bench = [{"team_id": tid, "formation": None, "formation_place": None, "player_id": str(p["player_id"]),
+                  "player": p.get("player"), "starter": 0, "pos": "SUB", "pos_group": "?"}
+                 for p in old.get("players") or [] if str(p.get("team_id")) == tid and str(p["player_id"]) not in ids]
+        squad += xi + bench
+    return squad
+
+
+def simulate_one(event_id: str, custom: dict | None = None) -> dict:
     """Vuelve a simular UN partido de la jornada: le pregunta a ESPN si ya
     salió la formación y usa las cuotas guardadas (no gasta OddsPapi).
     Devuelve el partido antes y después para mostrar qué cambió."""
@@ -320,17 +381,25 @@ def simulate_one(event_id: str) -> dict:
     ev = old["ev"]
     old_picks = sum(1 for k in result["picks"] if k["event_id"] == event_id)
     # La alineación oficial que ya encontró el vigía (ESPN o API-Football); si no, se pregunta a ESPN.
-    squad = old.get("official_squad") or espn.lineup(ev)
+    squad = _custom_squad(old, custom) if custom else (old.get("official_squad") or espn.lineup(ev))
     ctx = _context([ev["league"]], False, cfg.N_SIM, allow_fetch=False)
     match, mp = simulate_event(ev, ctx, squad)
-    if old.get("official_squad"):
+    if custom:
+        # Simulado con la alineación del usuario: la probable/oficial queda guardada
+        # para poder volver, y estas jugadas no van al registro.
+        match.update(lineup=old.get("lineup"), lineup_confirmed=old.get("lineup_confirmed"), custom_lineup=True)
+        for k in ("official_squad", "lineup_official", "lineup_source", "lineup_official_at"):
+            if old.get(k) is not None:
+                match[k] = old[k]
+    elif old.get("official_squad"):
         match.update(official_squad=old["official_squad"], lineup_official=True,
                      lineup_source=old.get("lineup_source"), lineup_official_at=old.get("lineup_official_at"))
     result["matches"] = [match if x["event_id"] == event_id else x for x in result["matches"]]
     result["picks"] = [k for k in result["picks"] if k["event_id"] != event_id] + mp
     _save(result)
-    _log_picks(mp)
-    return {"before": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
+    if not custom:
+        _log_picks(mp)
+    return {"custom": bool(custom), "before": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
                        "lineup_confirmed": old.get("lineup_confirmed"),
                        "picks": old_picks},
             "after": {"teams": {s_: {k: match["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},

@@ -111,6 +111,29 @@ def expected_xi(players: pd.DataFrame, teams: pd.DataFrame, team_id: str, asof) 
     return {"formation": formation, "confirmed": False, "players": xi}
 
 
+def _no_pos(pos) -> bool:
+    return str(pos or "").upper() in ("", "SUB", "NONE")
+
+
+def fill_positions(squad: list[dict], players) -> list[dict]:
+    """A veces ESPN publica los titulares sin puesto (todos "SUB", sin lugar en la
+    cancha). A esos les ponemos el puesto que más jugaron de titulares últimamente,
+    así la cancha se dibuja bien y el modelo sabe qué rol cumplen."""
+    miss = {s["player_id"] for s in squad if s.get("starter") and _no_pos(s.get("pos"))}
+    if not miss or players is None or getattr(players, "empty", True):
+        return squad
+    st = players[players["player_id"].astype(str).isin(miss) & (players["starter"] == 1)]
+    st = st[~st["pos"].map(_no_pos)].sort_values("date")
+    usual = {str(pid): g["pos"].tail(8).mode().iloc[-1] for pid, g in st.groupby("player_id")}
+    from .espn import position_group
+    out = []
+    for s_ in squad:
+        if s_["player_id"] in miss and s_["player_id"] in usual:
+            s_ = {**s_, "pos": usual[s_["player_id"]], "pos_group": position_group(usual[s_["player_id"]])}
+        out.append(s_)
+    return out
+
+
 def confirmed_xi(squad: list[dict], team_id: str) -> dict | None:
     """Formación confirmada desde espn.lineup()."""
     st = [s for s in squad if s["team_id"] == team_id and s.get("starter")]

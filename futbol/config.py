@@ -81,6 +81,17 @@ LINEUP_LOOKBACK = 6
 #    (sobre-dispersión φ); se encoge hacia la de su rol con PHI_PRIOR_N partidos.
 PLAYER_ROLES = True
 PLAYER_DISPERSION = True
+# Los suplentes rematan ~1,67x más por minuto que el mismo jugador de titular
+# (partido abierto, piernas frescas). Sus minutos de banco cuentan con ese peso
+# para no inflar al suplente que pasa a ser titular.
+SUB_ADJUST = True
+import os as _os
+# Parte del factor que se aplica en cada liga (elegida con el backtest walk-forward:
+# LPF 0,3 → ×1,17 · Premier 1 → ×1,67 · Brasileirão 0 → sin ajuste).
+SUB_K_POWER = {"arg": 0.3, "eng": 1.0, "bra": 0.0}
+SUB_K_PRIOR_POWER = 0.3        # en los promedios por puesto (comunes a las tres ligas)
+if _os.environ.get("FB_SUB_POW"):
+    SUB_K_POWER = {k: float(_os.environ["FB_SUB_POW"]) for k in SUB_K_POWER}
 PHI_PRIOR_N = 12.0
 
 # Líneas que se reportan

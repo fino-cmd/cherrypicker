@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 import pybaseball
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -5205,17 +5205,29 @@ def get_futbol_jornada(refresh: bool = False, refresh_odds: bool = False,
 
 # "Simular partido": vuelve a simular un solo partido (formación al día de
 # ESPN, cuotas guardadas: no gasta OddsPapi).
+@app.post("/api/futbol/simulate")
+def simulate_futbol_custom(event_id: str, body: dict = Body(...)):
+    """Modo DT: simula el partido con la alineación que armó el usuario."""
+    return _fb_simulate(event_id, body)
+
+
 @app.get("/api/futbol/simulate")
 def simulate_futbol_match(event_id: str):
+    return _fb_simulate(event_id, None)
+
+
+def _fb_simulate(event_id: str, custom: dict | None):
     try:
         from futbol import run as frun
     except Exception as e:                                  # noqa: BLE001
         raise HTTPException(500, f"Modelo de fútbol no disponible: {e}")
-    if not _fb_lock.acquire(blocking=False):
-        raise HTTPException(409, "Ya se está calculando algo, probá en un minuto")
+    # Espera su turno: el chequeo de formaciones (cada pocos segundos desde la app
+    # y el vigía) toma el candado un ratito; antes eso hacía fallar la simulación.
+    if not _fb_lock.acquire(timeout=90):
+        raise HTTPException(409, "El servidor está recalculando la jornada, probá en un minuto")
     _fb_status.update(running=event_id, since=time.time())
     try:
-        return frun.simulate_one(event_id)
+        return frun.simulate_one(event_id, custom)
     except ValueError as e:
         raise HTTPException(404, str(e))
     except Exception as e:                                  # noqa: BLE001

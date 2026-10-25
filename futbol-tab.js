@@ -63,6 +63,8 @@
     data: null, view: 'recs', league: 'all', team: 'all',
     fav: new Set(store.get('fb-fav', [])),   // partidos marcados con estrella
     xiSides: {},                             // partido → equipo que muestra la alineación
+    custom: store.get('fb-dt', {}),          // Modo DT: alineaciones propias guardadas (partido → lado)
+    dtEdit: null, dtDraft: null, dtMenu: null, // edición en curso
     fxOpen: new Set(),                       // partidos desplegados en las listas
     sim: { queue: [], running: null, t0: 0 }, // simulaciones en segundo plano
     sel: {},            // player_id → "stat|line" elegido en el cromo
@@ -847,8 +849,9 @@
     }
     return `<button class="fb-simbtn${big ? '' : ' is-small'}" data-sim="${esc(m.event_id)}">${I.play}<span><b>Simular partido</b><small>20.000 veces con la formación más reciente · seguís usando la app</small></span></button>`;
   }
-  function simulateMatch(id) {
+  function simulateMatch(id, custom = null) {
     if (!matchById(id) || simState(id)) return;
+    if (custom) state.sim.custom = { ...(state.sim.custom || {}), [id]: custom };
     state.ver = null;                      // la jornada va a cambiar por nosotros: no avisar
     state.sim.queue.push(id);
     render();
@@ -877,7 +880,10 @@
     try {
       let r, res = {};
       for (let tries = 0; tries < 20; tries++) {         // si el servidor está ocupado, espera y reintenta
-        r = await fetch(`${apiBase()}/api/futbol/simulate?event_id=${encodeURIComponent(id)}`);
+        const custom = (state.sim.custom || {})[id];
+        r = custom
+          ? await fetch(`${apiBase()}/api/futbol/simulate?event_id=${encodeURIComponent(id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(custom) })
+          : await fetch(`${apiBase()}/api/futbol/simulate?event_id=${encodeURIComponent(id)}`);
         res = await r.json().catch(() => ({}));
         if (r.status !== 409) break;
         await new Promise(ok => setTimeout(ok, 5000));
@@ -890,11 +896,12 @@
         const d = a.teams[side].shots - b.teams[side].shots;
         return Math.abs(d) < 0.05 ? 'igual' : `${d > 0 ? '+' : '−'}${num1(Math.abs(d))}`;
       };
-      const lu = a.lineup_confirmed ? 'con la formación confirmada' : 'con las formaciones probables';
+      const lu = res.custom ? 'con tu alineación' : a.lineup_confirmed ? 'con la formación confirmada' : 'con las formaciones probables';
       toast(`${I.check}<span><b>Simulación lista · ${esc(name)}</b>${lu} · remates ${delta('home')} / ${delta('away')} · ${a.picks} jugada${a.picks === 1 ? '' : 's'} <u>Ver partido</u></span>`, id);
     } catch (e) {
       toast(`<span><b>No se pudo simular ${esc(name)}</b>${esc(e.message || String(e))}</span>`);
     } finally {
+      if (state.sim.custom) delete state.sim.custom[id];
       state.sim.running = null;
       render();
       runSimQueue();
@@ -969,7 +976,7 @@
           ${simControl(m)}
           <button class="fb-fxp-open" data-ev="${esc(m.event_id)}">Ver partido completo ${I.back}</button>
         </div>
-        ${m.computed_at ? `<div class="fb-simage">${I.clock}Simulado ${esc(ago(m.computed_at))}${m.lineup_confirmed ? ' · con formación confirmada' : ' · con formaciones probables'}</div>` : ''}
+        ${m.computed_at ? `<div class="fb-simage">${I.clock}Simulado ${esc(ago(m.computed_at))}${m.custom_lineup ? ' · con tu alineación' : m.lineup_confirmed ? ' · con formación confirmada' : ' · con formaciones probables'}</div>` : ''}
         <div class="fb-fxp-grid">
           ${simPreview(m)}
           <div class="fb-fxp-xi">${pitch(m)}</div>
@@ -1261,6 +1268,92 @@
     return { ...d, x: Number(x) };
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  //  Modo DT: armar la alineación propia (cambiar jugadores, moverlos por la
+  //  cancha, cambiar el esquema), guardarla y simular con ella.
+  // ════════════════════════════════════════════════════════════════════
+  const FORMATIONS = ['4-3-3', '4-4-2', '4-2-3-1', '4-1-4-1', '4-4-1-1', '4-3-1-2', '3-5-2', '3-4-3', '3-4-2-1', '5-3-2', '5-4-1'];
+  // Puesto (estilo ESPN) según dónde está en la cancha: así el modelo sabe su rol.
+  function lineFromY(y) { return y >= 80 ? 0 : y >= 60 ? 1 : y >= 49 ? 2 : y >= 37 ? 3 : y >= 23 ? 4 : 5; }
+  function posFrom(line, x) {
+    if (line === 0) return 'G';
+    if (line === 1) return x < 28 ? 'LB' : x > 72 ? 'RB' : x < 50 ? 'CD-L' : 'CD-R';
+    if (line === 2) return 'DM';
+    if (line === 3) return x < 30 ? 'LM' : x > 70 ? 'RM' : 'CM';
+    if (line === 4) return x < 35 ? 'AM-L' : x > 65 ? 'AM-R' : 'AM';
+    return x < 30 ? 'LF' : x > 70 ? 'RF' : 'F';
+  }
+  const custOf = (eid, side) => ((state.custom[eid] || {})[side]) || null;
+  const isEditing = (eid, side) => !!(state.dtEdit && state.dtEdit.eid === eid && state.dtEdit.side === side);
+  // Jugadores del XI mostrado con su lugar en la cancha (x, y en %).
+  function shownXI(m, side) {
+    const c = isEditing(m.event_id, side) ? state.dtDraft : custOf(m.event_id, side);
+    if (c) return { formation: c.formation, players: c.players, custom: true };
+    const xi = (m.lineup || {})[side];
+    if (!xi) return null;
+    const placed = placeXI(xi).map(d => (m.league === 'eng' ? persp(d) : d));
+    return { formation: xi.formation, players: placed.map(({ p, x, y, n }) => ({ ...p, x, y, n })), custom: false };
+  }
+  function applyFormation(draft, f, tilt) {
+    const rows = f.split('-').map(Number);
+    const ps = draft.players.slice();
+    let gk = ps.find(p => p.line === 0) || ps.slice().sort((a, b) => b.y - a.y)[0];
+    const out = ps.filter(p => p !== gk).sort((a, b) => (b.y - a.y) || (a.x - b.x));   // de atrás hacia adelante
+    const lines = rows.length === 3 ? [1, 3, 5] : rows.length === 4 ? [1, 2, 4, 5] : [1, 2, 3, 4, 5];
+    const res = [{ ...gk, line: 0, x: 50, y: 88, pos: 'G' }];
+    let k = 0;
+    rows.forEach((n, i) => {
+      const row = out.slice(k, k + n).sort((a, b) => a.x - b.x); k += n;
+      const y = 70 - i * (56 / Math.max(1, rows.length - 1));
+      row.forEach((p, j) => {
+        let x = 8 + ((j + 1) / (n + 1)) * 84;
+        if (tilt) x = persp({ x, y }).x;
+        res.push({ ...p, line: lines[i], x, y, pos: posFrom(lines[i], x), n });
+      });
+    });
+    return { formation: f, players: res };
+  }
+  function dtDot(p, m, editing) {
+    const mp = m.players.find(q => q.player_id === p.player_id);
+    const shots = p.line === 0 ? 'AR' : mp ? num1(mp.shots) : '–';
+    return `
+      <div class="fb-xd fb-xd--dt${editing ? ' is-edit' : ''}${mp && mp.shots >= 1.5 ? ' is-hot' : ''}${(p.n || 0) >= 5 ? ' is-tight' : ''}${state.dtMenu === p.player_id && editing ? ' is-picked' : ''}"
+           data-dtp="${esc(p.player_id)}" style="left:${Number(p.x).toFixed(1)}%;top:${Number(p.y).toFixed(1)}%"
+           title="${esc(p.player)}${editing ? ' · tocá para cambiarlo o arrastralo' : ''}">
+        <span class="fb-xd-n">${shots}</span>
+        <b>${esc(surname(p.player))}</b>
+      </div>`;
+  }
+  function dtCandidates(m, side, current) {
+    const tid = m.teams[side].team_id;
+    const inXI = new Set(state.dtDraft.players.map(p => p.player_id));
+    const pool = new Map();
+    m.players.filter(p => p.team_id === tid).forEach(p => pool.set(p.player_id, { player_id: p.player_id, player: p.player, pos: p.pos, role: p.role, shots: p.shots, photo: p.photo }));
+    ((m.keepers || {})[side] || []).forEach(p => { if (!pool.has(p.player_id)) pool.set(p.player_id, { ...p, shots: 0 }); });
+    (((m.lineup || {})[side] || {}).players || []).forEach(p => { if (!pool.has(p.player_id)) pool.set(p.player_id, { player_id: p.player_id, player: p.player, pos: p.line === 0 ? 'G' : '', shots: 0 }); });
+    const cur = state.dtDraft.players.find(p => p.player_id === current);
+    const wantGK = cur && cur.line === 0;
+    return [...pool.values()].filter(p => !inXI.has(p.player_id))
+      .sort((a, b) => ((b.pos === 'G') === wantGK) - ((a.pos === 'G') === wantGK) || (b.shots || 0) - (a.shots || 0)).slice(0, 16);
+  }
+  function dtMenu(m, side) {
+    const cur = state.dtDraft.players.find(p => p.player_id === state.dtMenu);
+    if (!cur) return '';
+    const list = dtCandidates(m, side, cur.player_id);
+    const left = Math.min(70, Math.max(30, cur.x));
+    const at = cur.y > 50 ? `bottom:${(100 - cur.y + 5).toFixed(1)}%` : `top:${(cur.y + 5).toFixed(1)}%`;
+    return `
+      <div class="fb-dt-menu" style="left:${left}%;${at}">
+        <div class="fb-dt-menu-head"><b>Cambiar a ${esc(surname(cur.player))}</b><button data-dt="close" aria-label="Cerrar">×</button></div>
+        <div class="fb-dt-menu-list">
+          ${list.length ? list.map(c => `
+            <button class="fb-dt-opt" data-dtpick="${esc(c.player_id)}">
+              <span class="fb-dt-face">${c.photo ? `<img src="${esc(c.photo)}" alt="" onerror="this.remove()">` : ''}<i>${esc(initials(c.player))}</i></span>
+              <span class="fb-dt-opt-txt"><b>${esc(c.player)}</b><small>${esc(roleName(c) || (c.pos === 'G' ? 'Arquero' : 'Suplente'))}${c.shots ? ` · ${num1(c.shots)} rem.` : ''}</small></span>
+            </button>`).join('') : '<p class="fb-dt-empty">No hay más jugadores del plantel.</p>'}
+        </div>
+      </div>`;
+  }
   function pitch(m) {
     const lu = m.lineup || {};
     if (!lu.home && !lu.away) return '';
@@ -1268,29 +1361,158 @@
     const side = lu[want] ? want : (lu.home ? 'home' : 'away');
     const xi = lu[side];
     const conf = !!(m.lineup_confirmed || m.lineup_official);
+    const editing = isEditing(m.event_id, side);
+    const shown = shownXI(m, side);
+    const hasCustom = !!(state.custom[m.event_id] && (state.custom[m.event_id].home || state.custom[m.event_id].away));
     const tab = (sd) => {
-      const t = m.teams[sd], x = lu[sd];
+      const t = m.teams[sd], x = lu[sd], c = custOf(m.event_id, sd);
       return `<button class="fb-xt${sd === side ? ' is-on' : ''}" data-xi="${sd}" data-xiev="${esc(m.event_id)}" aria-pressed="${sd === side}">
-        <img src="${logo(t.team_id)}" alt="" onerror="this.style.visibility='hidden'"><span><b>${esc(t.name)}</b><small>${esc((x && x.formation) || '—')}</small></span></button>`;
+        <img src="${logo(t.team_id)}" alt="" onerror="this.style.visibility='hidden'"><span><b>${esc(t.name)}</b><small>${esc((c && c.formation) || (x && x.formation) || '—')}${c ? ' · tuya' : ''}</small></span></button>`;
     };
     const doubts = xi.players.filter(p => p.doubt);
+    const ev = esc(m.event_id);
+    const bar = editing ? `
+        <div class="fb-dt-bar is-editing">
+          <span class="fb-dt-badge">${I.pitch}Modo DT</span>
+          <label class="fb-dt-form">Esquema
+            <select data-dt-form="${ev}">${FORMATIONS.concat(FORMATIONS.includes(shown.formation) ? [] : [shown.formation || '']).filter(Boolean).map(f => `<option${f === shown.formation ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select>
+          </label>
+          <span class="fb-dt-sp"></span>
+          <button class="fb-dt-btn" data-dt="cancel" data-dtev="${ev}">Cancelar</button>
+          <button class="fb-dt-btn" data-dt="reset" data-dtev="${ev}">Restablecer probables</button>
+          <button class="fb-dt-save" data-dt="save" data-dtev="${ev}">${I.check}Guardar alineación</button>
+        </div>
+        <p class="fb-dt-help">Tocá un jugador para cambiarlo por otro del plantel, o arrastralo a otro lugar de la cancha. Su puesto (y lo que remata) se ajusta a dónde lo dejes.</p>`
+      : `
+        <div class="fb-dt-bar">
+          <button class="fb-dt-toggle" data-dt="edit" data-dtev="${ev}" data-dtside="${side}">${I.pitch}Modo DT</button>
+          ${hasCustom ? `<span class="fb-dt-mine">${I.check}Alineación tuya guardada</span>
+            <button class="fb-dt-btn" data-dt="reset" data-dtev="${ev}">Restablecer probables</button>
+            <button class="fb-dt-save" data-dt="sim" data-dtev="${ev}">${I.play}Simular con mi alineación</button>` : ''}
+        </div>`;
     return `
       <section class="fb-block fb-xi2">
         <div class="fb-block-head">
           <h3>Alinea<em>ción</em></h3>
-          ${conf ? `<span class="fb-flag fb-flag--ok">${I.check}Confirmada</span>`
-                 : `<span class="fb-flag fb-flag--lu">${I.clock}Probable · la oficial sale 1 h antes</span>`}
+          ${shown.custom && !editing ? `<span class="fb-flag fb-flag--lu">${I.pitch}Tu alineación</span>`
+            : conf ? `<span class="fb-flag fb-flag--ok">${I.check}Confirmada</span>`
+                   : `<span class="fb-flag fb-flag--lu">${I.clock}Probable · la oficial sale 1 h antes</span>`}
         </div>
+        ${bar}
         <div class="fb-xt-row">${tab('home')}${tab('away')}</div>
-        <div class="fb-xp">
+        <div class="fb-xp-wrap">
+        <div class="fb-xp${editing ? ' is-dt' : ''}" data-dtpitch="${ev}" data-dtside="${side}">
           ${pitchLines(m.league === 'eng')}
-          <span class="fb-xp-form">${esc(xi.formation || '')}</span>
-          ${placeXI(xi).map(d => xiDot(m.league === 'eng' ? persp(d) : d, m, conf)).join('')}
+          <span class="fb-xp-form">${esc(shown.formation || '')}</span>
+          ${shown.custom ? shown.players.map(p => dtDot(p, m, editing)).join('')
+            : placeXI(xi).map(d => xiDot(m.league === 'eng' ? persp(d) : d, m, conf)).join('')}
         </div>
-        <p class="fb-note">En cada círculo: <b>remates esperados</b>${conf ? '' : '. El % de abajo es su chance de ser titular; el borde punteado marca las dudas'}.
-          ${doubts.length ? ` Dudas: ${doubts.map(p => `<b>${esc(surname(p.player))}</b>`).join(', ')}.` : ''}
-          ${conf ? 'Formación oficial (ESPN).' : 'Armada con el esquema del último partido y quién jugó cada puesto en las últimas 5 fechas.'}</p>
+          ${editing && state.dtMenu ? dtMenu(m, side) : ''}
+        </div>
+        ${editing ? '' : `<p class="fb-note">En cada círculo: <b>remates esperados</b>${conf || shown.custom ? '' : '. El % de abajo es su chance de ser titular; el borde punteado marca las dudas'}.
+          ${!shown.custom && doubts.length ? ` Dudas: ${doubts.map(p => `<b>${esc(surname(p.player))}</b>`).join(', ')}.` : ''}
+          ${shown.custom ? 'Es tu alineación: tocá <b>Simular con mi alineación</b> para recalcular el partido con ella.' : conf ? 'Formación oficial (ESPN).' : 'Armada con el esquema del último partido y quién jugó cada puesto en las últimas 5 fechas.'}</p>`}
       </section>`;
+  }
+
+  // ── Acciones del Modo DT ────────────────────────────────────────────────
+  function dtAction(act, eid, side) {
+    const m = matchById(eid);
+    if (!m) return;
+    if (act === 'edit') {
+      const sd = side || state.xiSides[eid] || 'home';
+      const sh = shownXI(m, sd);
+      state.dtEdit = { eid, side: sd };
+      state.dtDraft = { formation: sh.formation, players: sh.players.map(p => ({ player_id: p.player_id, player: p.player, line: p.line, pos: p.pos, x: p.x, y: p.y, n: p.n })) };
+      state.dtMenu = null;
+    } else if (act === 'cancel') {
+      state.dtEdit = null; state.dtDraft = null; state.dtMenu = null;
+    } else if (act === 'save') {
+      const sd = state.dtEdit.side;
+      state.custom[eid] = { ...(state.custom[eid] || {}), [sd]: state.dtDraft };
+      store.set('fb-dt', state.custom);
+      state.dtEdit = null; state.dtDraft = null; state.dtMenu = null;
+      toast(`${I.check}<span><b>Alineación guardada</b>Tocá "Simular con mi alineación" para recalcular el partido</span>`);
+    } else if (act === 'reset') {
+      delete state.custom[eid];
+      store.set('fb-dt', state.custom);
+      state.dtEdit = null; state.dtDraft = null; state.dtMenu = null;
+      toast(`${I.refresh}<span><b>Volviste a las alineaciones probables</b>${esc(m.teams.home.abbr)} y ${esc(m.teams.away.abbr)}</span>`);
+      if (m.custom_lineup) { render(); simulateMatch(eid); return; }   // los números vuelven a los de la probable
+    } else if (act === 'close') {
+      state.dtMenu = null;
+    } else if (act === 'sim') {
+      simulateMatch(eid, customPayload(m));
+      return;
+    }
+    render();
+  }
+  // Lo que se manda al servidor para simular con la alineación propia (los dos equipos).
+  function customPayload(m) {
+    const side = (sd) => {
+      const sh = shownXI(m, sd);
+      if (!sh) return null;
+      return { formation: sh.formation, players: sh.players.map(p => ({ player_id: p.player_id, player: p.player, pos: p.line === 0 ? 'G' : posFrom(lineFromY(p.y), p.x) })) };
+    };
+    return { home: side('home'), away: side('away') };
+  }
+  // Arrastrar jugadores en Modo DT. Con mouse se arrastra directo; con el dedo
+  // hay que mantenerlo apretado un instante (así deslizar sigue scrolleando la
+  // página). Un toque corto abre el menú para cambiarlo.
+  const DT_HOLD_MS = 230;
+  let dtArmed = false;
+  document.addEventListener('touchmove', (e) => { if (dtArmed) e.preventDefault(); }, { passive: false });
+  function onDtDown(e) {
+    const dot = e.target.closest('.fb-xd.is-edit');
+    if (!dot || !state.dtDraft) return;
+    const xp = dot.closest('.fb-xp');
+    const pid = dot.dataset.dtp;
+    const pl = state.dtDraft.players.find(p => p.player_id === pid);
+    if (!pl) return;
+    const touch = e.pointerType !== 'mouse';
+    if (!touch) e.preventDefault();
+    const sx = e.clientX, sy = e.clientY;
+    let moved = false, cancelled = false;
+    let armed = !touch;
+    const hold = touch ? setTimeout(() => {
+      armed = true; dtArmed = true;
+      dot.classList.add('is-dragging');
+      if (navigator.vibrate) navigator.vibrate(12);
+    }, DT_HOLD_MS) : null;
+    const move = (ev) => {
+      const far = Math.hypot(ev.clientX - sx, ev.clientY - sy);
+      if (!armed) { if (far > 8) { cancelled = true; done(); } return; }   // es un scroll
+      if (!moved && far < 5) return;
+      moved = true;
+      dot.classList.add('is-dragging');
+      const r = xp.getBoundingClientRect();
+      pl.x = Math.max(5, Math.min(95, ((ev.clientX - r.left) / r.width) * 100));
+      pl.y = Math.max(6, Math.min(94, ((ev.clientY - r.top) / r.height) * 100));
+      dot.style.left = pl.x + '%'; dot.style.top = pl.y + '%';
+    };
+    const done = () => {
+      clearTimeout(hold); dtArmed = false;
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel);
+    };
+    const cancel = () => { cancelled = true; done(); dot.classList.remove('is-dragging'); };
+    const up = () => {
+      done();
+      if (cancelled) return;
+      if (moved) {
+        pl.line = lineFromY(pl.y); pl.pos = posFrom(pl.line, pl.x);
+        state.dtDraft.formation = 'Libre';
+        state.dtMenu = null;
+      } else {
+        state.dtMenu = state.dtMenu === pid ? null : pid;
+      }
+      render();
+      // en el celular el menú aparece debajo de la cancha: lo traemos a la vista
+      if (state.dtMenu && window.matchMedia('(max-width: 768px)').matches) {
+        const mn = document.querySelector('.fb-dt-menu');
+        if (mn) mn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
   }
 
   function matchView(m) {
@@ -1462,8 +1684,18 @@
     if (bl) { const k = bl.dataset.balls; state.ballOpen = state.ballOpen === k ? null : k; render(); return; }
     const fx = t.closest('[data-fx]');
     if (fx && !t.closest('[data-fav]')) { toggleFx(fx.dataset.fx, fx.closest('.fb-fx-wrap')); return; }
+    const dta = t.closest('[data-dt]');
+    if (dta) { dtAction(dta.dataset.dt, dta.dataset.dtev || (state.dtEdit && state.dtEdit.eid), dta.dataset.dtside); return; }
+    const dtp = t.closest('[data-dtpick]');
+    if (dtp && state.dtDraft) {
+      const cur = state.dtDraft.players.find(p => p.player_id === state.dtMenu);
+      const m = matchById(state.dtEdit.eid);
+      const c = m && dtCandidates(m, state.dtEdit.side, state.dtMenu).find(x => x.player_id === dtp.dataset.dtpick);
+      if (cur && c) { cur.player_id = c.player_id; cur.player = c.player; }
+      state.dtMenu = null; render(); return;
+    }
     const xs = t.closest('[data-xi]');
-    if (xs) { state.xiSides[xs.dataset.xiev] = xs.dataset.xi; render(); return; }
+    if (xs) { state.xiSides[xs.dataset.xiev] = xs.dataset.xi; if (state.dtEdit && state.dtEdit.eid === xs.dataset.xiev) dtAction('edit', xs.dataset.xiev, xs.dataset.xi); else render(); return; }
     const sim = t.closest('[data-sim]');
     if (sim) { simulateMatch(sim.dataset.sim); return; }
     if (t.closest('[data-subtoggle]')) { state.subOn = !state.subOn; store.set('fb-sub', state.subOn); render(); return; }
@@ -1493,6 +1725,15 @@
     const sec = document.getElementById('section-futbol');
     const rail = document.getElementById('fb-rail');
     if (sec) sec.addEventListener('click', onClick);
+    if (sec) sec.addEventListener('pointerdown', onDtDown);
+    if (sec) sec.addEventListener('change', (e) => {
+      const f = e.target.closest('[data-dt-form]');
+      if (!f || !state.dtDraft) return;
+      const m = matchById(f.dataset.dtForm);
+      state.dtDraft = applyFormation(state.dtDraft, f.value, m && m.league === 'eng');
+      state.dtMenu = null;
+      render();
+    });
     if (rail) rail.addEventListener('click', onClick);
     const top = document.getElementById('fb-topbar-tools');
     if (top) top.addEventListener('click', onClick);

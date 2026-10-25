@@ -251,6 +251,7 @@ class PlayerProfile:
     p_start: float           # chance de ser titular (sin alineación confirmada)
     n_min: float             # minutos de historia (peso de la evidencia)
     role: str = "CM"         # centrodelantero, extremo, enganche…
+    sub_k: float = 1.0       # cuánto más remata por minuto cuando entra desde el banco
     phi: float = 0.0         # sobre-dispersión propia (0 = muy constante)
 
 
@@ -275,21 +276,43 @@ class History:
         self.team_events = {tid: g.drop_duplicates("event_id")[["event_id", "date"]]
                             for tid, g in p.groupby("team_id", sort=False)}
         self.teams = teams
+        self.team_league = teams.drop_duplicates("team_id").set_index("team_id")["league"].to_dict()
         self.mean_team_shots = float(teams["shots"].mean())
+
+    def sub_intensity(self, q0: pd.DataFrame) -> float:
+        """Porción de remates por minuto entrando desde el banco / como titular,
+        comparando a cada jugador consigo mismo (sólo historia anterior)."""
+        if not cfg.SUB_ADJUST:
+            return 1.0
+        q = q0[(q0["pos_resolved"] != "G") & q0["team_shots"].notna()]
+        if q.empty:
+            return 1.0
+        e = q["team_shots"] * q["minutes"] / 90.0
+        g = q.assign(e=e).groupby(["player_id", "starter"]).agg(s=("shots", "sum"), e=("e", "sum"), n=("shots", "size"))
+        w = g.unstack("starter").dropna()
+        if 0 not in w["n"].columns or 1 not in w["n"].columns:
+            return 1.0
+        w = w[(w[("n", 0)] >= 3) & (w[("n", 1)] >= 3)]
+        if len(w) < 30:
+            return 1.0
+        k = (w[("s", 0)].sum() / w[("e", 0)].sum()) / (w[("s", 1)].sum() / w[("e", 1)].sum())
+        return float(min(max(k, 1.0), 2.2))
 
     def priors(self, asof) -> dict:
         q0 = self.p[(self.p["date"] < pd.Timestamp(asof)) & (self.p["minutes"] > 0)]
-        out = {}
+        k_sub = self.sub_intensity(q0)
+        q0 = q0.assign(_ew=np.where(q0["starter"] == 1, 1.0, k_sub ** cfg.SUB_K_PRIOR_POWER))
+        out = {"sub_k": k_sub}
         for g in POS:
             q = q0[q0["pos_resolved"] == g]
-            exp_team = (q["team_shots"] * q["minutes"] / 90.0).sum()
+            exp_team = (q["team_shots"] * q["minutes"] / 90.0 * q["_ew"]).sum()
             out[g] = {
                 "share90": float(q["shots"].sum() / exp_team) if exp_team > 0 else 0.05,
                 "acc": float(q["sot"].sum() / q["shots"].sum()) if q["shots"].sum() > 0 else 0.3,
             }
         for r in ROLES:
             q = q0[q0["role_resolved"] == r]
-            exp_team = (q["team_shots"] * q["minutes"] / 90.0).sum()
+            exp_team = (q["team_shots"] * q["minutes"] / 90.0 * q["_ew"]).sum()
             pr = {
                 "share90": float(q["shots"].sum() / exp_team) if exp_team > 0 else 0.05,
                 "acc": float(q["sot"].sum() / q["shots"].sum()) if q["shots"].sum() > 0 else 0.3,
@@ -349,6 +372,8 @@ def build_profiles(hist: "History", team_id: str, asof, priors: dict,
         ids = rec["player_id"].unique().tolist()
         starters = None
     prior_team = cfg.SHARE_PRIOR_MIN / 90.0 * max(hist.mean_team_shots, 1.0)
+    # factor de suplente de esta liga
+    k_sub = float(priors.get("sub_k", 1.0)) ** cfg.SUB_K_POWER.get(hist.team_league.get(team_id), 0.0)
 
     out = []
     for pid in ids:
@@ -375,6 +400,8 @@ def build_profiles(hist: "History", team_id: str, asof, priors: dict,
             played = h[h["minutes"] > 0]
             w = 0.5 ** (np.arange(len(played))[::-1] / cfg.PLAYER_HALFLIFE)
             exp_team = np.nan_to_num(played["team_shots"].to_numpy(float)) * played["minutes"].to_numpy(float) / 90.0
+            # minutos entrando desde el banco: cuentan k veces (ahí se remata más por minuto)
+            exp_team = exp_team * np.where(played["starter"].to_numpy() == 1, 1.0, k_sub)
             shots = played["shots"].fillna(0).to_numpy(float)
             sots = played["sot"].fillna(0).to_numpy(float)
             st = h[h["starter"] == 1]["minutes"].to_numpy(float)
@@ -415,7 +442,7 @@ def build_profiles(hist: "History", team_id: str, asof, priors: dict,
             start_min=st if len(st) else np.array([DEFAULT_START_MIN[pos]]),
             sub_min=sub if len(sub) else np.array([DEFAULT_SUB_MIN]),
             p_enter_bench=float(p_enter), p_start=float(p_start), n_min=n_min,
-            role=role, phi=phi))
+            role=role, phi=phi, sub_k=k_sub))
     return out
 
 
@@ -463,6 +490,7 @@ def simulate_match(tm: TeamModel, home_id: str, away_id: str,
             mins = np.column_stack([d[0] for d in drawn])
             started = np.column_stack([d[1] for d in drawn])
             w = mins / 90.0 * np.array([p.share90 for p in roster])[None, :]
+            w = w * np.where(started, 1.0, np.array([p.sub_k for p in roster])[None, :])
             # Constancia propia: un factor "del día" por jugador (Gamma con
             # media 1 y varianza φ). Haaland (φ chico) casi no se mueve; un
             # extremo irregular sí.
@@ -497,6 +525,7 @@ def simulate_match(tm: TeamModel, home_id: str, away_id: str,
                 same = (groups == p.pos_group) & (np.arange(len(roster)) != j) & (bench_w > 0)
                 rep_share = float(np.average(shares[same], weights=bench_w[same])) if same.any() \
                     else p.share90 * 0.8
+                rep_share *= p.sub_k                  # el que entra remata con ritmo de suplente
                 rep_acc = float(np.average(acc[same], weights=bench_w[same])) if same.any() else p.acc
                 rem = np.where(off, 90.0 - mins[:, j], 0.0)
                 rs = rng.poisson(rate * rem * rep_share)

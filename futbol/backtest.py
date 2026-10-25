@@ -134,7 +134,8 @@ def run(leagues=None, since: str | None = None, n_sim: int = 4000, verbose: bool
                                  "who": pr_["player"], "pos": pr_["pos_group"], "stat": stat, "line": line,
                                  "p_model": fm.p_over(dist, line),
                                  "p_naive": float(poisson.sf(int(line), max(rate, 1e-6))),
-                                 "y": int(a[stat] > line), "n_min": pr_["n_min"]})
+                                 "y": int(a[stat] > line), "n_min": pr_["n_min"],
+                                 "min_app": float(gh["minutes"].tail(10).mean()) if gh is not None and len(gh) else np.nan})
     return pd.DataFrame(rows)
 
 
@@ -161,6 +162,14 @@ def report(df: pd.DataFrame) -> None:
             if len(b) >= 30:
                 print(f"    {lo:>4.0%}-{hi:<4.0%} n={len(b):6d} pred={b['p_model'].mean():.3f} "
                       f"real={b['y'].mean():.3f} real/pred={b['y'].mean() / b['p_model'].mean():.2f}")
+    d = df[(df["level"] == "player") & df.get("min_app", pd.Series(dtype=float)).notna()] if "min_app" in df else df.iloc[0:0]
+    if len(d):
+        print("\n══ Titulares según minutos por partido en sus últimos 10 (¿se infla a los suplentes?) ══")
+        d = d.assign(mb=pd.cut(d["min_app"], [0, 45, 60, 75, 91], labels=["<45'", "45-60'", "60-75'", "75'+"]))
+        t2 = d.groupby(["league", "mb"], observed=True).apply(lambda x: pd.Series({
+            "n": len(x), "pred": x["p_model"].mean(), "real": x["y"].mean(),
+            "LL_modelo": _ll(x["p_model"], x["y"]), "LL_ingenuo": _ll(x["p_naive"], x["y"])}), include_groups=False)
+        print(t2.to_string(float_format=lambda v: f"{v:.4f}"))
     tot = df.groupby("level").apply(lambda x: pd.Series({
         "LL_modelo": _ll(x["p_model"], x["y"]), "LL_ingenuo": _ll(x["p_naive"], x["y"])}),
         include_groups=False)

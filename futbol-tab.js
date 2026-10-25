@@ -21,6 +21,8 @@
     { id: 'bra', name: 'Brasileirão Série A', short: 'Série A', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/85.png' },
     { id: 'eng', name: 'Premier League', short: 'PL', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png' },
   ];
+  // Lockup de la LPF: escudo | LIGA / PROFESIONAL / DE FÚTBOL (como el oficial).
+  const lpfLockup = (cls = '') => `<span class="fb-lpf-lockup ${cls}"><img src="https://a.espncdn.com/i/leaguelogos/soccer/500-dark/1.png" alt="LPF"><i></i><b>Liga<br>Profesional<br>de Fútbol</b></span>`;
   const leagueOf = (id) => LEAGUES.find(L => L.id === id) || { name: id, short: id, logo: '' };
   const BOOKS = [
     { id: 'bet365.bet.ar', name: 'bet365' },
@@ -994,6 +996,7 @@
     const days = new Map();
     list.forEach(m => { const k = dayKey(m.date); if (!days.has(k)) days.set(k, []); days.get(k).push(m); });
     return `
+      ${state.league === 'arg' ? `<div class="fb-lpf-hero">${lpfLockup('is-lg')}<span class="fb-lpf-tag">Torneo Clausura 2026</span></div>` : ''}
       <header class="fb-sec-head">
         <h2>Partidos de la <em>fecha</em></h2>
         <p>Remates esperados de cada equipo. La barra muestra quién va a rematar más.</p>
@@ -1247,7 +1250,7 @@
         ${starBtn(m.event_id)}
         <span class="fb-kicker fb-kicker--lg"><img src="${leagueOf(m.league).logo}" alt="" onerror="this.remove()">${esc(leagueOf(m.league).name)} · ${esc(dateTxt)} · ${hhmm(m.date)}</span>
       </div>
-      ${m.league === 'arg' ? `<div class="fb-lpf-band"><img src="${leagueOf('arg').logo}" alt="LPF"><span class="fb-lpf-sep"></span><b>Torneo Clausura 2026</b><em>${esc(dayLabel(m.date))} · ${hhmm(m.date)}</em></div>` : ''}
+      ${m.league === 'arg' ? `<div class="fb-lpf-band">${lpfLockup()}<span class="fb-lpf-sep"></span><b>Torneo Clausura 2026</b><em>${esc(dayLabel(m.date))} · ${hhmm(m.date)}</em></div>` : ''}
       ${duel(m)}
       ${simControl(m, true)}
       ${m.computed_at ? `<div class="fb-simage">${I.clock}Simulado ${esc(ago(m.computed_at))}${m.lineup_confirmed ? ' · con formación confirmada' : ' · con formaciones probables'}</div>` : ''}

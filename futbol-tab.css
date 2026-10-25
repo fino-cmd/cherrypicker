@@ -2457,3 +2457,45 @@ body.lg-eng #section-futbol .fb-tk::before, #section-futbol .lg-eng .fb-tk::befo
 
 #section-futbol .fb-bra-txt b, #section-futbol .fb-bra-band b, #section-futbol .fb-bra-txt em, #section-futbol .fb-bra-band i,
 body.lg-bra #section-futbol .fb-sec-head h2 em, body.lg-bra #section-futbol .fb-block-head h3 em { text-transform: uppercase !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Brasileirão con su tipografía: Ekibastuz Heavy (assets/fonts). Reemplaza a
+   Barlow Condensed en títulos y números (la ç cae en Barlow, Ekibastuz no la trae).
+   ════════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'Ekibastuz';
+  src: url("assets/fonts/ekibastuz-heavy.otf") format("opentype");
+  font-weight: 400 900; font-style: normal; font-display: swap;
+}
+.lg-bra, body[data-sport="futbol"].lg-bra { --f-display: 'Ekibastuz', 'Barlow Condensed', sans-serif; --lg-title: 'Ekibastuz', 'Barlow Condensed', sans-serif; }
+#section-futbol .fb-bra-txt b, #section-futbol .fb-bra-band b, #section-futbol .fb-bra-txt em, #section-futbol .fb-bra-band i,
+body.lg-bra #section-futbol .fb-sec-head h2, body.lg-bra #section-futbol .fb-block-head h3, body.lg-bra #section-futbol .fb-totals summary h3,
+body.lg-bra #section-futbol .fb-day-head b, body.lg-bra #section-futbol .fb-hero-big b, body.lg-bra #section-futbol .fb-rec-wl b,
+body.lg-bra #section-futbol .fb-rec-facts b, body.lg-bra #section-futbol .fb-duel-team b, body.lg-bra #section-futbol .fb-duel-nums b,
+body.lg-bra #section-futbol .fb-fx-time b, body.lg-bra #section-futbol .fb-fx-row em, body.lg-bra #section-futbol .fb-res-odd b,
+body.lg-bra #section-futbol .fb-tk-bet, body.lg-bra #section-futbol .fb-tk-min b, body.lg-bra #section-futbol .fb-xd-n,
+#section-futbol .lg-bra .fb-fx-time b, #section-futbol .lg-bra .fb-fx-row em {
+  font-family: 'Ekibastuz', 'Barlow Condensed', sans-serif !important; font-weight: 400 !important; letter-spacing: .01em !important;
+}
+/* Ekibastuz es más ancha que Barlow Condensed: tamaños un poco menores para que entre igual */
+#section-futbol .fb-bra-txt b { font-size: 32px; line-height: 1; }
+#section-futbol .fb-bra-band b { font-size: 16px; }
+#section-futbol .fb-bra-txt em, #section-futbol .fb-bra-band i { font-size: 12px; padding-top: 3px; padding-bottom: 3px; }
+body.lg-bra #section-futbol .fb-sec-head h2 { font-size: 22px; }
+body.lg-bra #section-futbol .fb-block-head h3 { font-size: 15px; }
+body.lg-bra #section-futbol .fb-day-head b { font-size: 12.5px; }
+body.lg-bra #section-futbol .fb-duel-team b { font-size: 13px; }
+body.lg-bra #section-futbol .fb-duel-nums b { font-size: 40px; }
+body.lg-bra #section-futbol .fb-duel-nums--sm b { font-size: 23px; }
+body.lg-bra #section-futbol .fb-fx-time b, #section-futbol .lg-bra .fb-fx-time b { font-size: 15px; }
+body.lg-bra #section-futbol .fb-fx-row em, #section-futbol .lg-bra .fb-fx-row em { font-size: 14px; }
+body.lg-bra #section-futbol .fb-tk-bet { font-size: 17px; }
+body.lg-bra #section-futbol .fb-xd-n { font-size: 12.5px; }
+@media (max-width: 768px) {
+  #section-futbol .fb-bra-txt b { font-size: 21px; }
+  #section-futbol .fb-bra-band b { font-size: 13px; }
+  body.lg-bra #section-futbol .fb-sec-head h2 { font-size: 18px; }
+  body.lg-bra #section-futbol .fb-duel-nums b { font-size: 30px; }
+  body.lg-bra #section-futbol .fb-duel-nums--sm b { font-size: 19px; }
+  body.lg-bra #section-futbol .fb-tk-bet { font-size: 16px; }
+}

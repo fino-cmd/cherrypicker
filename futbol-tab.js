@@ -23,6 +23,21 @@
   ];
   // Lockup de la LPF: escudo | LIGA / PROFESIONAL / DE FÚTBOL (como el oficial).
   const lpfLockup = (cls = '') => `<span class="fb-lpf-lockup ${cls}"><img src="https://a.espncdn.com/i/leaguelogos/soccer/500-dark/1.png" alt="LPF"><i></i><b>Liga<br>Profesional<br>de Fútbol</b></span>`;
+  // Banners de cada liga (como las webs oficiales): grande arriba al filtrar, chico dentro del partido.
+  const PL_LOGO = 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png';
+  function leagueHero(lg) {
+    if (lg === 'arg') return `<div class="fb-lpf-hero">${lpfLockup('is-lg')}<span class="fb-lpf-tag">Torneo Clausura 2026</span></div>`;
+    if (lg === 'eng') return `<div class="fb-pl-hero"><img src="${PL_LOGO}" alt="Premier League"><b>Premier League <span>Partidos 2026/27</span></b></div>`;
+    if (lg === 'bra') return `<div class="fb-bra-hero"><span class="fb-bra-crest"><img src="assets/bra/cbf.png" alt="CBF"></span><span class="fb-bra-txt"><em>Série A</em><b>Campeonato Brasileiro</b></span></div>`;
+    return '';
+  }
+  function leagueBand(m) {
+    const when = `<em>${esc(dayLabel(m.date))} · ${hhmm(m.date)}</em>`;
+    if (m.league === 'arg') return `<div class="fb-lpf-band">${lpfLockup()}<span class="fb-lpf-sep"></span><b>Torneo Clausura 2026</b>${when}</div>`;
+    if (m.league === 'eng') return `<div class="fb-pl-band"><img src="${PL_LOGO}" alt="Premier League"><b>Premier League</b><span>2026/27</span>${when}</div>`;
+    if (m.league === 'bra') return `<div class="fb-bra-band"><span class="fb-bra-crest"><img src="assets/bra/cbf.png" alt="CBF"></span><b>Campeonato Brasileiro</b><i>Série A</i>${when}</div>`;
+    return '';
+  }
   const leagueOf = (id) => LEAGUES.find(L => L.id === id) || { name: id, short: id, logo: '' };
   const BOOKS = [
     { id: 'bet365.bet.ar', name: 'bet365' },
@@ -996,7 +1011,7 @@
     const days = new Map();
     list.forEach(m => { const k = dayKey(m.date); if (!days.has(k)) days.set(k, []); days.get(k).push(m); });
     return `
-      ${state.league === 'arg' ? `<div class="fb-lpf-hero">${lpfLockup('is-lg')}<span class="fb-lpf-tag">Torneo Clausura 2026</span></div>` : ''}
+      ${leagueHero(state.league)}
       <header class="fb-sec-head">
         <h2>Partidos de la <em>fecha</em></h2>
         <p>Remates esperados de cada equipo. La barra muestra quién va a rematar más.</p>
@@ -1250,7 +1265,7 @@
         ${starBtn(m.event_id)}
         <span class="fb-kicker fb-kicker--lg"><img src="${leagueOf(m.league).logo}" alt="" onerror="this.remove()">${esc(leagueOf(m.league).name)} · ${esc(dateTxt)} · ${hhmm(m.date)}</span>
       </div>
-      ${m.league === 'arg' ? `<div class="fb-lpf-band">${lpfLockup()}<span class="fb-lpf-sep"></span><b>Torneo Clausura 2026</b><em>${esc(dayLabel(m.date))} · ${hhmm(m.date)}</em></div>` : ''}
+      ${leagueBand(m)}
       ${duel(m)}
       ${simControl(m, true)}
       ${m.computed_at ? `<div class="fb-simage">${I.clock}Simulado ${esc(ago(m.computed_at))}${m.lineup_confirmed ? ' · con formación confirmada' : ' · con formaciones probables'}</div>` : ''}

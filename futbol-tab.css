@@ -2336,3 +2336,124 @@ body.lg-arg #section-futbol .fb-chips button { border-radius: 999px; border-colo
 /* LPF: fondo de página sólido con el color de la liga (sin olas) */
 body[data-sport="futbol"].lg-arg .app-main { background: #06004a !important; }
 @media (max-width: 768px) { body[data-sport="futbol"].lg-arg .app-main { background: #06004a !important; } }
+
+/* ════════════════════════════════════════════════════════════════════════
+   PREMIER = MISMA GEOMETRÍA QUE LA LPF. Mismos bordes, rellenos, tarjetas
+   internas, tamaños del duelo y cajas de números; cambian sólo colores,
+   tipografía, esquinas (más rectas, estilo PL) y los detalles en diagonal.
+   ════════════════════════════════════════════════════════════════════════ */
+.lg-eng, body[data-sport="futbol"].lg-eng {
+  --pl-panel: linear-gradient(180deg, #4a1366 0%, #33094a 18%, #26073a 45%, #1f0630 100%);
+  --pl-edge: linear-gradient(180deg, #ff3fa4 0%, #c2187f 30%, rgba(109, 27, 156, .9) 70%, rgba(109, 27, 156, .5) 100%);
+  --pl-card: #22072f;
+  --pl-card-edge: linear-gradient(160deg, rgba(255, 63, 164, .7), rgba(109, 27, 156, .6) 55%, rgba(109, 27, 156, .25));
+  --pl-r-panel: 10px; --pl-r-card: 8px;
+}
+/* Tarjeta de partido: borde 1,5 px degradado (como la LPF), mismo relleno y alto */
+#section-futbol .lg-eng.fb-fx, body.lg-eng #section-futbol .fb-fx {
+  border: 1.5px solid transparent !important; border-radius: var(--pl-r-card) !important;
+  background: linear-gradient(var(--pl-card), var(--pl-card)) padding-box, var(--pl-card-edge) border-box !important;
+}
+#section-futbol .lg-eng.fb-fx::before { display: none; }
+/* Números de la tarjeta en cajas del mismo ancho que la LPF */
+#section-futbol .lg-eng .fb-fx-row em, body.lg-eng #section-futbol .fb-fx-row em {
+  min-width: 46px; text-align: center; padding: 2px 6px; border-radius: 3px; font-size: 16px; font-weight: 800;
+  background: #3a0f52; color: #f1e8f6;
+}
+#section-futbol .lg-eng .fb-fx-row.is-fav em, body.lg-eng #section-futbol .fb-fx-row.is-fav em { background: #e5168a; color: #fff; }
+#section-futbol .lg-eng .fb-fx-row b, body.lg-eng #section-futbol .fb-fx-row b { font-size: 14px !important; font-weight: 600 !important; }
+#section-futbol .lg-eng .fb-fx-row img { width: 24px; height: 24px; }
+/* Partido desplegado: panel con brillo arriba y borde de 2 px, igual que la LPF */
+#section-futbol .fb-fx-wrap.is-open.lg-eng, body.lg-eng #section-futbol .fb-fx-wrap.is-open {
+  border: 2px solid transparent !important; border-radius: var(--pl-r-panel) !important;
+  background: var(--pl-panel) padding-box, var(--pl-edge) border-box !important;
+  box-shadow: 0 0 0 1px rgba(255, 63, 164, .08), 0 18px 50px rgba(194, 24, 127, .2);
+}
+#section-futbol .fb-fx-wrap.is-open.lg-eng > .fb-fx, body.lg-eng #section-futbol .fb-fx-wrap.is-open > .fb-fx { background: transparent !important; border: 0 !important; }
+#section-futbol .lg-eng .fb-fxp, body.lg-eng #section-futbol .fb-fx-wrap.is-open .fb-fxp { background: transparent !important; border-top: 0 !important; }
+/* Tarjetas internas: mismo borde y relleno que en la LPF */
+#section-futbol .lg-eng .fb-prev, #section-futbol .lg-eng .fb-xp, #section-futbol .lg-eng .fb-hl-item, #section-futbol .lg-eng .fb-xt,
+body.lg-eng #section-futbol .fb-prev, body.lg-eng #section-futbol .fb-xp, body.lg-eng #section-futbol .fb-hl-item, body.lg-eng #section-futbol .fb-xt,
+body.lg-eng #section-futbol .fb-rung, body.lg-eng #section-futbol .fb-res {
+  border: 1.5px solid transparent !important; border-radius: var(--pl-r-card) !important;
+  background: linear-gradient(var(--pl-card), var(--pl-card)) padding-box, var(--pl-card-edge) border-box !important;
+}
+body.lg-eng #section-futbol .fb-xp { background: linear-gradient(180deg, #2c0b42, #210731) padding-box, var(--pl-card-edge) border-box !important; }
+body.lg-eng #section-futbol .fb-xt.is-on, #section-futbol .lg-eng .fb-xt.is-on { background: linear-gradient(180deg, #4a1366, #22072f) padding-box, linear-gradient(160deg, #ff3fa4, #6d1b9c) border-box !important; }
+/* Duelo: mismos tamaños que el de la LPF (antes era más grande) */
+body.lg-eng #section-futbol .fb-duel {
+  padding: 16px 16px 14px !important; border: 2px solid transparent !important; border-radius: var(--pl-r-panel) !important;
+  background: var(--pl-panel) padding-box, var(--pl-edge) border-box !important;
+}
+body.lg-eng #section-futbol .fb-duel-team img { width: 52px; height: 52px; }
+body.lg-eng #section-futbol .fb-duel-team b { font-size: 15px; }
+body.lg-eng #section-futbol .fb-duel-nums b { font-size: 46px; }
+body.lg-eng #section-futbol .fb-duel-nums--sm b { font-size: 26px; }
+body.lg-eng #section-futbol .fb-duel-nums i { width: 18px; height: 5px; margin: 0 4px; }
+/* Entradas (jugadas): mismo borde que las de la LPF */
+body.lg-eng #section-futbol .fb-tk, #section-futbol .lg-eng .fb-tk {
+  border: 1.5px solid transparent !important; border-radius: var(--pl-r-card) !important;
+  background: linear-gradient(var(--pl-card), var(--pl-card)) padding-box, var(--pl-card-edge) border-box !important;
+}
+body.lg-eng #section-futbol .fb-tk::before, #section-futbol .lg-eng .fb-tk::before { display: none; }
+@media (max-width: 768px) {
+  body.lg-eng #section-futbol .fb-duel { padding: 12px 10px !important; }
+  body.lg-eng #section-futbol .fb-duel-team img { width: 34px; height: 34px; }
+  body.lg-eng #section-futbol .fb-duel-nums b { font-size: 34px; }
+  body.lg-eng #section-futbol .fb-duel-nums--sm b { font-size: 21px; }
+  body.lg-eng #section-futbol .fb-duel-nums i { width: 12px; height: 4px; margin: 0 2px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Banners de Premier League y Brasileirão (como el de la LPF)
+   ════════════════════════════════════════════════════════════════════════ */
+/* Premier: degradé violeta → azul → cian con franjas de luz en diagonal */
+.fb-pl-hero, .fb-pl-band {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 16px; color: #fff;
+  background:
+    repeating-linear-gradient(120deg, rgba(255,255,255,0) 0 90px, rgba(255,255,255,.07) 90px 160px, rgba(255,255,255,0) 160px 260px),
+    linear-gradient(90deg, #a24bf5 0%, #6a6dfb 40%, #3fb4ff 72%, #12e6ff 100%);
+}
+.fb-pl-hero { margin: 0 0 12px; padding: 22px 22px; border-radius: var(--pl-r-panel, 10px); min-height: 96px; }
+.fb-pl-hero img { width: 54px; height: 54px; object-fit: contain; filter: drop-shadow(0 2px 6px rgba(0,0,0,.25)); }
+.fb-pl-hero b { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 34px; line-height: 1.05; letter-spacing: -.01em; text-transform: none !important; }
+.fb-pl-hero b span { font-weight: 600; opacity: .95; }
+.fb-pl-band { margin: 0 0 10px; padding: 10px 14px; border-radius: var(--pl-r-card, 8px); min-height: 64px; }
+.fb-pl-band img { width: 34px; height: 34px; object-fit: contain; }
+.fb-pl-band b { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 17px; text-transform: none !important; }
+.fb-pl-band > span { font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 13px; opacity: .9; }
+.fb-pl-band em, .fb-bra-band em { margin-left: auto; font-style: normal; font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 12.5px; padding: 5px 12px; border-radius: 999px; background: #2a0a3d; color: #fff; white-space: nowrap; }
+
+/* Brasileirão: bloque amarillo inclinado con el escudo + franja azul real */
+.fb-bra-hero, .fb-bra-band { position: relative; overflow: hidden; display: flex; align-items: stretch; color: #fff; background: #0a4cf5; }
+.fb-bra-hero { margin: 0 0 12px; border-radius: 14px; min-height: 104px; }
+.fb-bra-band { margin: 0 0 10px; border-radius: 12px; min-height: 60px; align-items: center; gap: 12px; padding-right: 14px; }
+.fb-bra-crest { display: grid; place-items: center; flex: none; background: #ffd400; clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%); }
+.fb-bra-hero .fb-bra-crest { width: 130px; padding-right: 18px; }
+.fb-bra-hero .fb-bra-crest img { width: 62px; height: 88px; object-fit: contain; }
+.fb-bra-band .fb-bra-crest { width: 76px; align-self: stretch; padding-right: 12px; }
+.fb-bra-band .fb-bra-crest img { width: 34px; height: 46px; object-fit: contain; }
+.fb-bra-txt { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 14px 20px; }
+.fb-bra-txt em, .fb-bra-band i { align-self: flex-start; font-style: normal; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: .03em;
+  padding: 2px 16px 2px 10px; background: #00a859; color: #fff; clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.fb-bra-txt b { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 40px; line-height: .95; text-transform: uppercase; letter-spacing: .01em; }
+.fb-bra-band b { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 20px; text-transform: uppercase; }
+.fb-bra-band em { background: #062fa6; }
+@media (max-width: 768px) {
+  .fb-pl-hero { padding: 16px; min-height: 80px; gap: 12px; }
+  .fb-pl-hero img { width: 40px; height: 40px; }
+  .fb-pl-hero b { font-size: 22px; }
+  .fb-pl-hero b span { display: block; font-size: 16px; }
+  .fb-pl-band > span { display: none; }
+  .fb-bra-hero .fb-bra-crest { width: 88px; padding-right: 14px; }
+  .fb-bra-hero .fb-bra-crest img { width: 44px; height: 62px; }
+  .fb-bra-txt { padding: 12px 14px; }
+  .fb-bra-txt b { font-size: 26px; }
+  .fb-bra-band b { font-size: 16px; }
+  .fb-bra-band i { display: none; }
+}
+
+.fb-bra-band i { align-self: center; }
+
+#section-futbol .fb-bra-txt b, #section-futbol .fb-bra-band b, #section-futbol .fb-bra-txt em, #section-futbol .fb-bra-band i,
+body.lg-bra #section-futbol .fb-sec-head h2 em, body.lg-bra #section-futbol .fb-block-head h3 em { text-transform: uppercase !important; }

@@ -821,7 +821,7 @@
           <p>Tocá la estrella ☆ de un partido y queda guardado acá, con su simulación y sus jugadas. Los que tengan jugadas en tu boleta aparecen solos.</p>
         </header>
         <div class="fb-mine-empty">${I.star}<span>Todavía no marcaste ninguno. Estos son los próximos:</span></div>
-        <div class="fb-fx-list">${soon.map(fixture).join('')}</div>`;
+        <div class="fb-fx-list">${soon.map(m => fixture(m)).join('')}</div>`;
     }
     return `
       <header class="fb-sec-head">
@@ -1062,7 +1062,7 @@
       ${[...days.values()].map(ms => `
         <section class="fb-day">
           <div class="fb-day-head"><b>${dayLabel(ms[0].date)}</b><small>${ms.length} partido${ms.length > 1 ? 's' : ''} · remates esperados</small></div>
-          <div class="fb-fx-list">${ms.map(fixture).join('')}</div>
+          <div class="fb-fx-list">${ms.map(m => fixture(m)).join('')}</div>
         </section>`).join('') || '<div class="fb-empty">No hay partidos en esta liga en los próximos días.</div>'}`;
   }
 

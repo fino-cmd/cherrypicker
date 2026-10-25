@@ -7134,3 +7134,6 @@ body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #1
 
 /* La cinta de datos del launcher no puede ensanchar la página en el teléfono */
 #page-landing { overflow-x: hidden; max-width: 100vw; }
+
+/* Launcher: el botón va arriba, debajo de la etiqueta */
+.lp-hero-content .lp-enter { margin: 6px 0 22px; }

@@ -2802,9 +2802,9 @@ body.lg-arg .fb-dt-toggle, body.lg-arg .fb-dt-save, body.lg-arg .fb-dt-badge { f
 
 /* Brasileirão: verde profundo, franjas de la bandera y título en Ekibastuz amarillo */
 .fb-toast.lg-bra {
-  border-radius: 4px; color: #e3f4ea; font-family: 'Barlow', sans-serif;
-  background: radial-gradient(120% 140% at 100% 0%, rgba(47, 107, 255, .22), transparent 55%), #052a1b;
-  box-shadow: 0 16px 36px rgba(0, 18, 10, .6);
+  border-radius: 4px; color: #eef2ff; font-family: 'Barlow', sans-serif;
+  background: radial-gradient(120% 140% at 100% 0%, rgba(47, 107, 255, .22), transparent 55%), #0e2275;
+  box-shadow: 0 16px 36px rgba(3, 8, 40, .6);
 }
 .fb-toast.lg-bra::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 9px;
   background: linear-gradient(90deg, #00a859 0 33%, #ffd400 33% 66%, #2f6bff 66% 100%); }
@@ -2844,7 +2844,7 @@ body.lg-arg .fb-dt-toggle, body.lg-arg .fb-dt-save, body.lg-arg .fb-dt-badge { f
 /* Brasileirão: condensadas en mayúscula, subrayado verde / amarillo / azul */
 #section-futbol .lg-bra .fb-rec-chip {
   font-family: var(--f-ui), sans-serif; font-weight: 700; font-size: 13.5px; letter-spacing: .02em;
-  text-transform: uppercase !important; color: #eaf6ef; background: rgba(0, 60, 34, .7); padding: 4px 9px 3px;
+  text-transform: uppercase !important; color: #eef2ff; background: rgba(19, 42, 138, .7); padding: 4px 9px 3px;
   box-shadow: inset 0 -3px 0 #00a859;
 }
 #section-futbol .lg-bra .fb-rec-chip--both { box-shadow: inset 0 -3px 0 #00a859; color: #6ff0a8; }
@@ -2856,7 +2856,7 @@ body.lg-arg .fb-dt-toggle, body.lg-arg .fb-dt-save, body.lg-arg .fb-dt-badge { f
 #section-futbol .lg-arg .fb-simage svg, body.lg-arg #section-futbol .fb-simage svg { color: #3fe2f2; }
 #section-futbol .lg-eng .fb-simage, body.lg-eng #section-futbol .fb-simage { font-family: 'Outfit', sans-serif; color: #d9c4e6; }
 #section-futbol .lg-eng .fb-simage svg, body.lg-eng #section-futbol .fb-simage svg { color: #00ff85; }
-#section-futbol .lg-bra .fb-simage, body.lg-bra #section-futbol .fb-simage { font-family: 'Barlow', sans-serif; color: #c5e6d2; }
+#section-futbol .lg-bra .fb-simage, body.lg-bra #section-futbol .fb-simage { font-family: 'Barlow', sans-serif; color: #c9d3f5; }
 #section-futbol .lg-bra .fb-simage svg, body.lg-bra #section-futbol .fb-simage svg { color: #ffd400; }
 
 /* ── Notas explicativas: fuente de la liga y filete de su color ─────── */
@@ -2887,8 +2887,8 @@ body.lg-eng #section-futbol .fb-empty { color: #ecdcf5; border-radius: 3px;
   background: linear-gradient(135deg, transparent 82%, rgba(233, 0, 82, .8) 82%, rgba(123, 31, 162, .85) 100%), #37003c;
   box-shadow: inset 4px 0 0 #e90052; }
 body.lg-eng #section-futbol .fb-empty b { color: #00ff85; }
-body.lg-bra #section-futbol .fb-empty { color: #e3f4ea; border-radius: 4px; padding-left: 24px;
-  background: linear-gradient(90deg, #00a859 0 3px, #ffd400 3px 6px, #2f6bff 6px 9px, transparent 9px), #052a1b; }
+body.lg-bra #section-futbol .fb-empty { color: #eef2ff; border-radius: 4px; padding-left: 24px;
+  background: linear-gradient(90deg, #00a859 0 3px, #ffd400 3px 6px, #2f6bff 6px 9px, transparent 9px), #0e2275; }
 body.lg-bra #section-futbol .fb-empty b { color: #ffd400; }
 
 /* ── Explicación de las pelotitas (en cada jugada) ──────────────────── */
@@ -2899,8 +2899,8 @@ body.lg-bra #section-futbol .fb-empty b { color: #ffd400; }
   font-family: 'Outfit', sans-serif; border: 0; border-radius: 2px; color: #ecdcf5;
   background: rgba(55, 0, 60, .9); box-shadow: inset 3px 0 0 #00ff85; }
 #section-futbol .lg-bra .fb-ball-tip, body.lg-bra #section-futbol .fb-ball-tip {
-  font-family: 'Barlow', sans-serif; border: 0; border-radius: 3px; color: #e3f4ea;
-  background: rgba(0, 60, 34, .75); box-shadow: inset 0 -3px 0 #ffd400; }
+  font-family: 'Barlow', sans-serif; border: 0; border-radius: 3px; color: #eef2ff;
+  background: rgba(19, 42, 138, .75); box-shadow: inset 0 -3px 0 #ffd400; }
 #section-futbol .lg-bra .fb-ball-tip b, body.lg-bra #section-futbol .fb-ball-tip b { color: #ffd400; }
 
 /* ── Etiquetas del partido (alineación probable / confirmada / tuya) ── */
@@ -2922,8 +2922,8 @@ body.lg-eng #section-futbol .fb-flag--ok { box-shadow: inset 3px 0 0 #00ff85; co
 body.lg-eng #section-futbol .fb-flag--ok svg { color: #00ff85; }
 body.lg-bra #section-futbol .fb-flag {
   font-family: var(--f-ui), sans-serif; font-weight: 700; font-size: 13.5px; letter-spacing: .02em;
-  text-transform: uppercase !important; color: #eaf6ef; border-radius: 0; padding: 5px 11px 4px 16px;
-  background: linear-gradient(90deg, #00a859 0 3px, #ffd400 3px 6px, transparent 6px), rgba(0, 60, 34, .75);
+  text-transform: uppercase !important; color: #eef2ff; border-radius: 0; padding: 5px 11px 4px 16px;
+  background: linear-gradient(90deg, #00a859 0 3px, #ffd400 3px 6px, transparent 6px), rgba(19, 42, 138, .75);
 }
 body.lg-bra #section-futbol .fb-flag svg { color: #ffd400; }
 body.lg-bra #section-futbol .fb-flag--ok { color: #6ff0a8; }
@@ -2931,8 +2931,8 @@ body.lg-arg #section-futbol .fb-flag--new { background: #fff; color: #0b0857; }
 body.lg-arg #section-futbol .fb-flag--new svg { color: #3a24c8; }
 body.lg-eng #section-futbol .fb-flag--new { background: #00ff85; color: #37003c; box-shadow: none; }
 body.lg-eng #section-futbol .fb-flag--new svg { color: #37003c; }
-body.lg-bra #section-futbol .fb-flag--new { background: #ffd400; color: #052a1b; }
-body.lg-bra #section-futbol .fb-flag--new svg { color: #052a1b; }
+body.lg-bra #section-futbol .fb-flag--new { background: #ffd400; color: #07175a; }
+body.lg-bra #section-futbol .fb-flag--new svg { color: #07175a; }
 body.lg-arg #section-futbol .fb-flag--warn, body.lg-eng #section-futbol .fb-flag--warn, body.lg-bra #section-futbol .fb-flag--warn { color: #f6d27a; }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -2975,10 +2975,10 @@ body.lg-arg #section-futbol .fb-flag--warn, body.lg-eng #section-futbol .fb-flag
 #section-futbol .fb-chg.lg-eng li em i.down, #section-futbol .fb-chg.lg-eng .fb-chg-del > span { color: #ff5c93; }
 #section-futbol .fb-chg.lg-eng .fb-chg-mod > span { color: #04f5ff; }
 /* Brasileirão: verde profundo, franjas de la bandera, título en Ekibastuz amarillo */
-#section-futbol .fb-chg.lg-bra { font-family: 'Barlow', sans-serif; border-radius: 4px; color: #e3f4ea; padding-left: 22px;
-  background: linear-gradient(90deg, #00a859 0 3px, #ffd400 3px 6px, #2f6bff 6px 9px, transparent 9px), #052a1b; }
+#section-futbol .fb-chg.lg-bra { font-family: 'Barlow', sans-serif; border-radius: 4px; color: #eef2ff; padding-left: 22px;
+  background: linear-gradient(90deg, #00a859 0 3px, #ffd400 3px 6px, #2f6bff 6px 9px, transparent 9px), #0e2275; }
 #section-futbol .fb-chg.lg-bra .fb-chg-head b { font-family: 'Ekibastuz', 'Barlow Condensed', sans-serif; font-weight: 400; color: #ffd400; text-transform: uppercase !important; letter-spacing: .03em; }
-#section-futbol .fb-chg.lg-bra li span { font-family: var(--f-ui), sans-serif; font-size: 12px; color: #9fd0b4; }
+#section-futbol .fb-chg.lg-bra li span { font-family: var(--f-ui), sans-serif; font-size: 12px; color: #b9c4f0; }
 #section-futbol .fb-chg.lg-bra li em i.up, #section-futbol .fb-chg.lg-bra .fb-chg-add > span { color: #6ff0a8; }
 #section-futbol .fb-chg.lg-bra .fb-chg-mod > span { color: #ffd400; }
 /* "Nada nuevo": más chico, sin la grilla de números */
@@ -3265,10 +3265,10 @@ body.lg-ita #section-futbol .fb-chips button.is-on { background: #0d8efe; border
 #section-futbol .fb-chg2.lg-eng .fb-chg2-more { border-radius: 2px; border-color: #04f5ff; color: #04f5ff; }
 
 /* Brasileirão: verde profundo, franjas de la bandera, etiqueta amarilla */
-#section-futbol .fb-chg2.lg-bra .fb-chg2-bar, #section-futbol .fb-chg2.lg-bra .fb-chg2-list { background: #052a1b; border-radius: 4px; }
+#section-futbol .fb-chg2.lg-bra .fb-chg2-bar, #section-futbol .fb-chg2.lg-bra .fb-chg2-list { background: #0e2275; border-radius: 4px; }
 #section-futbol .fb-chg2.lg-bra .fb-chg2-bar { box-shadow: inset 6px 0 0 #00a859; }
-#section-futbol .fb-chg2.lg-bra .fb-chg2-tag { background: #ffd400; color: #052a1b; font-weight: 400; margin-left: 6px; box-shadow: inset 4px 0 0 #2f6bff; }
-#section-futbol .fb-chg2.lg-bra .fb-chg2-cell small { color: #9fd0b4; }
+#section-futbol .fb-chg2.lg-bra .fb-chg2-tag { background: #ffd400; color: #07175a; font-weight: 400; margin-left: 6px; box-shadow: inset 4px 0 0 #2f6bff; }
+#section-futbol .fb-chg2.lg-bra .fb-chg2-cell small { color: #b9c4f0; }
 #section-futbol .fb-chg2.lg-bra .fb-chg2-cell > span, #section-futbol .fb-chg2.lg-bra .fb-chg2-cell b { font-weight: 400; }
 #section-futbol .fb-chg2.lg-bra .fb-chg2-cell em.is-up, #section-futbol .fb-chg2.lg-bra .fb-chg2-list .is-add i { color: #6ff0a8; }
 #section-futbol .fb-chg2.lg-bra .fb-chg2-more { border-color: #ffd400; color: #ffd400; border-radius: 3px; font-weight: 400; }

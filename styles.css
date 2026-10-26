@@ -5869,7 +5869,7 @@ body[data-sport="nba"] .mobile-bottom-nav { display: none; }
 
 .al-td-num { text-align: right; font-variant-numeric: tabular-nums; }
 .al-em { color: var(--text); font-weight: 600; }
-.al-pos { color: #a6d86f; font-weight: 600; }
+.al-pos { color: #fdb927; font-weight: 600; }
 .al-neg { color: #ff8892; }
 .al-td-player { min-width: 150px; }
 .al-player { color: var(--text); font-weight: 600; }
@@ -5886,7 +5886,7 @@ body[data-sport="nba"] .mobile-bottom-nav { display: none; }
   text-align: center;
   letter-spacing: 0.5px;
 }
-.al-side--over  { background: rgba(166, 216, 111,0.14); color: #a6d86f; }
+.al-side--over  { background: rgba(253, 185, 39,0.14); color: #fdb927; }
 .al-side--under { background: rgba(255,136,146,0.14); color: #ff8892; }
 
 .al-badge {
@@ -5898,8 +5898,8 @@ body[data-sport="nba"] .mobile-bottom-nav { display: none; }
   letter-spacing: 0.4px;
 }
 .al-badge--steady   { background: rgba(255,255,255,0.07); color: var(--text-muted); }
-.al-badge--volatile { background: rgba(166, 216, 111,0.16); color: #c8eaa0; }
-.al-badge--boom     { background: rgba(166, 216, 111,0.3); color: #fff; }
+.al-badge--volatile { background: rgba(253, 185, 39,0.16); color: #ffe08a; }
+.al-badge--boom     { background: rgba(253, 185, 39,0.3); color: #fff; }
 
 .al-footnote {
   padding: 12px 14px;
@@ -5963,19 +5963,19 @@ body[data-sport="nba"] .mobile-bottom-nav { display: none; }
    solo; lo que estaba hardcodeado en rojo se pisa abajo.
    ════════════════════════════════════════════════════════════════════════════ */
 body[data-sport="nba"] {
-  --bg: #050705;
-  --bg2: #090c08;
-  --bg3: #0d110b;
-  --card: #10150e;
-  --card2: #151b12;
-  --border: #212b1b;
-  --red: #93c572;
-  --red-light: #a6d86f;
-  --red-dark: #5f8a37;
-  --pst: #a6d86f;
-  --pst-deep: #6e9b3f;
-  --pst-shell: #d9c7a0;
-  --pst-rgb: 166, 216, 111;
+  --bg: #000000;
+  --bg2: #060607;
+  --bg3: #0b0b0d;
+  --card: #111215;
+  --card2: #17181c;
+  --border: #26282e;
+  --red: #3b7cff;
+  --red-light: #6ea0ff;
+  --red-dark: #1d428a;
+  --pst: #fdb927;
+  --pst-deep: #c98e12;
+  --pst-shell: #f3f4f6;
+  --pst-rgb: 253, 185, 39;
 }
 body[data-sport="nba"] .nav-item.active { background: rgba(var(--pst-rgb), 0.1); }
 body[data-sport="nba"] .sport-tab--active {
@@ -5988,7 +5988,7 @@ body[data-sport="nba"] .sport-tab--active {
 .brand-mlb { display: flex; align-items: center; gap: 8px; }
 body[data-sport="nba"] .brand-mlb { display: none; }
 body[data-sport="nba"] .brand-nba { display: flex; }
-.logo-stachio { color: var(--pst, #a6d86f); }
+.logo-stachio { color: var(--pst, #fdb927); }
 .pst-icon { display: block; flex-shrink: 0; }
 
 /* La transición entre apps: un círculo que crece desde la pestaña tocada,
@@ -6003,8 +6003,8 @@ body[data-sport="nba"] .brand-nba { display: flex; }
 }
 .sport-morph--nba {
   background:
-    radial-gradient(circle at 50% 45%, rgba(166, 216, 111, 0.35) 0%, rgba(5, 7, 5, 0) 55%),
-    radial-gradient(circle at 50% 50%, #0f1a0b 0%, #050705 70%);
+    radial-gradient(circle at 50% 45%, rgba(253, 185, 39, 0.35) 0%, rgba(0, 0, 0, 0) 55%),
+    radial-gradient(circle at 50% 50%, #0a1430 0%, #000000 70%);
 }
 .sport-morph--mlb {
   background:
@@ -6021,7 +6021,7 @@ body[data-sport="nba"] .brand-nba { display: flex; }
   color: #f0f0f0;
   opacity: 0;
 }
-.sport-morph--nba .sport-morph-logo span { color: #a6d86f; }
+.sport-morph--nba .sport-morph-logo span { color: #fdb927; }
 .sport-morph--mlb .sport-morph-logo span { color: #e03040; }
 .sport-morph-logo svg, .sport-morph-logo img { width: .9em; height: .9em; }
 .app-main-fadein { animation: appMainIn .5s ease both; }
@@ -6042,7 +6042,7 @@ body[data-sport="nba"] .brand-nba { display: flex; }
 }
 .al-view {
   display: inline-flex;
-  border: 1px solid rgba(var(--pst-rgb, 166, 216, 111), .35);
+  border: 1px solid rgba(var(--pst-rgb, 253, 185, 39), .35);
   border-radius: 999px;
   padding: 2px;
   gap: 2px;
@@ -6060,7 +6060,7 @@ body[data-sport="nba"] .brand-nba { display: flex; }
   cursor: pointer;
 }
 .al-view-btn:hover { color: #fff; }
-.al-view-btn--on { background: var(--pst, #a6d86f); color: #0b1208; }
+.al-view-btn--on { background: var(--pst, #fdb927); color: #0b0b0d; }
 
 /* ── Pickstachio: cromos ────────────────────────────────────────────────────
    Un pick = un cromo cuadrado. Big Shoulders Display (la grotesca condensada
@@ -6165,7 +6165,7 @@ body[data-sport="nba"] .al-title { font-family: var(--f-display); font-weight: 9
   z-index: 3;
   pointer-events: none;
   background: linear-gradient(115deg, transparent 0%, transparent 38%, rgba(255, 255, 255, .22) 48%,
-              rgba(166, 216, 111, .14) 53%, transparent 64%, transparent 100%);
+              rgba(253, 185, 39, .14) 53%, transparent 64%, transparent 100%);
   background-size: 260% 100%;
   background-position: var(--mx, 50%) 0;
   mix-blend-mode: soft-light;
@@ -6347,7 +6347,7 @@ body.pst-modal-open { overflow: hidden; }
   padding: 22px 22px 18px;
   border-radius: 14px;
   background: #0b0f09;
-  border: 1px solid #202a1a;
+  border: 1px solid #23252a;
   box-shadow: inset 0 3px 0 var(--tier-ink, var(--pst));
   max-height: calc(100vh - 48px);
   overflow-y: auto;
@@ -6360,20 +6360,20 @@ body.pst-modal-open { overflow: hidden; }
   height: 30px;
   display: grid;
   place-items: center;
-  border: 1px solid #263220;
+  border: 1px solid #2a2c31;
   border-radius: 8px;
   background: none;
-  color: #8b977f;
+  color: #8f9196;
   cursor: pointer;
 }
 .pst-sheet-close svg { width: 14px; height: 14px; }
 .pst-sheet-close:hover { color: #fff; border-color: var(--pst); }
 .pst-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-right: 38px; }
 .pst-sheet-tier { font-family: var(--f-display); font-weight: 900; font-size: 30px; line-height: .95; text-transform: uppercase; color: var(--tier-ink, var(--pst)); }
-.pst-sheet-line { margin-top: 5px; font-size: 12.5px; color: #8b977f; }
+.pst-sheet-line { margin-top: 5px; font-size: 12.5px; color: #8f9196; }
 .pst-sheet-score { text-align: right; line-height: .9; white-space: nowrap; }
 .pst-sheet-score b { font-family: var(--f-display); font-weight: 900; font-size: 44px; color: #fff; }
-.pst-sheet-score small { font-family: var(--f-display); font-weight: 700; font-size: 15px; color: #59644f; }
+.pst-sheet-score small { font-family: var(--f-display); font-weight: 700; font-size: 15px; color: #5c5e63; }
 .pst-sheet-bet {
   display: flex;
   flex-wrap: wrap;
@@ -6381,9 +6381,9 @@ body.pst-modal-open { overflow: hidden; }
   gap: 4px 12px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: #121910;
+  background: #14161b;
   font-size: 12.5px;
-  color: #aab3a1;
+  color: #acaeb3;
 }
 .pst-sheet-bet b { font-family: var(--f-display); font-weight: 900; font-size: 18px; color: #fff; }
 .pst-sheet-bet span:last-child b { color: var(--pst); }
@@ -6391,25 +6391,25 @@ body.pst-modal-open { overflow: hidden; }
 .pst-sheet-why strong { color: #fff; }
 .pst-sheet-why .pst-coda { display: block; margin-top: 6px; color: var(--tier-ink, var(--pst)); font-style: italic; font-size: 13px; }
 .pst-flags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.pst-flags li { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: #aab3a1; cursor: help; }
+.pst-flags li { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: #acaeb3; cursor: help; }
 .pst-flags svg { width: 13px; height: 13px; color: var(--tier-ink, var(--pst)); }
 .pst-stats { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
 .pst-stat { display: grid; grid-template-columns: 1fr auto; align-items: baseline; }
-.pst-stat dt { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; letter-spacing: .8px; text-transform: uppercase; color: #8b977f; }
+.pst-stat dt { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; letter-spacing: .8px; text-transform: uppercase; color: #8f9196; }
 .pst-stat dt svg { width: 12px; height: 12px; color: var(--tier-ink, var(--pst)); }
 .pst-stat dd { margin: 0; font-family: var(--f-display); font-weight: 800; font-size: 18px; color: #fff; }
-.pst-stat-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: #1d2618; margin-top: 5px; overflow: hidden; }
+.pst-stat-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: #202227; margin-top: 5px; overflow: hidden; }
 .pst-stat-bar i { display: block; height: 100%; background: var(--tier-ink, var(--pst)); }
-.pst-stat p { grid-column: 1 / -1; margin: 6px 0 0; font-size: 11.5px; line-height: 1.4; color: #6f7c66; }
+.pst-stat p { grid-column: 1 / -1; margin: 6px 0 0; font-size: 11.5px; line-height: 1.4; color: #74767b; }
 .pst-sheet-foot {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 6px 14px;
   padding-top: 12px;
-  border-top: 1px solid #1d2618;
+  border-top: 1px solid #202227;
   font-size: 12px;
-  color: #7c8873;
+  color: #808287;
 }
 .pst-sheet-foot b { font-family: var(--f-display); font-weight: 800; font-size: 15px; color: #fff; }
 
@@ -6497,7 +6497,7 @@ body.pst-modal-open { overflow: hidden; }
   font-size: 8.5px;
   letter-spacing: 2.6px;
   text-transform: uppercase;
-  color: #6f7c66;
+  color: #74767b;
 }
 .sport-morph-logo .pst-mark { width: 1.05em; height: 1.05em; }
 
@@ -6505,7 +6505,7 @@ body.pst-modal-open { overflow: hidden; }
 body[data-sport="nba"] .app-topbar {
   height: 60px;
   background: #070906;
-  border-bottom: 1px solid #1a2215;
+  border-bottom: 1px solid #1c1e23;
   padding: 0 16px 0 20px;
   gap: 18px;
 }
@@ -6533,10 +6533,10 @@ body[data-sport="nba"] .sport-tab-mark {
   font-weight: 800;
   font-size: 17px;
   letter-spacing: 1px;
-  color: #59644f;
+  color: #5c5e63;
 }
 body[data-sport="nba"] .sport-tab-sub { display: none; }
-body[data-sport="nba"] .sport-tab:hover .sport-tab-mark { color: #c9d1c0; }
+body[data-sport="nba"] .sport-tab:hover .sport-tab-mark { color: #cbcdd2; }
 body[data-sport="nba"] .sport-tab--active { background: none; box-shadow: none; }
 body[data-sport="nba"] .sport-tab--active .sport-tab-mark { color: #fff; }
 body[data-sport="nba"] .sport-tab--active::after {
@@ -6557,14 +6557,14 @@ body[data-sport="nba"] .nba-tools {
 }
 body[data-sport="nba"] .topbar-actions { margin-left: 0; }
 body[data-sport="nba"] .topbar-icon-btn { display: none; }
-body[data-sport="nba"] .topbar-avatar { background: #16200f; border-color: var(--pst-deep); color: var(--pst); }
+body[data-sport="nba"] .topbar-avatar { background: #191b20; border-color: var(--pst-deep); color: var(--pst); }
 
 .nba-seg {
   display: inline-flex;
   padding: 3px;
   border-radius: 8px;
   background: #0f140c;
-  border: 1px solid #1f2919;
+  border: 1px solid #222429;
 }
 .nba-seg button {
   border: 0;
@@ -6576,14 +6576,14 @@ body[data-sport="nba"] .topbar-avatar { background: #16200f; border-color: var(-
   font-size: 14px;
   letter-spacing: .8px;
   text-transform: uppercase;
-  color: #66725c;
+  color: #6a6c71;
   cursor: pointer;
 }
 .nba-seg button:hover { color: #d6dccf; }
-.nba-seg button.is-on { background: #1d2817; color: var(--pst); }
-.nba-seg button[data-src="live"].is-on { background: var(--pst); color: #0b1208; }
+.nba-seg button.is-on { background: #212328; color: var(--pst); }
+.nba-seg button[data-src="live"].is-on { background: var(--pst); color: #0b0b0d; }
 
-.nba-credits { font-size: 12px; color: #7c8873; white-space: nowrap; }
+.nba-credits { font-size: 12px; color: #808287; white-space: nowrap; }
 .nba-credits b { font-family: var(--f-display); font-weight: 800; font-size: 16px; color: #e8ecdf; margin-right: 2px; }
 
 .nba-sound {
@@ -6592,9 +6592,9 @@ body[data-sport="nba"] .topbar-avatar { background: #16200f; border-color: var(-
   display: grid;
   place-items: center;
   border-radius: 8px;
-  border: 1px solid #1f2919;
+  border: 1px solid #222429;
   background: #0f140c;
-  color: #66725c;
+  color: #6a6c71;
   cursor: pointer;
 }
 .nba-sound svg { width: 18px; height: 18px; }
@@ -6609,7 +6609,7 @@ body[data-sport="nba"] .topbar-avatar { background: #16200f; border-color: var(-
 body[data-sport="nba"] .sidebar {
   width: 268px;
   background: #070906;
-  border-right: 1px solid #1a2215;
+  border-right: 1px solid #1c1e23;
 }
 body[data-sport="nba"] .sidebar-nav,
 body[data-sport="nba"] .sb-bottom { display: none; }
@@ -6635,7 +6635,7 @@ body[data-sport="nba"] .nba-rail {
   border: 0;
   border-radius: 8px;
   background: none;
-  color: #66725c;
+  color: #6a6c71;
   cursor: pointer;
 }
 .rail-arrow svg { width: 16px; height: 16px; }
@@ -6658,7 +6658,7 @@ body[data-sport="nba"] .nba-rail {
   font-size: 15px;
   letter-spacing: 1.4px;
   text-transform: uppercase;
-  color: #7c8873;
+  color: #808287;
 }
 .rail-dnum { font-family: var(--f-display); font-weight: 900; font-size: 40px; line-height: .9; }
 
@@ -6674,12 +6674,12 @@ body[data-sport="nba"] .nba-rail {
   font-size: 13px;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: #59644f;
+  color: #5c5e63;
 }
-.rail-meta { font-size: 11px; color: #59644f; }
+.rail-meta { font-size: 11px; color: #5c5e63; }
 
 .rail-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
-.rail-empty { padding: 14px 6px; font-size: 12.5px; color: #59644f; }
+.rail-empty { padding: 14px 6px; font-size: 12.5px; color: #5c5e63; }
 .rail-empty--error { color: #ff8892; }
 
 .rail-game {
@@ -6709,7 +6709,7 @@ body[data-sport="nba"] .nba-rail {
   opacity: .55;
 }
 .rail-game:hover:not(:disabled) { background: #0e130b; }
-.rail-game.is-selected { background: #111a0d; border-color: #263420; }
+.rail-game.is-selected { background: #14161b; border-color: #2c2e33; }
 .rail-game.is-selected::before { opacity: 1; }
 .rail-game:disabled { cursor: default; opacity: .45; }
 .rail-game:focus-visible { outline: 2px solid var(--pst); outline-offset: 1px; }
@@ -6718,8 +6718,8 @@ body[data-sport="nba"] .nba-rail {
 .rail-team { display: flex; align-items: center; gap: 8px; }
 .rail-team img, .rail-nologo { width: 20px; height: 20px; object-fit: contain; flex: none; }
 .rail-team b { font-family: var(--f-display); font-weight: 800; font-size: 17px; letter-spacing: .6px; color: #eef1e9; line-height: 1; }
-.rail-when { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 12px; font-weight: 600; color: #aab3a1; font-variant-numeric: tabular-nums; }
-.rail-when small { font-size: 10px; font-weight: 500; color: #59644f; }
+.rail-when { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 12px; font-weight: 600; color: #acaeb3; font-variant-numeric: tabular-nums; }
+.rail-when small { font-size: 10px; font-weight: 500; color: #5c5e63; }
 
 .rail-state {
   display: inline-flex;
@@ -6735,13 +6735,13 @@ body[data-sport="nba"] .nba-rail {
   letter-spacing: .8px;
   text-transform: uppercase;
 }
-.rail-state--idle { border: 1px solid #2a3622; color: #93a088; }
+.rail-state--idle { border: 1px solid #2e3035; color: #97999e; }
 .rail-game:hover .rail-state--idle { border-color: var(--pst); color: var(--pst); }
-.rail-state--off { color: #4a5442; font-size: 11px; }
+.rail-state--off { color: #4d4f54; font-size: 11px; }
 .rail-state--err { color: #ff8892; border: 1px solid rgba(255, 136, 146, .35); }
-.rail-state--done { gap: 3px; background: #172312; color: var(--pst); }
+.rail-state--done { gap: 3px; background: #1c1e23; color: var(--pst); }
 .rail-state--done b { font-size: 17px; font-weight: 900; }
-.rail-state--done small { font-size: 10px; color: #7c8873; }
+.rail-state--done small { font-size: 10px; color: #808287; }
 .rail-state--sim { gap: 6px; color: var(--pst); }
 .rail-state--sim i {
   width: 7px; height: 7px; border-radius: 50%;
@@ -6757,16 +6757,16 @@ body[data-sport="nba"] .nba-rail {
   align-items: baseline;
   width: 100%;
   padding: 11px 13px;
-  border: 1px solid #1f2919;
+  border: 1px solid #222429;
   border-radius: 10px;
   background: none;
   cursor: pointer;
   color: #e8ecdf;
 }
 .rail-league span { font-family: var(--f-display); font-weight: 800; font-size: 16px; letter-spacing: .6px; text-transform: uppercase; }
-.rail-league small { font-size: 11px; color: #7c8873; }
+.rail-league small { font-size: 11px; color: #808287; }
 .rail-league[hidden] { display: none; }
-.rail-league:hover, .rail-league.is-selected { border-color: #2f3f26; background: #111a0d; }
+.rail-league:hover, .rail-league.is-selected { border-color: #35373c; background: #14161b; }
 .rail-league.is-selected span { color: var(--pst); }
 .rail-simall {
   width: 100%;
@@ -6774,7 +6774,7 @@ body[data-sport="nba"] .nba-rail {
   border: 0;
   border-radius: 10px;
   background: var(--pst);
-  color: #0b1208;
+  color: #0b0b0d;
   font-family: var(--f-display);
   font-weight: 900;
   font-size: 16px;
@@ -6782,9 +6782,9 @@ body[data-sport="nba"] .nba-rail {
   text-transform: uppercase;
   cursor: pointer;
 }
-.rail-simall:hover:not(:disabled) { background: #b8e283; }
-.rail-simall:disabled { background: #1a2414; color: #4a5442; cursor: default; }
-.rail-simall.is-running { background: #1a2414; color: var(--pst); box-shadow: inset 0 0 0 1px var(--pst); }
+.rail-simall:hover:not(:disabled) { background: #ffcd55; }
+.rail-simall:disabled { background: #1d1f24; color: #4d4f54; cursor: default; }
+.rail-simall.is-running { background: #1d1f24; color: var(--pst); box-shadow: inset 0 0 0 1px var(--pst); }
 
 /* ── Contenido: cabecera del partido ────────────────────────────────────── */
 body[data-sport="nba"] .app-main { padding: 22px 26px 40px; }
@@ -6793,8 +6793,8 @@ body[data-sport="nba"] .app-main { padding: 22px 26px 40px; }
   height: 210px;
   border-radius: 14px;
   overflow: hidden;
-  background: #070a06;
-  border: 1px solid #1a2215;
+  background: #000000;
+  border: 1px solid #1c1e23;
   margin-bottom: 18px;
 }
 .pst-hero-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -6803,7 +6803,7 @@ body[data-sport="nba"] .app-main { padding: 22px 26px 40px; }
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(5, 7, 5, .92) 0%, rgba(5, 7, 5, .72) 38%, rgba(5, 7, 5, 0) 64%);
+  background: linear-gradient(90deg, rgba(0, 0, 0, .92) 0%, rgba(0, 0, 0, .72) 38%, rgba(0, 0, 0, 0) 64%);
   pointer-events: none;
 }
 .pst-hero-info {
@@ -6822,7 +6822,7 @@ body[data-sport="nba"] .app-main { padding: 22px 26px 40px; }
   font-weight: 600;
   letter-spacing: 1.6px;
   text-transform: uppercase;
-  color: #8b977f;
+  color: #8f9196;
 }
 .pst-hero-title {
   font-family: var(--f-display);
@@ -6835,9 +6835,9 @@ body[data-sport="nba"] .app-main { padding: 22px 26px 40px; }
 .pst-hero-title span { color: var(--pst); }
 .pst-hero-title--match { display: flex; align-items: center; gap: 12px; }
 .pst-hero-title--match span { color: #f3f5ef; }
-.pst-hero-title--match i { font-style: normal; font-size: 24px; color: #59644f; }
+.pst-hero-title--match i { font-style: normal; font-size: 24px; color: #5c5e63; }
 .pst-hero-title--match img { width: 40px; height: 40px; object-fit: contain; }
-.pst-hero-sub { font-size: 13px; line-height: 1.45; color: #aab3a1; }
+.pst-hero-sub { font-size: 13px; line-height: 1.45; color: #acaeb3; }
 .pst-hero-sub b { color: var(--pst); font-variant-numeric: tabular-nums; }
 .pst-hero-cta {
   align-self: flex-start;
@@ -6846,7 +6846,7 @@ body[data-sport="nba"] .app-main { padding: 22px 26px 40px; }
   border: 0;
   border-radius: 9px;
   background: var(--pst);
-  color: #0b1208;
+  color: #0b0b0d;
   font-family: var(--f-display);
   font-weight: 900;
   font-size: 15px;
@@ -6854,7 +6854,7 @@ body[data-sport="nba"] .app-main { padding: 22px 26px 40px; }
   text-transform: uppercase;
   cursor: pointer;
 }
-.pst-hero-cta:hover { background: #b8e283; }
+.pst-hero-cta:hover { background: #ffcd55; }
 
 /* Debajo de la cabecera: vista y datos de la corrida, en una línea */
 body[data-sport="nba"] .al-detail-head {
@@ -6865,7 +6865,7 @@ body[data-sport="nba"] .al-detail-head {
   gap: 10px 18px;
   margin-bottom: 14px;
 }
-body[data-sport="nba"] .al-meta { font-size: 11.5px; color: #66725c; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+body[data-sport="nba"] .al-meta { font-size: 11.5px; color: #6a6c71; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .al-meta-src {
   font-family: var(--f-display);
   font-weight: 800;
@@ -6874,11 +6874,11 @@ body[data-sport="nba"] .al-meta { font-size: 11.5px; color: #66725c; display: fl
   text-transform: uppercase;
   padding: 2px 7px;
   border-radius: 4px;
-  background: #172312;
+  background: #1c1e23;
   color: var(--pst);
 }
-.al-meta-src--live { background: var(--pst); color: #0b1208; }
-.pst-wait { padding: 30px 4px; font-family: var(--f-display); font-weight: 800; font-size: 20px; letter-spacing: .6px; text-transform: uppercase; color: #59644f; }
+.al-meta-src--live { background: var(--pst); color: #0b0b0d; }
+.pst-wait { padding: 30px 4px; font-family: var(--f-display); font-weight: 800; font-size: 20px; letter-spacing: .6px; text-transform: uppercase; color: #5c5e63; }
 
 /* Selector Easy | Nerd: mismo lenguaje que el cambio de deporte */
 body[data-sport="nba"] .al-view { border: 0; padding: 0; gap: 18px; border-radius: 0; }
@@ -6890,7 +6890,7 @@ body[data-sport="nba"] .al-view-btn {
   font-size: 16px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: #59644f;
+  color: #5c5e63;
   position: relative;
 }
 body[data-sport="nba"] .al-view-btn--on { background: none; color: #fff; }
@@ -6922,7 +6922,7 @@ body[data-sport="nba"] .al-view-btn--on::after {
     margin: 0 -12px 14px;
     padding: 10px 12px 10px;
     background: #070906;
-    border-bottom: 1px solid #1a2215;
+    border-bottom: 1px solid #1c1e23;
   }
   .pst-mstrip-top { display: flex; align-items: center; gap: 8px; }
   .pst-mstrip-top .rail-date { flex: 1; grid-template-columns: 30px 1fr 30px; }
@@ -6944,13 +6944,13 @@ body[data-sport="nba"] .al-view-btn--on::after {
     flex: 0 0 auto;
     width: 172px;
     grid-template-columns: 1fr auto;
-    border-color: #1c2517;
+    border-color: #1f2126;
     scroll-snap-align: start;
   }
   .pst-mstrip-list .rail-when { display: none; }
 
   .pst-hero { height: 170px; }
-  .pst-hero::after { background: linear-gradient(180deg, rgba(5, 7, 5, .2) 0%, rgba(5, 7, 5, .88) 70%); }
+  .pst-hero::after { background: linear-gradient(180deg, rgba(0, 0, 0, .2) 0%, rgba(0, 0, 0, .88) 70%); }
   .pst-hero-info { justify-content: flex-end; padding: 14px 16px; }
   .pst-hero-title { font-size: 34px; }
   .pst-hero-title--match img { width: 30px; height: 30px; }
@@ -6959,10 +6959,10 @@ body[data-sport="nba"] .al-view-btn--on::after {
 
 /* Re-simular y selector de modelo */
 body[data-sport="nba"] .al-head-tabs { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
-body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #1f2919; }
+body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #222429; }
 .pst-hero-cta--ghost { background: none; color: var(--pst); box-shadow: inset 0 0 0 1.5px var(--pst); }
 .pst-hero-cta--ghost:hover { background: rgba(var(--pst-rgb), .12); }
-.pst-sheet-foot small { color: #59644f; font-size: 11px; }
+.pst-sheet-foot small { color: #5c5e63; font-size: 11px; }
 
 /* ── Resultados: ganada en verde, perdida en rojo ───────────────────────── */
 .pst-result {
@@ -6977,7 +6977,7 @@ body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #1
   padding: 6px 16px 5px;
   border: 3px solid currentColor;
   border-radius: 6px;
-  background: rgba(5, 7, 5, .82);
+  background: rgba(0, 0, 0, .82);
   font-family: var(--f-display);
   line-height: 1;
   text-transform: uppercase;
@@ -6985,14 +6985,14 @@ body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #1
 }
 .pst-result b { font-weight: 900; font-size: clamp(20px, 13cqi, 34px); letter-spacing: 1px; }
 .pst-result span { margin-top: 3px; font-weight: 700; font-size: clamp(10px, 5cqi, 14px); letter-spacing: .8px; color: #e8ecdf; }
-.pst-result--won { color: #8fe36b; }
+.pst-result--won { color: #fdb927; }
 .pst-result--lost { color: #ff5a4f; }
 .pst-result--push, .pst-result--void { color: #c9cfc3; }
 .pst-cube--lost .pst-front { filter: saturate(.35) brightness(.8); }
 .pst-cube--lost .pst-front::after { border-color: #ff5a4f; }
 .pst-cube--lost .pst-band { border-top-color: #ff5a4f; }
-.pst-cube--won .pst-front::after { border-color: #8fe36b; }
-.pst-cube--won .pst-band { border-top-color: #8fe36b; }
+.pst-cube--won .pst-front::after { border-color: #fdb927; }
+.pst-cube--won .pst-band { border-top-color: #fdb927; }
 
 .pst-sheet-result {
   display: flex;
@@ -7007,18 +7007,18 @@ body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #1
 .pst-sheet-result b { font-family: var(--f-display); font-weight: 900; font-size: 20px; text-transform: uppercase; }
 .pst-sheet-result span { color: #cfd5c8; }
 .pst-sheet-result span:last-child { margin-left: auto; font-family: var(--f-display); font-weight: 800; font-size: 16px; color: currentColor; }
-.pst-sheet-result--won { color: #8fe36b; background: rgba(143, 227, 107, .07); }
+.pst-sheet-result--won { color: #fdb927; background: rgba(253, 185, 39, .07); }
 .pst-sheet-result--lost { color: #ff5a4f; background: rgba(255, 90, 79, .08); }
 .pst-sheet-result--push, .pst-sheet-result--void { color: #c9cfc3; }
 
 .rail-state--rec b { font-size: 16px; font-weight: 900; letter-spacing: .5px; }
-.rail-state--won { background: rgba(143, 227, 107, .14); color: #8fe36b; }
+.rail-state--won { background: rgba(253, 185, 39, .14); color: #fdb927; }
 .rail-state--lost { background: rgba(255, 90, 79, .14); color: #ff5a4f; }
-.rail-state--push { background: #1a2414; color: #c9cfc3; }
-.pst-res-w { color: #8fe36b; }
+.rail-state--push { background: #1d1f24; color: #c9cfc3; }
+.pst-res-w { color: #fdb927; }
 .pst-res-l { color: #ff5a4f; }
 
-.al-row--won td:first-child { box-shadow: inset 3px 0 0 #8fe36b; }
+.al-row--won td:first-child { box-shadow: inset 3px 0 0 #fdb927; }
 .al-row--lost td:first-child { box-shadow: inset 3px 0 0 #ff5a4f; }
 .al-row--lost td { color: #ff8a80; }
 
@@ -7030,11 +7030,11 @@ body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #1
   border-radius: 10px;
   background: #0a0d08;
 }
-.pst-results-sum { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; font-size: 12.5px; color: #8b977f; }
+.pst-results-sum { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; font-size: 12.5px; color: #8f9196; }
 .pst-results-sum b { font-family: var(--f-display); font-weight: 900; font-size: 22px; margin-right: 4px; color: #e8ecdf; }
-.pst-results-w b { color: #8fe36b; }
+.pst-results-w b { color: #fdb927; }
 .pst-results-l b { color: #ff5a4f; }
-.pst-results-p b { color: #8b977f; }
+.pst-results-p b { color: #8f9196; }
 .pst-results-u { margin-left: auto; }
 .pst-results-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .pst-rchip {
@@ -7043,24 +7043,24 @@ body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #1
   gap: 6px;
   padding: 5px 10px 5px 7px;
   border-radius: 7px;
-  border: 1px solid #263220;
+  border: 1px solid #2a2c31;
   background: #10150d;
-  color: #aab3a1;
+  color: #acaeb3;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
   transition: transform .12s ease, border-color .12s ease;
 }
-.pst-rchip:hover { transform: translateY(-1px); border-color: #3a4a30; }
+.pst-rchip:hover { transform: translateY(-1px); border-color: #404247; }
 .pst-rchip svg { width: 14px; height: 14px; flex: none; }
 .pst-rchip span { color: #e8ecdf; font-weight: 600; }
 .pst-rchip b { font-family: var(--f-display); font-weight: 800; font-size: 14px; color: #e8ecdf; }
-.pst-rchip small { font-size: 10px; letter-spacing: .6px; color: #6f7c66; }
-.pst-rchip--won { border-color: rgba(143, 227, 107, .45); background: rgba(143, 227, 107, .08); }
-.pst-rchip--won svg { color: #8fe36b; }
+.pst-rchip small { font-size: 10px; letter-spacing: .6px; color: #74767b; }
+.pst-rchip--won { border-color: rgba(253, 185, 39, .45); background: rgba(253, 185, 39, .08); }
+.pst-rchip--won svg { color: #fdb927; }
 .pst-rchip--lost { border-color: rgba(255, 90, 79, .45); background: rgba(255, 90, 79, .08); }
 .pst-rchip--lost svg { color: #ff5a4f; }
-.pst-rchip--pending svg { color: #59644f; animation: railPulse 1.4s ease-in-out infinite; }
+.pst-rchip--pending svg { color: #5c5e63; animation: railPulse 1.4s ease-in-out infinite; }
 .pst-rchip--fresh { animation: pstChipIn .5s cubic-bezier(.2, .9, .3, 1.3) both; }
 @keyframes pstChipIn { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -7137,3 +7137,44 @@ body[data-sport="nba"] .al-model { padding-left: 26px; border-left: 1px solid #1
 
 /* Launcher: el botón va arriba, debajo de la etiqueta */
 .lp-hero-content .lp-enter { margin: 6px 0 22px; }
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   NBA con el colorwave de NBA.com: negro puro, grilla de puntos de pizarra,
+   azul NBA para lo interactivo, dorado (League Pass) para el valor y rojo
+   para lo que está en vivo. El logo oficial en la marca.
+   ════════════════════════════════════════════════════════════════════════════ */
+body[data-sport="nba"] {
+  --nba-blue: #1d428a; --nba-sky: #3b7cff; --nba-red: #c8102e; --nba-gold: #fdb927;
+  --pst: #fdb927;
+  --pst-rgb: 253, 185, 39;
+}
+body[data-sport="nba"] .app-main {
+  background:
+    radial-gradient(circle, rgba(120, 124, 135, .16) 1px, transparent 1.4px) 0 0 / 22px 22px,
+    #000;
+}
+body[data-sport="nba"] .topbar, body[data-sport="nba"] header.app-header { background: #000; }
+body[data-sport="nba"] .nav-item.active { background: rgba(59, 124, 255, .12); }
+body[data-sport="nba"] .sport-tab--active {
+  background: rgba(59, 124, 255, .14);
+  box-shadow: inset 0 0 0 1px rgba(59, 124, 255, .5);
+}
+/* Marca: logo oficial de la NBA | PICKSTACHIO */
+.pst-nba-logo { display: block; height: 30px; width: auto; flex: none; }
+.brand-nba .pst-nba-sep { width: 1px; height: 26px; background: rgba(255, 255, 255, .22); flex: none; }
+.brand-nba .pst-mark { display: none; }
+body[data-sport="nba"] .pst-word-main em { color: var(--nba-gold); }
+/* "En vivo" en rojo NBA */
+body[data-sport="nba"] .al-detail-at, body[data-sport="nba"] .is-live { color: #ff4d5e; }
+/* Cabecera: la cancha queda sobre negro; el degradado de lectura, a negro puro */
+body[data-sport="nba"] .pst-hero { background: #000; border-color: #1c1d22; }
+body[data-sport="nba"] .pst-hero-kicker { color: #8b94a7; }
+body[data-sport="nba"] .pst-hero-cta { background: var(--nba-gold); color: #0b0b0d; }
+body[data-sport="nba"] .pst-hero-cta--ghost { background: transparent; color: #fff; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .5); }
+@media (max-width: 768px) {
+  /* La cabecera crece con su texto (antes la fecha de arriba quedaba cortada) */
+  body[data-sport="nba"] .pst-hero { height: auto; min-height: 170px; }
+  body[data-sport="nba"] .pst-hero-info { position: relative; padding-top: 18px; }
+  .pst-nba-logo { height: 26px; }
+}

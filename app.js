@@ -4794,8 +4794,8 @@ function _alRenderHero() {
   const g = _alScope === 'game' && _alSelected ? _alGame(_alSelected) : null;
   const sim = g && [..._alRows(g.game_id)].some(r => r.dataset.state === 'simulating');
   const res = g ? _alGameResults[g.game_id] : null;
-  const away = g ? String((g.away && g.away.color) || '2b3a22') : '1a2414';
-  const home = g ? String((g.home && g.home.color) || '2b3a22') : '6e9b3f';
+  const away = g ? String((g.away && g.away.color) || '22252c') : '0e1a33';
+  const home = g ? String((g.home && g.home.color) || '22252c') : '1d428a';
 
   let info;
   if (_alScope === 'league') {

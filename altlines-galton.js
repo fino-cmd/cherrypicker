@@ -28,7 +28,7 @@
   const SOUND_KEY = 'al-sound';
   const BINS = 31;
   const ROWS = 13;
-  const GREEN = '166, 216, 111';   // verde pistacho
+  const GREEN = '253, 185, 39';    // dorado (el acento de NBA.com); se llama GREEN por historia
   // El tablero necesita unos segundos para contar su historia (la pila, la
   // curva fantasma, la cola que se enciende) aunque el motor termine antes.
   const MIN_BOARD_MS = 3500;
@@ -308,48 +308,78 @@
     backdrop(alpha) {
       const { x, w, h } = this;
       const g = x.createLinearGradient(0, 0, w, h);
-      g.addColorStop(0, hex(this.away, 0.22 * alpha));
-      g.addColorStop(0.5, 'rgba(10, 15, 22, 0)');
-      g.addColorStop(1, hex(this.home, 0.22 * alpha));
-      x.fillStyle = '#070a06'; x.fillRect(0, 0, w, h);
+      g.addColorStop(0, hex(this.away, 0.12 * alpha));
+      g.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+      g.addColorStop(1, hex(this.home, 0.12 * alpha));
+      x.fillStyle = '#000'; x.fillRect(0, 0, w, h);
       x.fillStyle = g; x.fillRect(0, 0, w, h);
     }
+    // Media cancha NBA con medidas reales (en pies), estilo pizarra de NBA.com:
+    // negro, grilla de puntos y líneas grises gruesas de punta redonda.
+    // Línea de fondo a la derecha; el aro a 5,25 pies de ella.
     drawCourt() {
       const { x, L } = this, B = this.courtB, f = this.ft, hx = this.hoopX, hy = this.hoopY;
       const top = hy - 25 * f, bot = hy + 25 * f, mid = this.midX, base = this.baseX;
-      // Parquet: tablas finas y una luz cálida sobre el aro.
+      const LINE = '#34363d';
+      const lw = Math.max(2, f * 0.32);
       x.save();
       x.beginPath(); x.rect(L, 0, this.w - L, B); x.clip();
-      x.fillStyle = '#120e0a'; x.fillRect(L, 0, this.w - L, B);
-      x.strokeStyle = 'rgba(255, 220, 170, 0.035)'; x.lineWidth = 1;
-      for (let y = 3; y < B; y += Math.max(5, f * 1.6)) { x.beginPath(); x.moveTo(L, y + .5); x.lineTo(this.w, y + .5); x.stroke(); }
-      const spot = x.createRadialGradient(hx, hy, 4, hx, hy, this.R3 * 1.3);
-      spot.addColorStop(0, 'rgba(255, 196, 120, 0.14)'); spot.addColorStop(1, 'rgba(255, 196, 120, 0)');
+      // Grilla de puntos (un punto por pie)
+      const step = Math.max(7, f * 1.25);
+      x.fillStyle = 'rgba(120, 124, 135, 0.22)';
+      for (let py = (hy % step); py < B; py += step) {
+        for (let px = base - Math.floor((base - L) / step) * step; px <= base; px += step) {
+          x.fillRect(px - 0.6, py - 0.6, 1.2, 1.2);
+        }
+      }
+      // Un leve resplandor del local bajo el aro
+      const spot = x.createRadialGradient(hx, hy, 4, hx, hy, this.R3 * 1.2);
+      spot.addColorStop(0, hex(this.home, 0.10)); spot.addColorStop(1, hex(this.home, 0));
       x.fillStyle = spot; x.fillRect(L, 0, this.w - L, B);
-      // Pintura (16 × 19 pies) con el color del local
-      x.fillStyle = hex(this.home, 0.3);
-      x.fillRect(base - 19 * f, hy - 8 * f, 19 * f, 16 * f);
-      x.strokeStyle = 'rgba(240, 235, 225, 0.6)'; x.lineWidth = 1.2;
-      x.strokeRect(mid, top, base - mid, bot - top);                                        // perímetro
-      x.strokeRect(base - 19 * f, hy - 8 * f, 19 * f, 16 * f);                              // pintura
-      x.beginPath(); x.arc(base - 19 * f, hy, 6 * f, Math.PI / 2, Math.PI * 1.5); x.stroke(); // tiro libre
-      x.setLineDash([3, 4]);
-      x.beginPath(); x.arc(base - 19 * f, hy, 6 * f, -Math.PI / 2, Math.PI / 2); x.stroke();
-      x.setLineDash([]);
-      // Triple: rectas en las esquinas (a 22 pies) y arco de 23,75
+
+      x.strokeStyle = LINE; x.lineWidth = lw; x.lineCap = 'round'; x.lineJoin = 'round';
+      const line = (x1, y1, x2, y2) => { x.beginPath(); x.moveTo(x1, y1); x.lineTo(x2, y2); x.stroke(); };
+      // Perímetro: línea de fondo, laterales y mitad de cancha
+      x.strokeRect(mid, top, base - mid, bot - top);
+      // Llave: 16 pies de ancho, 19 desde el fondo hasta la línea de libres
+      const ftX = base - 19 * f;
+      x.strokeRect(ftX, hy - 8 * f, 19 * f, 16 * f);
+      // Círculo de libres (6 pies): mitad hacia la cancha llena, la de adentro de la llave punteada
+      x.beginPath(); x.arc(ftX, hy, 6 * f, Math.PI / 2, Math.PI * 1.5); x.stroke();
+      x.save();
+      x.setLineDash([Math.max(4, f * 1.3), Math.max(5, f * 1.6)]);
+      x.beginPath(); x.arc(ftX, hy, 6 * f, -Math.PI / 2 + 0.12, Math.PI / 2 - 0.12); x.stroke();
+      x.restore();
+      // Marcas de la llave (espacios de los jugadores en los libres)
+      [7, 8, 11, 14].forEach(d => {
+        const mx = base - d * f;
+        line(mx, hy - 8 * f, mx, hy - 8.7 * f);
+        line(mx, hy + 8 * f, mx, hy + 8.7 * f);
+      });
+      // Zona restringida: semicírculo de 4 pies desde el centro del aro, con sus rectas al tablero
+      const bbX = base - 4 * f;
+      x.beginPath(); x.arc(hx, hy, 4 * f, -Math.PI / 2, Math.PI / 2, true); x.stroke();
+      line(hx, hy - 4 * f, bbX, hy - 4 * f);
+      line(hx, hy + 4 * f, bbX, hy + 4 * f);
+      // Triple: rectas en las esquinas (a 22 pies del aro, hasta 14 pies del fondo) y arco de 23,75
       const cy = 22 * f, ang = Math.asin(cy / this.R3), cornerX = hx - Math.cos(ang) * this.R3;
       x.beginPath(); x.moveTo(base, hy - cy); x.lineTo(cornerX, hy - cy);
       x.arc(hx, hy, this.R3, Math.PI + ang, Math.PI - ang, true);
       x.lineTo(base, hy + cy); x.stroke();
-      // Mitad de cancha y círculo central
+      // Marcas del lateral a 28 pies del fondo (zona de saque)
+      line(base - 28 * f, top, base - 28 * f, top + 3 * f);
+      line(base - 28 * f, bot, base - 28 * f, bot - 3 * f);
+      // Círculo central (6 pies) e interior (2 pies), cortados por la mitad de cancha
       x.beginPath(); x.arc(mid, hy, 6 * f, -Math.PI / 2, Math.PI / 2); x.stroke();
-      x.fillStyle = hex(this.away, 0.35);
-      x.beginPath(); x.arc(mid, hy, 2 * f, -Math.PI / 2, Math.PI / 2); x.fill();
+      x.beginPath(); x.arc(mid, hy, 2 * f, -Math.PI / 2, Math.PI / 2); x.stroke();
       x.restore();
-      // Tablero y aro
-      x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 2;
-      x.beginPath(); x.moveTo(base - 4 * f, hy - 3 * f); x.lineTo(base - 4 * f, hy + 3 * f); x.stroke();
-      x.strokeStyle = ORANGE; x.lineWidth = 1.8;
+      // Tablero (6 pies de ancho, a 4 del fondo) y aro (18 pulgadas)
+      x.lineCap = 'round';
+      x.strokeStyle = 'rgba(235, 238, 245, .85)'; x.lineWidth = Math.max(2, f * 0.3);
+      line(bbX, hy - 3 * f, bbX, hy + 3 * f);
+      x.strokeStyle = 'rgba(235, 238, 245, .5)'; x.lineWidth = Math.max(1, f * 0.12);
+      line(bbX, hy, hx - .75 * f, hy);
+      x.strokeStyle = ORANGE; x.lineWidth = Math.max(1.6, f * 0.16);
       x.beginPath(); x.arc(hx, hy, Math.max(4, .75 * f), 0, Math.PI * 2); x.stroke();
     }
     drawBoard(dt) {

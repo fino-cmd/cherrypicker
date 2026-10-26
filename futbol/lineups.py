@@ -123,7 +123,9 @@ def fill_positions(squad: list[dict], players) -> list[dict]:
     if not miss or players is None or getattr(players, "empty", True):
         return squad
     st = players[players["player_id"].astype(str).isin(miss) & (players["starter"] == 1)]
-    st = st[~st["pos"].map(_no_pos)].sort_values("date")
+    if st.empty:                       # nadie con historia de titular: queda como vino
+        return squad
+    st = st.loc[~st["pos"].map(_no_pos).astype(bool)].sort_values("date")
     usual = {str(pid): g["pos"].tail(8).mode().iloc[-1] for pid, g in st.groupby("player_id")}
     from .espn import position_group
     out = []

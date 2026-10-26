@@ -293,12 +293,13 @@
     if (!el) return;
     if (!state.data) { el.innerHTML = ''; return; }
     const o = oddsAgeTxt();
-    const busy = state.loading || state.sim.running || state.sim.remote;
+    const oddsBusy = state.oddsBusy || state.sim.remote === 'odds';
+    const busy = state.loading || state.sim.running || state.sim.remote || oddsBusy;
     const list = usageList();
     el.innerHTML = `
       <div class="fb-hud">
         <span class="fb-hud-odds${o.old ? ' is-old' : ''}${busy ? ' is-busy' : ''}" title="Jornada calculada ${esc(ago(state.data.generated_at))}">
-          <i></i><span><small>${busy ? 'Calculando' : 'Cuotas'}</small><b>${busy ? (state.loading ? 'Recalculando…' : 'Simulando…') : esc(o.t.replace('Cuotas de ', ''))}</b></span>
+          <i></i><span><small>${busy ? 'Calculando' : 'Cuotas'}</small><b>${busy ? (state.loading ? 'Recalculando…' : oddsBusy ? 'Pidiendo cuotas…' : 'Simulando…') : esc(o.t.replace('Cuotas de ', ''))}</b></span>
         </span>
         ${list.length ? `
         <button class="fb-hud-credits${state.creditsOpen ? ' is-on' : ''}" data-credits="1" aria-expanded="${!!state.creditsOpen}" aria-label="Créditos de las APIs">
@@ -319,7 +320,7 @@
         <div class="fb-menu" role="menu">
           <div class="fb-menu-meta"><b>Jornada</b><span>Calculada ${esc(ago(state.data.generated_at))} · ${esc(o.t.toLowerCase())}</span></div>
           <button role="menuitem" data-act="refresh" ${state.loading ? 'disabled' : ''}>${I.refresh}<span><b>Recalcular la jornada</b><small>ESPN + 20.000 simulaciones por partido. Si las cuotas tienen más de 3 h, también las pide.</small></span></button>
-          <button role="menuitem" data-act="odds" ${state.loading ? 'disabled' : ''}>${I.coin}<span><b>Cuotas nuevas</b><small>bet365, Betano y Betsson. Gasta 3 consultas de OddsPapi.</small></span></button>
+          <button role="menuitem" data-act="odds" ${state.loading || oddsBusy ? 'disabled' : ''}>${I.coin}<span><b>${oddsBusy ? 'Pidiendo cuotas…' : 'Cuotas nuevas'}</b><small>bet365, Betano y Betsson. Gasta 3 consultas de OddsPapi.</small></span></button>
           <button role="menuitem" data-act="sync">${I.swap}<span><b>Sincronizar ahora</b><small>Trae lo último que hiciste en otro dispositivo.</small></span></button>
         </div>` : ''}
       </div>`;
@@ -369,6 +370,33 @@
     });
   }
 
+  // "Cuotas nuevas": una sola a la vez, y no se repite si son recientes.
+  async function refreshOdds() {
+    if (state.oddsBusy) return;
+    state.oddsBusy = true; render();
+    toast(`${I.coin}<span><b>Pidiendo cuotas</b>bet365, Betano y Betsson · tarda alrededor de 1 minuto. Podés seguir usando la app.</span>`);
+    try {
+      const r = await fetch(`${apiBase()}/api/futbol/odds/refresh`, { method: 'POST' });
+      const res = await r.json().catch(() => ({}));
+      if (r.status === 409) { toast(`<span><b>Ya se están pidiendo cuotas</b>Esperá a que termine el pedido anterior.</span>`); return; }
+      if (!r.ok) throw new Error(res.detail || `HTTP ${r.status}`);
+      const oi = res.odds || {};
+      if (!oi.refreshed) {
+        const age = oi.age_s == null ? '' : `${Math.max(1, Math.round(oi.age_s / 60))} min`;
+        toast(`<span><b>No hizo falta pedir cuotas</b>Las que hay son de hace ${age}: pedir otras gastaría 3 consultas para lo mismo.</span>`);
+        return;
+      }
+      state.data = await fetchJornada('');
+      state.ver = null;
+      const pk = res.picks || {};
+      toast(`${I.check}<span><b>Cuotas nuevas</b>Jornada repreciada · ${pk.before ?? '–'} → ${pk.after ?? '–'} jugadas · ${oi.today}/${oi.cap} actualizaciones hoy</span>`);
+    } catch (e) {
+      toast(`<span><b>No se pudieron pedir cuotas</b>${esc(e.message || String(e))}</span>`);
+    } finally {
+      state.oddsBusy = false; render(); loadUsage(true);
+    }
+  }
+
   async function onTool(act) {
     if (state.loading) return;
     const o = (state.data && state.data.odds) || {};
@@ -376,10 +404,10 @@
     if (act === 'odds') {
       const ok = await confirmDialog({
         title: 'Pedir cuotas nuevas',
-        body: `Se piden cuotas a OddsPapi para bet365 AR, Betano y Betsson. Gasta <b>${cost} consultas</b> del plan de ${plan} por mes. Después se recalcula la jornada (tarda un par de minutos).`,
+        body: `Se piden cuotas a OddsPapi para bet365 AR, Betano y Betsson. Gasta <b>${cost} consultas</b> del plan de ${plan} por mes. Después se reprecian todas las jugadas con las probabilidades ya simuladas (tarda alrededor de 1 minuto).`,
         ok: `Sí, gastar ${cost}`,
       });
-      if (ok) load('?refresh_odds=true').then(() => loadUsage(true));
+      if (ok) refreshOdds();
     } else {
       if (o.would_fetch) {
         const ok = await confirmDialog({
@@ -837,6 +865,47 @@
   // No bloquea la app: la tarjeta del partido muestra su barra de progreso,
   // se puede seguir navegando y encolar otros; al terminar avisa.
   const simState = (id) => (state.sim.running === id || state.sim.remote === id) ? 'running' : state.sim.queue.includes(id) ? 'queued' : null;
+  // "Qué cambió" con el último Simular: queda guardado en el partido (se ve en
+  // todos los dispositivos) hasta la próxima vez.
+  function lastSimBlock(m) {
+    const ls = m.last_sim;
+    if (!ls || simState(m.event_id)) return '';
+    const h = m.teams.home, a = m.teams.away;
+    const t = ls.teams || {};
+    const mv = (x) => {
+      if (!x) return '–';
+      const d = x.after - x.before;
+      return Math.abs(d) < 0.05 ? `<b>${num1(x.after)}</b> <i>igual</i>` : `${num1(x.before)} → <b>${num1(x.after)}</b> <i class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${num1(Math.abs(d))}</i>`;
+    };
+    const oi = ls.odds || {};
+    const oage = oi.age_s == null ? '–' : (oi.age_s < 3600 ? `${Math.max(1, Math.round(oi.age_s / 60))} min` : `${Math.round(oi.age_s / 3600)} h`);
+    const oddsTxt = oi.refreshed ? `nuevas (${oi.today}/${oi.cap} hoy)` : oi.reason === 'cap' ? `de hace ${oage} · tope diario alcanzado` : `de hace ${oage}`;
+    const pk = (k) => `${esc(surname(k.player))} · ${esc(lineLabel(k.stat, k.line))}${k.price ? ` · ${esc(bookName(k.book))} ${odd(k.price)}` : ''}`;
+    const head = ls.mode === 'skipped' ? 'Nada nuevo para simular'
+      : ls.mode === 'repriced' ? 'Solo cambiaron las cuotas' : 'Qué cambió';
+    const sub = ls.mode === 'skipped' ? 'Misma formación, mismas cuotas y mismo modelo: el resultado sería idéntico, así que no se volvió a simular.'
+      : ls.mode === 'repriced' ? 'La formación no cambió, así que no se volvió a simular: se reprecian las jugadas con las cuotas nuevas.'
+      : '20.000 partidos simulados con los datos de ahora.';
+    const rows = [
+      `<li><span>Formación</span><em>${ls.lineup.before === ls.lineup.after ? esc(ls.lineup.after) : `${esc(ls.lineup.before)} → <b>${esc(ls.lineup.after)}</b>`}</em></li>`,
+      `<li><span>Cuotas</span><em>${oddsTxt}</em></li>`,
+      ls.mode === 'simulated' ? `<li><span>Remates ${esc(h.abbr)}</span><em>${mv((t.home || {}).shots)}</em></li><li><span>Remates ${esc(a.abbr)}</span><em>${mv((t.away || {}).shots)}</em></li>` : '',
+      `<li><span>Jugadas</span><em>${ls.picks_before === ls.picks_after ? `<b>${ls.picks_after}</b> <i>igual</i>` : `${ls.picks_before} → <b>${ls.picks_after}</b>`}</em></li>`,
+    ].join('');
+    const lists = [
+      ls.added && ls.added.length ? `<p class="fb-chg-add"><span>Entran</span>${ls.added.map(pk).join('<br>')}</p>` : '',
+      ls.removed && ls.removed.length ? `<p class="fb-chg-del"><span>Salen</span>${ls.removed.map(pk).join('<br>')}</p>` : '',
+      ls.changed && ls.changed.length ? `<p class="fb-chg-mod"><span>Otra cuota</span>${ls.changed.map(k => `${pk(k)} <i>(antes ${odd(k.price_before)})</i>`).join('<br>')}</p>` : '',
+    ].join('');
+    return `
+      <div class="fb-chg fb-chg--${esc(ls.mode)} lg-${esc(m.league)}">
+        <div class="fb-chg-head"><b>${head}</b><small>${esc(ago(ls.at))}</small></div>
+        <p class="fb-chg-sub">${sub}</p>
+        <ul>${rows}</ul>
+        ${lists}
+      </div>`;
+  }
+
   function simControl(m, big = false) {
     const st = simState(m.event_id);
     if (st === 'running') {
@@ -902,7 +971,13 @@
       const otx = oi.refreshed ? ` · cuotas nuevas (${oi.today}/${oi.cap} hoy), jornada repreciada`
         : oi.reason === 'cap' ? ` · cuotas de hace ${oage}: ya se actualizaron ${oi.cap} veces hoy`
         : oage ? ` · cuotas de hace ${oage}` : '';
-      toast(`${I.check}<span><b>Simulación lista · ${esc(name)}</b>${lu} · remates ${delta('home')} / ${delta('away')} · ${a.picks} jugada${a.picks === 1 ? '' : 's'}${otx} <u>Ver partido</u></span>`, id);
+      if (res.mode === 'skipped') {
+        toast(`<span><b>Nada nuevo para simular · ${esc(name)}</b>Misma formación (${esc((res.last_sim || {}).lineup?.after || '')}) y cuotas de hace ${oage || '–'}: el resultado sería idéntico. <u>Ver partido</u></span>`, id);
+      } else if (res.mode === 'repriced') {
+        toast(`${I.check}<span><b>Jugadas repreciadas · ${esc(name)}</b>La formación no cambió: no hacía falta simular. Con las cuotas nuevas: ${b.picks} → ${a.picks} jugada${a.picks === 1 ? '' : 's'}. <u>Ver partido</u></span>`, id);
+      } else {
+        toast(`${I.check}<span><b>Simulación lista · ${esc(name)}</b>${lu} · remates ${delta('home')} / ${delta('away')} · ${a.picks} jugada${a.picks === 1 ? '' : 's'}${otx} <u>Ver partido</u></span>`, id);
+      }
     } catch (e) {
       toast(`<span><b>No se pudo simular ${esc(name)}</b>${esc(e.message || String(e))}</span>`);
     } finally {
@@ -979,6 +1054,7 @@
       <div class="fb-fxp">
         <div class="fb-fxp-top">
           ${simControl(m)}
+          ${lastSimBlock(m)}
           <button class="fb-fxp-open" data-ev="${esc(m.event_id)}">Ver partido completo ${I.back}</button>
         </div>
         ${m.computed_at ? `<div class="fb-simage">${I.clock}Simulado ${esc(ago(m.computed_at))}${m.custom_lineup ? ' · con tu alineación' : m.lineup_confirmed ? ' · con formación confirmada' : ' · con formaciones probables'}</div>` : ''}
@@ -1537,6 +1613,7 @@
       ${leagueBand(m)}
       ${duel(m)}
       ${simControl(m, true)}
+      ${lastSimBlock(m)}
       <div class="fb-match-flags">
         ${luPending(m)
           ? `<span class="fb-flag fb-flag--new fb-flag--lu">${I.check}Salió la alineación oficial · tocá <b>Simular partido</b> para recalcular con ella</span>`

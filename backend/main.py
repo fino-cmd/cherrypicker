@@ -5206,6 +5206,25 @@ def get_futbol_jornada(refresh: bool = False, refresh_odds: bool = False,
 
 # "Simular partido": vuelve a simular un solo partido (formación al día de
 # ESPN, cuotas guardadas: no gasta OddsPapi).
+@app.post("/api/futbol/odds/refresh")
+def refresh_futbol_odds():
+    """Cuotas nuevas ya (3 consultas de OddsPapi) y repreciar la jornada, sin simular."""
+    from futbol import run as frun
+    if not _fb_lock.acquire(timeout=90):
+        raise HTTPException(409, "El servidor está ocupado, probá en un minuto")
+    _fb_status.update(running="odds", since=time.time())
+    try:
+        out = frun.refresh_and_reprice(force=True)
+        _fb_usage_cache["t"] = 0.0
+        return out
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("POST /api/futbol/odds/refresh error: %s", e)
+        raise HTTPException(500, str(e))
+    finally:
+        _fb_status.update(running=None, since=None)
+        _fb_lock.release()
+
+
 @app.post("/api/futbol/simulate")
 def simulate_futbol_custom(event_id: str, body: dict = Body(...)):
     """Modo DT: simula el partido con la alineación que armó el usuario."""

@@ -122,8 +122,42 @@ def fetch_book(book: str, refresh: bool = False, allow_fetch: bool = True) -> li
                 bo[bk] = {"markets": ms}
         keep["bookmakerOdds"] = bo
         slim.append(keep)
+    slim = _keep_through_suspension(slim, f)
     f.write_text(json.dumps(slim), encoding="utf-8")
     return slim
+
+
+KEEP_SUSPENDED_MAX_S = 6 * 3600
+
+
+def _has_live_players(fx: dict) -> bool:
+    """¿Hay alguna cuota de jugador activa (no suspendida) en este partido?"""
+    for b in (fx.get("bookmakerOdds") or {}).values():
+        for m in (b.get("markets") or {}).values():
+            for o in (m.get("outcomes") or {}).values():
+                for pl in (o.get("players") or {}).values():
+                    if pl.get("playerName") and pl.get("active", True) and pl.get("price"):
+                        return True
+    return False
+
+
+def _keep_through_suspension(new: list[dict], f) -> list[dict]:
+    """bet365 suspende TODO el partido un rato antes de empezar (cuando salen
+    las formaciones). Si justo en ese momento se bajan las cuotas, el partido
+    queda sin precios. En ese caso se conservan las de la descarga anterior
+    (si tienen menos de KEEP_SUSPENDED_MAX_S) y se marca de cuándo son."""
+    if not f.exists() or time.time() - f.stat().st_mtime > KEEP_SUSPENDED_MAX_S:
+        return new
+    try:
+        old = {fx["fixtureId"]: fx for fx in json.loads(f.read_text(encoding="utf-8"))}
+    except Exception:  # noqa: BLE001
+        return new
+    old_at = datetime.fromtimestamp(f.stat().st_mtime).isoformat(timespec="seconds")
+    for i, fx in enumerate(new):
+        prev = old.get(fx.get("fixtureId"))
+        if prev and not _has_live_players(fx) and _has_live_players(prev):
+            new[i] = {**fx, "bookmakerOdds": prev["bookmakerOdds"], "kept_from": prev.get("kept_from") or old_at}
+    return new
 
 
 def parse(data: list[dict], book: str) -> pd.DataFrame:
@@ -201,6 +235,18 @@ def cache_age_s() -> float | None:
             return None
         ages.append(time.time() - f.stat().st_mtime)
     return max(ages) if ages else None
+
+
+def cache_stamp() -> int | None:
+    """Marca de las cuotas guardadas (cambia con cada descarga)."""
+    ids = "_".join(str(v["oddspapi"]) for v in cfg.LEAGUES.values())
+    ts = []
+    for book in cfg.BOOKS:
+        f = DIR / f"odds_{book}_{ids}.json"
+        if not f.exists():
+            return None
+        ts.append(int(f.stat().st_mtime))
+    return max(ts)
 
 
 def maybe_refresh(max_age_s: float | None = None, day_cap: int | None = None) -> dict:

@@ -20,6 +20,7 @@ Salida: consola + data/futbol/jornada.json (lo lee la app).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -517,6 +518,84 @@ def _custom_squad(old: dict, custom: dict) -> list[dict]:
     return squad
 
 
+# Cambiá esto cuando cambie el modelo: obliga a volver a simular todo.
+MODEL_VERSION = "2026-10-25-sub"
+MANUAL_MIN_AGE_S = 10 * 60          # "Cuotas nuevas" no vuelve a pedir si tienen menos de 10'
+
+
+def _lineup_fp(m: dict, custom: dict | None) -> str:
+    if custom:
+        return "custom:" + hashlib.sha1(json.dumps(custom, sort_keys=True).encode()).hexdigest()[:12]
+    st = sorted(str(s["player_id"]) for s in (m.get("official_squad") or []) if s.get("starter"))
+    return ("official:" + ",".join(st)) if st else "probable"
+
+
+def _model_fp() -> str:
+    return f"{MODEL_VERSION}|{datetime.now().strftime('%Y-%m-%d')}"   # día nuevo = historia nueva
+
+
+def _lineup_label(m: dict, custom: bool = False) -> str:
+    if custom or m.get("custom_lineup"):
+        return "tu alineación"
+    if m.get("lineup_confirmed"):
+        src = m.get("lineup_source")
+        return "oficial" + (f" ({'API-Football' if src == 'api-football' else 'ESPN'})" if src else "")
+    return "probable"
+
+
+def _pick_key(k: dict) -> tuple:
+    return (k["player_id"], k["stat"], k["line"], k.get("mode", "normal"))
+
+
+def _pick_brief(k: dict) -> dict:
+    return {"player": k["player"], "stat": k["stat"], "line": k["line"], "mode": k.get("mode", "normal"),
+            "p": k.get("p_model"), "book": k.get("best_book"), "price": k.get("best_price")}
+
+
+def _last_sim(mode: str, old: dict, new: dict, old_picks: list, new_picks: list, odds_info: dict,
+              custom: bool = False) -> dict:
+    """Lo que cambió con este "Simular", para mostrarlo debajo del botón."""
+    ok, nk = {_pick_key(k): k for k in old_picks}, {_pick_key(k): k for k in new_picks}
+    return {
+        "mode": mode, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "lineup": {"before": _lineup_label(old), "after": _lineup_label(new, custom)},
+        "odds": {k: odds_info.get(k) for k in ("refreshed", "reason", "age_s", "today", "cap")},
+        "teams": {sd: {st: {"before": old["teams"][sd][st], "after": new["teams"][sd][st]} for st in ("shots", "sot")}
+                  for sd in ("home", "away")},
+        "picks_before": len(old_picks), "picks_after": len(new_picks),
+        "added": [_pick_brief(nk[k]) for k in nk if k not in ok][:6],
+        "removed": [_pick_brief(ok[k]) for k in ok if k not in nk][:6],
+        "changed": [{**_pick_brief(nk[k]), "price_before": ok[k].get("best_price")}
+                    for k in nk if k in ok and nk[k].get("best_price") != ok[k].get("best_price")][:6],
+    }
+
+
+def refresh_and_reprice(force: bool = False) -> dict:
+    """Cuotas nuevas (si hace falta, o siempre con force) y repreciar toda la
+    jornada con las probabilidades guardadas. No simula."""
+    info = {"refreshed": False}
+    age = op.cache_age_s()
+    if force and age is not None and age < MANUAL_MIN_AGE_S:
+        return {"odds": {"refreshed": False, "reason": "recent", "age_s": round(age),
+                         "today": op.refreshes_today(), "cap": cfg.ODDS_REFRESH_DAY_CAP}, "picks": None}
+    if force:
+        op.fetch_all(refresh=True)
+        info = {"refreshed": op._FETCHED[0], "reason": "forced", "age_s": op.cache_age_s(),
+                "today": op.refreshes_today(), "cap": cfg.ODDS_REFRESH_DAY_CAP}
+    else:
+        info = op.maybe_refresh()
+    if not info.get("refreshed"):
+        return {"odds": info, "picks": None}
+    result = json.loads(JORNADA.read_text(encoding="utf-8"))
+    odds = _book_table(op.fetch_all(allow_fetch=False))
+    _, players = espn.build_history(result.get("leagues") or list(cfg.LEAGUES), verbose=False)
+    before = len(result["picks"])
+    new = _reprice(result, odds, players=players)
+    _save(result)
+    _log_picks(new)
+    return {"odds": info, "picks": {"before": before, "after": len(result["picks"])}}
+
+
 def simulate_one(event_id: str, custom: dict | None = None) -> dict:
     """Vuelve a simular UN partido de la jornada: le pregunta a ESPN si ya
     salió la formación y usa las cuotas guardadas (no gasta OddsPapi).
@@ -530,13 +609,53 @@ def simulate_one(event_id: str, custom: dict | None = None) -> dict:
     ev = old["ev"]
     old_picks = sum(1 for k in result["picks"] if k["event_id"] == event_id)
     # La alineación oficial que ya encontró el vigía (ESPN o API-Football); si no, se pregunta a ESPN.
-    squad = _custom_squad(old, custom) if custom else (old.get("official_squad") or espn.lineup(ev))
+    old_pk = [k for k in result["picks"] if k["event_id"] == event_id]
     # Cuotas al día para comparar: si tienen más de 90' se piden de nuevo (3
     # consultas, todas las ligas), con tope diario. Si no, se usan las guardadas.
     try:
         odds_info = op.maybe_refresh()
     except Exception as exc:  # noqa: BLE001 - sin red o sin cupo: se simula con las guardadas
         odds_info = {"refreshed": False, "reason": f"error: {exc}", "age_s": op.cache_age_s()}
+    if not custom and not old.get("official_squad"):
+        # ¿ESPN ya tiene la formación? (gratis) — si salió, es algo nuevo.
+        sq_now = espn.lineup(ev)
+        if len(_teams_with_xi(old, sq_now)) == 2:
+            old = {**old, "official_squad": sq_now, "lineup_official": True, "lineup_source": "espn"}
+    fp = {"lineup": _lineup_fp(old, custom), "model": _model_fp(), "odds": op.cache_stamp()}
+    prev = old.get("sim_inputs") or {}
+    same_sim = prev.get("lineup") == fp["lineup"] and prev.get("model") == fp["model"]
+    if same_sim:
+        if prev.get("odds") == fp["odds"]:
+            # Nada nuevo: misma formación, mismo modelo y mismas cuotas → el
+            # resultado sería idéntico (la simulación es reproducible).
+            ls = _last_sim("skipped", old, old, old_pk, old_pk, odds_info, bool(custom))
+            for x in result["matches"]:
+                if x["event_id"] == event_id:
+                    x["last_sim"] = ls
+            _save(result)
+            return {"mode": "skipped", "custom": bool(custom), "odds": odds_info, "last_sim": ls,
+                    "before": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
+                               "lineup_confirmed": old.get("lineup_confirmed"), "picks": old_picks},
+                    "after": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
+                              "lineup_confirmed": old.get("lineup_confirmed"), "picks": old_picks},
+                    "n_sim": 0}
+        # Sólo cambiaron las cuotas: se reprecia (toda la jornada) sin simular.
+        odds = _book_table(op.fetch_all(allow_fetch=False))
+        _, players = espn.build_history(result.get("leagues") or list(cfg.LEAGUES), verbose=False)
+        new_all = _reprice(result, odds, players=players)
+        new_pk = [k for k in new_all if k["event_id"] == event_id]
+        m_now = next(x for x in result["matches"] if x["event_id"] == event_id)
+        m_now["sim_inputs"] = {**prev, "odds": fp["odds"]}
+        m_now["last_sim"] = ls = _last_sim("repriced", old, m_now, old_pk, new_pk, odds_info, bool(custom))
+        _save(result)
+        _log_picks(new_all)
+        return {"mode": "repriced", "custom": bool(custom), "odds": odds_info, "last_sim": ls,
+                "before": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
+                           "lineup_confirmed": old.get("lineup_confirmed"), "picks": old_picks},
+                "after": {"teams": {s_: {k: m_now["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
+                          "lineup_confirmed": m_now.get("lineup_confirmed"), "picks": len(new_pk)},
+                "n_sim": 0}
+    squad = _custom_squad(old, custom) if custom else (old.get("official_squad") or espn.lineup(ev))
     ctx = _context([ev["league"]], False, cfg.N_SIM, allow_fetch=False)
     match, mp = simulate_event(ev, ctx, squad)
     if custom:
@@ -549,6 +668,8 @@ def simulate_one(event_id: str, custom: dict | None = None) -> dict:
     elif old.get("official_squad"):
         match.update(official_squad=old["official_squad"], lineup_official=True,
                      lineup_source=old.get("lineup_source"), lineup_official_at=old.get("lineup_official_at"))
+    match["sim_inputs"] = fp
+    match["last_sim"] = _last_sim("simulated", old, match, old_pk, mp, odds_info, bool(custom))
     result["matches"] = [match if x["event_id"] == event_id else x for x in result["matches"]]
     result["picks"] = [k for k in result["picks"] if k["event_id"] != event_id] + mp
     repriced = []
@@ -560,7 +681,7 @@ def simulate_one(event_id: str, custom: dict | None = None) -> dict:
         _log_picks(mp)
     if repriced:
         _log_picks(repriced)
-    return {"custom": bool(custom), "odds": odds_info, "before": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
+    return {"mode": "simulated", "custom": bool(custom), "odds": odds_info, "last_sim": match["last_sim"], "before": {"teams": {s_: {k: old["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},
                        "lineup_confirmed": old.get("lineup_confirmed"),
                        "picks": old_picks},
             "after": {"teams": {s_: {k: match["teams"][s_][k] for k in ("shots", "sot")} for s_ in ("home", "away")},

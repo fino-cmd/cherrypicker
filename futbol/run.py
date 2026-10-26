@@ -720,7 +720,7 @@ def _print_picks(picks: list[dict]) -> None:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Panorama de remates de la jornada")
-    ap.add_argument("--leagues", default="arg,bra,eng")
+    ap.add_argument("--leagues", default="arg,bra,eng,ita")
     ap.add_argument("--days", type=int, default=4)
     ap.add_argument("--refresh-odds", action="store_true", help="volver a pedir cuotas (gasta 3 consultas)")
     ap.add_argument("--no-lineups", action="store_true")

@@ -179,7 +179,7 @@ def report(df: pd.DataFrame) -> None:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Backtest walk-forward del modelo de remates")
-    ap.add_argument("--leagues", default="arg,bra,eng")
+    ap.add_argument("--leagues", default="arg,bra,eng,ita")
     ap.add_argument("--since", default=None, help="fecha de inicio del período de prueba")
     ap.add_argument("--n-sim", type=int, default=4000)
     ap.add_argument("--raw-team", action="store_true", help="sin la calibración de equipos (para comparar)")

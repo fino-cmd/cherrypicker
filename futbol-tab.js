@@ -20,6 +20,7 @@
     { id: 'arg', name: 'Liga Profesional de Fútbol', short: 'LPF', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/1.png' },
     { id: 'bra', name: 'Brasileirão Série A', short: 'Série A', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/85.png' },
     { id: 'eng', name: 'Premier League', short: 'PL', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png' },
+    { id: 'ita', name: 'Serie A', short: 'Italia', logo: 'assets/ita/mark-seriea.png' },
   ];
   // Lockup de la LPF: escudo | LIGA / PROFESIONAL / DE FÚTBOL (como el oficial).
   const lpfLockup = (cls = '') => `<span class="fb-lpf-lockup ${cls}"><img src="https://a.espncdn.com/i/leaguelogos/soccer/500-dark/1.png" alt="LPF"><i></i><b>Liga<br>Profesional<br>de Fútbol</b></span>`;
@@ -28,6 +29,7 @@
   function leagueHero(lg) {
     if (lg === 'arg') return `<div class="fb-lpf-hero">${lpfLockup('is-lg')}<span class="fb-lpf-tag">Torneo Clausura 2026</span></div>`;
     if (lg === 'eng') return `<div class="fb-pl-hero"><img src="${PL_LOGO}" alt="Premier League"><b>Premier League <span>Partidos 2026/27</span></b></div>`;
+    if (lg === 'ita') return `<div class="fb-ita-hero"><span class="fb-ita-tile"><img src="assets/ita/logo-seriea.png" alt="Serie A Enilive"></span><span class="fb-ita-txt"><em>Serie A Enilive</em><b>Serie A</b><small>Temporada 2026/27</small></span></div>`;
     if (lg === 'bra') return `<div class="fb-bra-hero"><span class="fb-bra-crest"><img src="assets/bra/cbf.png" alt="CBF"></span><span class="fb-bra-txt"><em>Série A</em><b>Campeonato Brasileiro</b></span></div>`;
     return '';
   }
@@ -35,6 +37,7 @@
     const when = `<em>${esc(dayLabel(m.date))} · ${hhmm(m.date)}</em>`;
     if (m.league === 'arg') return `<div class="fb-lpf-band">${lpfLockup()}<span class="fb-lpf-sep"></span><b>Torneo Clausura 2026</b>${when}</div>`;
     if (m.league === 'eng') return `<div class="fb-pl-band"><img src="${PL_LOGO}" alt="Premier League"><b>Premier League</b><span>2026/27</span>${when}</div>`;
+    if (m.league === 'ita') return `<div class="fb-ita-band"><span class="fb-ita-tile"><img src="assets/ita/logo-seriea.png" alt="Serie A Enilive"></span><span class="fb-ita-tag">Serie A Enilive</span><i>2026/27</i>${when}</div>`;
     if (m.league === 'bra') return `<div class="fb-bra-band"><span class="fb-bra-crest"><img src="assets/bra/cbf.png" alt="CBF"></span><b>Campeonato Brasileiro</b><i>Série A</i>${when}</div>`;
     return '';
   }
@@ -101,7 +104,19 @@
     const s = d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' });
     return s.charAt(0).toUpperCase() + s.slice(1).replace('.', '');
   }
-  const logo = (id) => `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(id)}.png`;
+  const ITA_CRESTS = new Set(['ATA', 'BOL', 'CAG', 'COMO', 'FIO', 'FRO', 'GEN', 'INT', 'JUV', 'LAZ', 'LEC', 'MIL', 'MON', 'NAP', 'PAR', 'ROMA', 'SAS', 'TOR', 'UDI', 'VEN']);
+  const crestById = {};          // equipo de la Serie A → escudo oficial (lo llena noteCrests)
+  function noteCrests(data) {
+    (data && data.matches || []).forEach(m => {
+      if (m.league !== 'ita') return;
+      ['home', 'away'].forEach(sd => {
+        const t = m.teams[sd];
+        if (t && ITA_CRESTS.has(t.abbr)) crestById[t.team_id] = `assets/ita/crests/${t.abbr}.webp`;
+      });
+    });
+    return data;
+  }
+  const logo = (id) => crestById[id] || `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(id)}.png`;
   const bookName = (id) => (BOOKS.find(b => b.id === id) || { name: id }).name;
   // Logo de cada casa (recortes oficiales en assets/books; Betsson, en texto hasta tener su logo).
   const BOOK_LOGO = { 'bet365.bet.ar': 'assets/books/bet365.png', betano: 'assets/books/betano.png' };
@@ -151,7 +166,7 @@
       try { msg = (await r.json()).detail || msg; } catch (_) { /* nada */ }
       throw new Error(msg);
     }
-    return r.json();
+    return noteCrests(await r.json());
   }
 
   async function loadResults() {
@@ -1120,8 +1135,8 @@
           <img class="fb-fx-lg" src="${leagueOf(m.league).logo}" alt="${esc(leagueOf(m.league).short)}" title="${esc(leagueOf(m.league).name)}">
         </span>
         <span class="fb-fx-teams">
-          <span class="fb-fx-row${fav === 'home' ? ' is-fav' : ''}"><img src="${logo(h.team_id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><b>${esc(h.name)}</b><em>${num1(h.shots)}</em></span>
-          <span class="fb-fx-row${fav === 'away' ? ' is-fav' : ''}"><img src="${logo(a.team_id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><b>${esc(a.name)}</b><em>${num1(a.shots)}</em></span>
+          <span class="fb-fx-row${fav === 'home' ? ' is-fav' : ''}"><img src="${logo(h.team_id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><b title="${esc(h.name)}">${esc(m.league === 'ita' ? h.abbr : h.name)}</b><em>${num1(h.shots)}</em></span>
+          <span class="fb-fx-row${fav === 'away' ? ' is-fav' : ''}"><img src="${logo(a.team_id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><b title="${esc(a.name)}">${esc(m.league === 'ita' ? a.abbr : a.name)}</b><em>${num1(a.shots)}</em></span>
         </span>
         <span class="fb-fx-bar" aria-hidden="true"><i style="height:${Math.round(share * 100)}%"></i></span>
         <span class="fb-fx-tags">
@@ -1659,7 +1674,7 @@
     const opened = !m && state.league === 'all' && ['recs', 'mine', 'matches'].includes(state.view)
       && state.lastOpen && state.fxOpen.has(state.lastOpen) ? matchById(state.lastOpen) : null;
     const theme = m ? m.league : state.league !== 'all' ? state.league : opened ? opened.league : null;
-    ['eng', 'arg', 'bra'].forEach(id => document.body.classList.toggle(`lg-${id}`, theme === id));
+    ['eng', 'arg', 'bra', 'ita'].forEach(id => document.body.classList.toggle(`lg-${id}`, theme === id));
     const view = m ? matchView(m)
       : state.view === 'recs' ? recsView()
       : state.view === 'mine' ? mineView()
@@ -1835,7 +1850,7 @@
     const m = evId && matchById(evId);
     if (m) return m.league;
     if (state.league && state.league !== 'all') return state.league;
-    const b = (document.body.className.match(/lg-(arg|bra|eng)/) || [])[1];
+    const b = (document.body.className.match(/\blg-(arg|bra|eng|ita)\b/) || [])[1];
     return b || null;
   }
   function toast(html, evId, lg = null) {
@@ -1937,7 +1952,7 @@
 
   // El tema de liga vive en <body>: se saca al ir a MLB / NBA.
   new MutationObserver(() => {
-    if (document.body.dataset.sport !== 'futbol') ['eng', 'arg', 'bra'].forEach(id => document.body.classList.remove(`lg-${id}`));
+    if (document.body.dataset.sport !== 'futbol') ['eng', 'arg', 'bra', 'ita'].forEach(id => document.body.classList.remove(`lg-${id}`));
   }).observe(document.body, { attributes: true, attributeFilter: ['data-sport'] });
 
   window.loadFutbol = function loadFutbol() {

@@ -45,6 +45,7 @@ FDCO_FILES = {
     "arg": ["new/ARG.csv"],
     "bra": ["new/BRA.csv"],
     "eng": ["mmz4281/2425/E0.csv", "mmz4281/2526/E0.csv", "mmz4281/2627/E0.csv"],
+    "ita": ["mmz4281/2425/I1.csv", "mmz4281/2526/I1.csv", "mmz4281/2627/I1.csv"],
 }
 SPLIT = "2026-04-01"            # β se mide antes; se evalúa después (como calibrate.py)
 GOAL_HALFLIFE_DAYS = 120.0
@@ -332,7 +333,7 @@ def main(argv=None):
         except Exception:  # noqa: BLE001
             pass
     ap = argparse.ArgumentParser(description="Mide el ancla del mercado del partido")
-    ap.add_argument("--leagues", default="arg,bra,eng")
+    ap.add_argument("--leagues", default="arg,bra,eng,ita")
     ap.add_argument("--no-save", action="store_true")
     a = ap.parse_args(argv)
     res = study(a.leagues.split(","))

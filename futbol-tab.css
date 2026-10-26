@@ -2983,3 +2983,223 @@ body.lg-arg #section-futbol .fb-flag--warn, body.lg-eng #section-futbol .fb-flag
 #section-futbol .fb-chg.lg-bra .fb-chg-mod > span { color: #ffd400; }
 /* "Nada nuevo": más chico, sin la grilla de números */
 #section-futbol .fb-chg--skipped ul { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* ════════════════════════════════════════════════════════════════════════
+   SERIE A (Italia) — copiado del sistema de legaseriea.it:
+   · Bai Jamjuree (títulos, números, navegación) + Poppins (texto), en local.
+   · Azul marino institucional #02235C, azul eléctrico #0D8EFE, turquesa
+     #00E8DA; página azul con chevrones; fichas de partido claras con
+     esquinas de 12 px; botones turquesa en píldora ("VEDI TUTTO");
+     etiquetas turquesa ("SERIE A ENILIVE"); local en azul, visita en turquesa.
+   ════════════════════════════════════════════════════════════════════════ */
+@font-face { font-family: 'Bai Jamjuree'; src: url("assets/ita/fonts/bai-jamjuree-300.woff") format("woff"); font-weight: 300; font-display: swap; }
+@font-face { font-family: 'Bai Jamjuree'; src: url("assets/ita/fonts/bai-jamjuree-400.woff") format("woff"); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: 'Bai Jamjuree'; src: url("assets/ita/fonts/bai-jamjuree-700.woff") format("woff"); font-weight: 600 900; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url("assets/ita/fonts/poppins-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url("assets/ita/fonts/poppins-500.woff2") format("woff2"); font-weight: 500 600; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url("assets/ita/fonts/poppins-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url("assets/ita/fonts/poppins-800.woff2") format("woff2"); font-weight: 800 900; font-display: swap; }
+
+.lg-ita, body[data-sport="futbol"].lg-ita {
+  --sa-navy: #02235c; --sa-blue-200: #1d416f; --sa-blue-100: #225696; --sa-electric: #0d8efe; --sa-teal: #00e8da;
+  --bg: #1d416f; --card: #02235c; --card2: #10306d; --fb-line: #33598f; --border: #33598f;
+  --fb: #00e8da; --fb-rgb: 0, 232, 218; --fb-deep: #00b8ad;
+  --fb-mute: #e7e7e7; --fb-dim: #b0b0b0;
+  --lg-grad: linear-gradient(90deg, #0d8efe 0%, #00e8da 100%);
+  --lg-top: #02235c;
+  --f-body: 'Poppins', 'Onest', sans-serif; --f-display: 'Bai Jamjuree', 'Onest', sans-serif;
+  --lg-title: 'Bai Jamjuree', 'Onest', sans-serif;
+  --lg-edge: linear-gradient(100deg, #0d8efe 0%, #00e8da 100%);
+  --ring: linear-gradient(140deg, #00e8da, #0d8efe);
+  --dt-glow: rgba(0, 232, 218, .6); --dt-save: #00e8da; --dt-save-ink: #02235c;
+}
+body[data-sport="futbol"].lg-ita { --page-bg: var(--bg); }
+/* Página: el azul de las secciones de la web, con sus chevrones */
+body[data-sport="futbol"].lg-ita .app-main {
+  background: url("assets/ita/bg-highlights.webp") center top / 100% auto no-repeat, #1d416f !important;
+}
+body[data-sport="futbol"].lg-ita #section-futbol, body.lg-ita .fb-tabbar { font-family: var(--f-body); }
+
+/* Títulos: Bai Jamjuree 700 en mayúscula, blancos ("ULTIME NOTIZIE") */
+body.lg-ita #section-futbol .fb-sec-head h2, body.lg-ita #section-futbol .fb-block-head h3, body.lg-ita #section-futbol .fb-totals summary h3,
+body.lg-ita #section-futbol .fb-hero-big b, body.lg-ita #section-futbol .fb-duel-team b {
+  font-family: 'Bai Jamjuree', sans-serif !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: 0 !important; color: #fff;
+}
+body.lg-ita #section-futbol .fb-sec-head h2 { font-size: 30px; line-height: 1.1; }
+body.lg-ita #section-futbol .fb-sec-head h2 em, body.lg-ita #section-futbol .fb-block-head h3 em { color: #00e8da; }
+body.lg-ita #section-futbol .fb-sec-head p, body.lg-ita #section-futbol .fb-note, body.lg-ita #section-futbol .fb-hero-how { color: #f6f6f6; font-family: 'Poppins', sans-serif; }
+/* Día: como "MATCHDAY 9" — Bai Jamjuree en mayúscula */
+body.lg-ita #section-futbol .fb-day-head b { font-family: 'Bai Jamjuree', sans-serif !important; font-weight: 700 !important; text-transform: uppercase !important; color: #fff; letter-spacing: .02em; }
+body.lg-ita #section-futbol .fb-day-head small { color: #d1d1d1; }
+
+/* Filtro de ligas y modos: píldoras como la barra de competiciones */
+body.lg-ita #section-futbol .fb-chips button { border-radius: 999px; background: #fff; border: 1px solid #e7e7e7; color: #02235c; font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; }
+body.lg-ita #section-futbol .fb-chips button.is-on { background: #225696; border-color: #225696; color: #fff; }
+.fb-chips button[data-lg="ita"] { --c: #0d8efe; }
+.lg-ita .fb-mode button.is-on, body.lg-ita .fb-mode button.is-on { background: #225696; color: #fff; }
+body.lg-ita .fb-nav-i.is-on::after, body.lg-ita .fb-tabbar .fb-nav-i.is-on::after { background: #00e8da; }
+
+/* ── Ficha de partido: clara, como la tira "MATCHDAY" de la web ─────── */
+#section-futbol .lg-ita.fb-fx {
+  background: #f6f6f6 !important; border: 1px solid #e7e7e7 !important; border-radius: 12px; box-shadow: 0 4px 14px rgba(2, 35, 92, .18);
+}
+#section-futbol .lg-ita.fb-fx::before { display: none; }
+#section-futbol .lg-ita .fb-fx-time b { font-family: 'Bai Jamjuree', sans-serif !important; font-weight: 700; color: #02235c; font-size: 21px; }
+#section-futbol .lg-ita .fb-fx-time small { color: #5d5d5d; font-family: 'Bai Jamjuree', sans-serif; text-transform: uppercase; }
+#section-futbol .lg-ita .fb-fx-time small.is-live { color: #fff !important; background: #eb0000; padding: 1px 6px; border-radius: 4px; display: inline-block; }
+#section-futbol .lg-ita .fb-fx-time small.is-soon { color: #225696; }
+#section-futbol .lg-ita .fb-fx-row img { width: 24px; height: 24px; }
+#section-futbol .lg-ita .fb-fx-row b, #section-futbol .lg-ita .fb-fx-row.is-fav b {
+  font-family: 'Bai Jamjuree', sans-serif !important; font-weight: 700 !important; color: #02235c !important; text-transform: uppercase; font-size: 15px;
+}
+/* Remates: local en azul eléctrico, visita en turquesa (como sus barras local/visita) */
+#section-futbol .lg-ita .fb-fx-row em, #section-futbol .lg-ita .fb-fx-row.is-fav em {
+  font-family: 'Bai Jamjuree', sans-serif !important; font-weight: 700; min-width: 46px; text-align: center; padding: 1px 6px; border-radius: 6px;
+  background: #0d8efe; color: #fff;
+}
+#section-futbol .lg-ita .fb-fx-row:last-child em, #section-futbol .lg-ita .fb-fx-row.is-fav:last-child em { background: #00e8da; color: #02235c; }
+#section-futbol .lg-ita .fb-fx-bar { background: #d1d1d1; }
+#section-futbol .lg-ita .fb-fx-bar i { background: linear-gradient(180deg, #0d8efe, #225696); }
+#section-futbol .lg-ita .fb-fx-tags .fb-lu {
+  font-family: 'Bai Jamjuree', sans-serif !important; font-weight: 700 !important; color: #02235c; background: #fff; border: 1px solid #d1d1d1; border-radius: 4px;
+}
+#section-futbol .lg-ita .fb-fx-tags .fb-lu--ok { background: #00e8da; border-color: #00e8da; color: #02235c; }
+#section-futbol .lg-ita .fb-fx-tags .fb-lu--new { background: #0d8efe; border-color: #0d8efe; color: #fff; }
+#section-futbol .lg-ita .fb-fx-np { background: #225696; color: #fff; font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; border-radius: 999px; }
+#section-futbol .lg-ita .fb-star { color: #888; }
+#section-futbol .lg-ita .fb-star:hover { color: #02235c; }
+#section-futbol .lg-ita .fb-star.is-on { color: #0d8efe; }
+#section-futbol .lg-ita .fb-fx-lg { filter: none; }
+
+/* Partido desplegado: la ficha arriba y abajo una sección azul con chevrones */
+#section-futbol .fb-fx-wrap.is-open.lg-ita { border: 0; border-radius: 12px; background: none; box-shadow: 0 10px 30px rgba(2, 18, 50, .45); }
+#section-futbol .fb-fx-wrap.is-open.lg-ita > .fb-fx { border-radius: 12px 12px 0 0; }
+#section-futbol .fb-fx-wrap.is-open.lg-ita > .fb-fxp {
+  border: 0 !important; border-radius: 0 0 12px 12px;
+  background: url("assets/ita/bg-news.webp") center top / cover no-repeat, #225696 !important;
+}
+
+/* Botón Simular: turquesa en píldora, Bai Jamjuree en mayúscula ("VEDI TUTTO") */
+body.lg-ita #section-futbol .fb-simbtn, #section-futbol .lg-ita .fb-simbtn {
+  background: #00e8da; color: #02235c; border-radius: 999px; box-shadow: none;
+}
+body.lg-ita #section-futbol .fb-simbtn b, #section-futbol .lg-ita .fb-simbtn b { font-family: 'Bai Jamjuree', sans-serif !important; font-weight: 700; text-transform: uppercase !important; color: #02235c; }
+body.lg-ita #section-futbol .fb-simbtn small, #section-futbol .lg-ita .fb-simbtn small { color: #02235c; opacity: .8; font-family: 'Poppins', sans-serif; }
+body.lg-ita #section-futbol .fb-simbtn > svg, #section-futbol .lg-ita .fb-simbtn > svg { background: #02235c; color: #00e8da; border-radius: 50%; }
+body.lg-ita #section-futbol .fb-simbtn:hover, #section-futbol .lg-ita .fb-simbtn:hover { background: #4ff1e7; box-shadow: 0 8px 24px rgba(0, 232, 218, .35); }
+/* "Ver partido completo": píldora con borde blanco, como "VEDI TUTTO" secundario */
+body.lg-ita #section-futbol .fb-fxp-open, #section-futbol .lg-ita .fb-fxp-open {
+  border-radius: 999px !important; border: 1.5px solid #fff !important; background: transparent !important; color: #fff;
+  font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; text-transform: uppercase;
+}
+body.lg-ita #section-futbol .fb-fxp-open:hover, #section-futbol .lg-ita .fb-fxp-open:hover { background: #fff !important; color: #02235c; }
+
+/* Números grandes en Bai Jamjuree */
+body.lg-ita #section-futbol .fb-duel-nums b, body.lg-ita #section-futbol .fb-res-odd b, body.lg-ita #section-futbol .fb-tk-bet,
+body.lg-ita #section-futbol .fb-tk-min b, body.lg-ita #section-futbol .fb-xd-n { font-family: 'Bai Jamjuree', sans-serif !important; font-weight: 700; }
+body.lg-ita #section-futbol .fb-duel { background: url("assets/ita/bg-highlights.webp") center top / cover no-repeat, #225696; border-color: transparent; border-radius: 12px; }
+body.lg-ita #section-futbol .fb-duel::before { background: linear-gradient(90deg, #0d8efe, #00e8da); }
+body.lg-ita .fb-dt-toggle, body.lg-ita .fb-dt-save, body.lg-ita .fb-dt-badge { font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; text-transform: uppercase !important; border-radius: 999px; }
+
+/* ── Banner de la liga y banda del partido ──────────────────────────── */
+.fb-ita-hero, .fb-ita-band { position: relative; overflow: hidden; display: flex; align-items: center; color: #fff; }
+.fb-ita-hero { margin: 0 0 12px; border-radius: 12px; gap: 18px; padding: 0 22px 0 14px;
+  background: url("assets/ita/bg-hero.webp") center 70% / cover no-repeat, #225696; }
+.fb-ita-band { margin: 0 0 10px; border-radius: 12px; gap: 12px; padding: 0 14px 0 8px;
+  background: url("assets/ita/bg-highlights.webp") center top / cover no-repeat, #225696; }
+.fb-ita-tile { display: grid; place-items: center; flex: none; background: #fff; border-radius: 10px; box-shadow: 0 4px 14px rgba(2, 35, 92, .3); }
+.fb-ita-hero .fb-ita-tile { width: 64px; height: 76px; }
+.fb-ita-hero .fb-ita-tile img { height: 64px; width: auto; }
+.fb-ita-band .fb-ita-tile { width: 36px; height: 46px; border-radius: 7px; }
+.fb-ita-band .fb-ita-tile img { height: 38px; width: auto; }
+.fb-ita-txt { display: flex; flex-direction: column; gap: 2px; }
+.fb-ita-txt em { align-self: flex-start; font-style: normal; font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; font-size: 12px; text-transform: uppercase !important; padding: 2px 8px; background: #00e8da; color: #02235c; }
+.fb-ita-txt b { font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; font-size: 36px; line-height: 1.05; text-transform: uppercase !important; text-shadow: 0 2px 10px rgba(2, 35, 92, .35); }
+.fb-ita-txt small { font-family: 'Poppins', sans-serif; font-weight: 500; font-size: 13px; color: #fff; opacity: .92; }
+.fb-ita-tag { font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; font-size: 13px; text-transform: uppercase !important; padding: 3px 9px; background: #00e8da; color: #02235c; }
+.fb-ita-band > i { font-style: normal; font-family: 'Poppins', sans-serif; font-weight: 500; font-size: 13px; }
+.fb-ita-band em { margin-left: auto; font-style: normal; font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; font-size: 12.5px; text-transform: uppercase; padding: 5px 14px; border-radius: 999px; background: #02235c; color: #fff; white-space: nowrap; }
+#section-futbol .fb-ita-hero { box-sizing: border-box; height: 96px; }
+#section-futbol .fb-ita-band { box-sizing: border-box; height: 64px; }
+@media (max-width: 768px) {
+  #section-futbol .fb-ita-hero { height: 80px; gap: 12px; padding-right: 14px; }
+  #section-futbol .fb-ita-band { height: 56px; }
+  .fb-ita-hero .fb-ita-tile { width: 50px; height: 60px; }
+  .fb-ita-hero .fb-ita-tile img { height: 50px; }
+  .fb-ita-txt b { font-size: 26px; }
+  .fb-ita-txt small { display: none; }
+  .fb-ita-band > i { display: none; }
+  body.lg-ita #section-futbol .fb-sec-head h2 { font-size: 24px; }
+}
+
+/* ── Avisos flotantes: sección azul con chevrones y etiqueta turquesa ── */
+.fb-toast.lg-ita {
+  border-radius: 12px; color: #f6f6f6; font-family: 'Poppins', sans-serif;
+  background: url("assets/ita/bg-highlights.webp") center top / cover no-repeat, #225696;
+  box-shadow: 0 16px 36px rgba(2, 18, 50, .6);
+}
+.fb-toast.lg-ita .fb-toast-mark { width: 54px; }
+.fb-toast.lg-ita .fb-toast-mark img { width: 30px; height: 30px; filter: drop-shadow(0 2px 4px rgba(2, 35, 92, .4)); }
+.fb-toast.lg-ita b { align-self: flex-start; font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; text-transform: uppercase !important; font-size: 13px; padding: 1px 7px; background: #00e8da; color: #02235c; }
+.fb-toast.lg-ita u { color: #00e8da; }
+
+/* ── Chips de Recomendados: etiquetas como "SERIE A ENILIVE" ────────── */
+#section-futbol .lg-ita .fb-rec-chip {
+  font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; font-size: 12.5px; text-transform: uppercase !important;
+  padding: 4px 10px; border-radius: 0; border: 0; background: #fff; color: #02235c;
+}
+#section-futbol .lg-ita .fb-rec-chip--both { background: #00e8da; color: #02235c; }
+#section-futbol .lg-ita .fb-rec-chip--vol { background: #0d8efe; color: #fff; }
+#section-futbol .lg-ita .fb-rec-chip--dom { background: #02235c; color: #fff; }
+
+/* ── "Simulado hace…", notas, carteles, pelotitas, etiquetas, "Qué cambió" ── */
+#section-futbol .lg-ita .fb-simage, body.lg-ita #section-futbol .fb-simage { font-family: 'Poppins', sans-serif; color: #f6f6f6; }
+#section-futbol .lg-ita .fb-simage svg, body.lg-ita #section-futbol .fb-simage svg { color: #00e8da; }
+body.lg-ita #section-futbol .fb-note, body.lg-ita #section-futbol .fb-dt-help { position: relative; padding-left: 13px; }
+body.lg-ita #section-futbol .fb-note::before, body.lg-ita #section-futbol .fb-dt-help::before {
+  content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 3px; border-radius: 2px; background: #00e8da;
+}
+body.lg-ita #section-futbol .fb-note b { color: #00e8da; }
+body.lg-ita #section-futbol .fb-empty {
+  position: relative; margin: 10px 0; padding: 18px 20px; font-family: 'Poppins', sans-serif; font-size: 14px; line-height: 1.5; color: #02235c; border-radius: 12px;
+  background: url("assets/ita/bg-card-white.webp") center / cover no-repeat, #f6f6f6;
+}
+body.lg-ita #section-futbol .fb-empty b { color: #0d8efe; }
+#section-futbol .lg-ita .fb-ball-tip, body.lg-ita #section-futbol .fb-ball-tip {
+  font-family: 'Poppins', sans-serif; border: 0; border-radius: 8px; color: #02235c; background: #f6f6f6; }
+#section-futbol .lg-ita .fb-ball-tip b, body.lg-ita #section-futbol .fb-ball-tip b { color: #0d8efe; }
+body.lg-ita #section-futbol .fb-flag {
+  border: 0; font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; text-transform: uppercase; color: #02235c; border-radius: 0; padding: 5px 10px; background: #fff;
+}
+body.lg-ita #section-futbol .fb-flag svg { color: #0d8efe; }
+body.lg-ita #section-futbol .fb-flag--ok { background: #00e8da; }
+body.lg-ita #section-futbol .fb-flag--ok svg { color: #02235c; }
+body.lg-ita #section-futbol .fb-flag--new { background: #0d8efe; color: #fff; }
+body.lg-ita #section-futbol .fb-flag--new svg { color: #fff; }
+body.lg-ita #section-futbol .fb-flag--warn { background: #ffbf00; color: #02235c; }
+#section-futbol .fb-chg.lg-ita { font-family: 'Poppins', sans-serif; border-radius: 12px; color: #02235c; background: url("assets/ita/bg-card-white.webp") center / cover no-repeat, #f6f6f6; }
+#section-futbol .fb-chg.lg-ita .fb-chg-head b { font-family: 'Bai Jamjuree', sans-serif; font-weight: 700; text-transform: uppercase !important; color: #02235c; }
+#section-futbol .fb-chg.lg-ita .fb-chg-head small, #section-futbol .fb-chg.lg-ita .fb-chg-sub { color: #5d5d5d; }
+#section-futbol .fb-chg.lg-ita li span { color: #6d6d6d; }
+#section-futbol .fb-chg.lg-ita li em b { color: #02235c; }
+#section-futbol .fb-chg.lg-ita li em i { color: #888; }
+#section-futbol .fb-chg.lg-ita li em i.up, #section-futbol .fb-chg.lg-ita .fb-chg-add > span { color: #00be36; }
+#section-futbol .fb-chg.lg-ita li em i.down, #section-futbol .fb-chg.lg-ita .fb-chg-del > span { color: #eb0000; }
+#section-futbol .fb-chg.lg-ita .fb-chg-mod > span { color: #0d8efe; }
+
+/* Serie A: ajustes (fondo más grande que se funde con la página, mayúsculas
+   por encima de la regla general de la app, logo de la PL legible en su píldora) */
+body[data-sport="futbol"].lg-ita .app-main {
+  background:
+    linear-gradient(180deg, rgba(29, 65, 111, 0) 0, rgba(29, 65, 111, .35) 260px, #1d416f 560px),
+    url("assets/ita/bg-highlights.webp") center top / auto 1100px no-repeat,
+    #1d416f !important;
+}
+body.lg-ita #section-futbol .fb-sec-head h2 em, body.lg-ita #section-futbol .fb-block-head h3 em,
+#section-futbol .lg-ita .fb-fx-row b, #section-futbol .lg-ita .fb-fx-time small,
+#section-futbol .fb-ita-txt b, #section-futbol .fb-ita-txt em, #section-futbol .fb-ita-tag, #section-futbol .fb-ita-band em,
+body.lg-ita #section-futbol .fb-flag, #section-futbol .lg-ita .fb-rec-chip, body.lg-ita #section-futbol .fb-fxp-open,
+body.lg-ita #section-futbol .fb-chips button, #section-futbol .fb-chg.lg-ita .fb-chg-head b,
+body.lg-ita #section-futbol .fb-day-head b { text-transform: uppercase !important; }
+body.lg-ita #section-futbol .fb-chips button[data-lg="eng"] img { filter: brightness(0) saturate(100%) invert(9%) sepia(60%) saturate(5000%) hue-rotate(275deg); }
+body.lg-ita #section-futbol .fb-chips button.is-on { background: #0d8efe; border-color: #fff; color: #fff; box-shadow: 0 0 0 2px rgba(13, 142, 254, .35); }

@@ -32,8 +32,8 @@ from futbol.espn import norm_name
 
 BASE = "https://v3.football.api-sports.io"
 DIR = cfg.CACHE_DIR / "apifootball"
-AF_LEAGUES = {"arg": 128, "bra": 71, "eng": 39}   # formaciones: las tres ligas
-PHOTO_LEAGUES = {"arg": 128, "bra": 71, "eng": 39}   # fotos: las tres ligas
+AF_LEAGUES = {"arg": 128, "bra": 71, "eng": 39, "ita": 135}     # formaciones
+PHOTO_LEAGUES = {"arg": 128, "bra": 71, "eng": 39, "ita": 135}  # fotos
 PHOTO_TEAMS_PER_DAY = 20            # planteles por día (1 consulta cada uno)
 PHOTO_REFRESH_DAYS = 30             # un plantel se vuelve a pedir al mes
 AF_BEFORE_MIN = 65                  # empezar a preguntar 65' antes

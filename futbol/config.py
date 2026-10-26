@@ -33,6 +33,7 @@ LEAGUES = {
     "arg": {"name": "Liga Profesional", "espn": "arg.1", "oddspapi": 155},
     "bra": {"name": "Brasileirão", "espn": "bra.1", "oddspapi": 325},
     "eng": {"name": "Premier League", "espn": "eng.1", "oddspapi": 17},
+    "ita": {"name": "Serie A", "espn": "ita.1", "oddspapi": 23},
 }
 # Meses de historia a bajar (YYYYMM). Dos temporadas de cada liga.
 HISTORY_FROM = "202501"
@@ -90,7 +91,7 @@ SUB_ADJUST = True
 import os as _os
 # Parte del factor que se aplica en cada liga (elegida con el backtest walk-forward:
 # LPF 0,3 → ×1,17 · Premier 1 → ×1,67 · Brasileirão 0 → sin ajuste).
-SUB_K_POWER = {"arg": 0.3, "eng": 1.0, "bra": 0.0}
+SUB_K_POWER = {"arg": 0.3, "eng": 1.0, "bra": 0.0, "ita": 1.0}   # Serie A: ×1,67 (backtest)
 SUB_K_PRIOR_POWER = 0.3        # en los promedios por puesto (comunes a las tres ligas)
 if _os.environ.get("FB_SUB_POW"):
     SUB_K_POWER = {k: float(_os.environ["FB_SUB_POW"]) for k in SUB_K_POWER}

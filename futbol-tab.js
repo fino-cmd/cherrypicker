@@ -880,44 +880,50 @@
   // No bloquea la app: la tarjeta del partido muestra su barra de progreso,
   // se puede seguir navegando y encolar otros; al terminar avisa.
   const simState = (id) => (state.sim.running === id || state.sim.remote === id) ? 'running' : state.sim.queue.includes(id) ? 'queued' : null;
-  // "Qué cambió" con el último Simular: queda guardado en el partido (se ve en
-  // todos los dispositivos) hasta la próxima vez.
+  // "Qué cambió" con el último Simular: una franja fina debajo de los botones
+  // (no estira nada). Las jugadas que entran/salen se despliegan aparte.
+  // Queda guardado en el partido, así se ve en todos los dispositivos.
   function lastSimBlock(m) {
     const ls = m.last_sim;
     if (!ls || simState(m.event_id)) return '';
     const h = m.teams.home, a = m.teams.away;
     const t = ls.teams || {};
-    const mv = (x) => {
-      if (!x) return '–';
-      const d = x.after - x.before;
-      return Math.abs(d) < 0.05 ? `<b>${num1(x.after)}</b> <i>igual</i>` : `${num1(x.before)} → <b>${num1(x.after)}</b> <i class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${num1(Math.abs(d))}</i>`;
-    };
     const oi = ls.odds || {};
     const oage = oi.age_s == null ? '–' : (oi.age_s < 3600 ? `${Math.max(1, Math.round(oi.age_s / 60))} min` : `${Math.round(oi.age_s / 3600)} h`);
-    const oddsTxt = oi.refreshed ? `nuevas (${oi.today}/${oi.cap} hoy)` : oi.reason === 'cap' ? `de hace ${oage} · tope diario alcanzado` : `de hace ${oage}`;
-    const pk = (k) => `${esc(surname(k.player))} · ${esc(lineLabel(k.stat, k.line))}${k.price ? ` · ${esc(bookName(k.book))} ${odd(k.price)}` : ''}`;
-    const head = ls.mode === 'skipped' ? 'Nada nuevo para simular'
-      : ls.mode === 'repriced' ? 'Solo cambiaron las cuotas' : 'Qué cambió';
-    const sub = ls.mode === 'skipped' ? 'Misma formación, mismas cuotas y mismo modelo: el resultado sería idéntico, así que no se volvió a simular.'
-      : ls.mode === 'repriced' ? 'La formación no cambió, así que no se volvió a simular: se reprecian las jugadas con las cuotas nuevas.'
-      : '20.000 partidos simulados con los datos de ahora.';
-    const rows = [
-      `<li><span>Formación</span><em>${ls.lineup.before === ls.lineup.after ? esc(ls.lineup.after) : `${esc(ls.lineup.before)} → <b>${esc(ls.lineup.after)}</b>`}</em></li>`,
-      `<li><span>Cuotas</span><em>${oddsTxt}</em></li>`,
-      ls.mode === 'simulated' ? `<li><span>Remates ${esc(h.abbr)}</span><em>${mv((t.home || {}).shots)}</em></li><li><span>Remates ${esc(a.abbr)}</span><em>${mv((t.away || {}).shots)}</em></li>` : '',
-      `<li><span>Jugadas</span><em>${ls.picks_before === ls.picks_after ? `<b>${ls.picks_after}</b> <i>igual</i>` : `${ls.picks_before} → <b>${ls.picks_after}</b>`}</em></li>`,
-    ].join('');
-    const lists = [
-      ls.added && ls.added.length ? `<p class="fb-chg-add"><span>Entran</span>${ls.added.map(pk).join('<br>')}</p>` : '',
-      ls.removed && ls.removed.length ? `<p class="fb-chg-del"><span>Salen</span>${ls.removed.map(pk).join('<br>')}</p>` : '',
-      ls.changed && ls.changed.length ? `<p class="fb-chg-mod"><span>Otra cuota</span>${ls.changed.map(k => `${pk(k)} <i>(antes ${odd(k.price_before)})</i>`).join('<br>')}</p>` : '',
-    ].join('');
+    const arrow = (b, a2) => (b === a2 ? `<b>${b}</b>` : `<s>${b}</s><i class="fb-chg2-to">→</i><b>${a2}</b>`);
+    const shot = (x) => {
+      if (!x) return '–';
+      const d = x.after - x.before;
+      return Math.abs(d) < 0.05 ? `<b>${num1(x.after)}</b>`
+        : `<s>${num1(x.before)}</s><i class="fb-chg2-to">→</i><b>${num1(x.after)}</b><em class="${d > 0 ? 'is-up' : 'is-down'}">${d > 0 ? '+' : '−'}${num1(Math.abs(d))}</em>`;
+    };
+    const cell = (k, v) => `<span class="fb-chg2-cell"><small>${k}</small><span>${v}</span></span>`;
+    const tag = ls.mode === 'skipped' ? 'Sin cambios' : ls.mode === 'repriced' ? 'Solo cuotas' : 'Cambios';
+    const odds = oi.refreshed ? 'nuevas' : oi.reason === 'cap' ? `${oage} · tope del día` : oage;
+    const cells = ls.mode === 'skipped'
+      ? cell('Resultado', '<b>idéntico</b>') + cell('Formación', `<b>${esc(ls.lineup.after)}</b>`) + cell('Cuotas', `<b>${odds}</b>`)
+      : cell('Formación', arrow(esc(ls.lineup.before), esc(ls.lineup.after)))
+        + (ls.mode === 'simulated' ? cell(esc(h.abbr), shot((t.home || {}).shots)) + cell(esc(a.abbr), shot((t.away || {}).shots)) : '')
+        + cell('Jugadas', arrow(ls.picks_before, ls.picks_after))
+        + cell('Cuotas', `<b>${odds}</b>`);
+    const n = (ls.added || []).length + (ls.removed || []).length + (ls.changed || []).length;
+    const open = state.chgOpen && state.chgOpen.has(m.event_id);
+    const pk = (k) => `<b>${esc(surname(k.player))}</b> ${esc(lineLabel(k.stat, k.line))}${k.price ? ` <span>${esc(bookName(k.book))} ${odd(k.price)}</span>` : ''}`;
+    const list = !open || !n ? '' : `
+        <ul class="fb-chg2-list">
+          ${(ls.added || []).map(k => `<li class="is-add"><i>+</i>${pk(k)}</li>`).join('')}
+          ${(ls.removed || []).map(k => `<li class="is-del"><i>−</i>${pk(k)}</li>`).join('')}
+          ${(ls.changed || []).map(k => `<li class="is-mod"><i>≈</i>${pk(k)} <small>antes ${odd(k.price_before)}</small></li>`).join('')}
+        </ul>`;
     return `
-      <div class="fb-chg fb-chg--${esc(ls.mode)} lg-${esc(m.league)}">
-        <div class="fb-chg-head"><b>${head}</b><small>${esc(ago(ls.at))}</small></div>
-        <p class="fb-chg-sub">${sub}</p>
-        <ul>${rows}</ul>
-        ${lists}
+      <div class="fb-chg2 fb-chg2--${esc(ls.mode)} lg-${esc(m.league)}">
+        <div class="fb-chg2-bar">
+          <span class="fb-chg2-tag">${tag}<small>${esc(ago(ls.at))}</small></span>
+          ${cells}
+          <span class="fb-chg2-end">
+            ${n ? `<button class="fb-chg2-more" data-chg="${esc(m.event_id)}" aria-expanded="${open}">${n} jugada${n === 1 ? '' : 's'} ${open ? '▴' : '▾'}</button>` : ''}
+          </span>
+        </div>${list}
       </div>`;
   }
 
@@ -1038,12 +1044,23 @@
     mp.slice(0, 2).forEach(k => items.push({ kind: 'pick', p: pl(k.player_id), team: teamOf(m, k.team_id),
       title: `${surname(k.player)} · ${lineLabel(k.stat, k.line)}`,
       sub: `${Math.round(k.p_model * 10)}/10 · jugala desde ${odd(k.min_odds)}`, book: k.best_book, price: k.best_price, ok: k.best_price >= k.min_odds }));
+    // "Lo más firme": sólo líneas con una cuota que valga la pena jugar (nada de
+    // 1,01): la más probable entre las que alguna casa paga al menos HL_MIN_ODDS.
+    const HL_MIN_ODDS = 1.40;
     const sure = [];
-    m.players.forEach(p => p.lines.forEach(l => { if (l.p_model >= 0.78 && l.p_model <= 0.95) sure.push({ p, l }); }));
-    sure.sort((x, y) => (y.l.line - x.l.line) || (y.l.p_model - x.l.p_model));
-    sure.filter(x => !mp.some(k => k.player_id === x.p.player_id && k.stat === x.l.stat && k.line === x.l.line)).slice(0, 2)
-      .forEach(({ p, l }) => items.push({ kind: 'sure', p, team: teamOf(m, p.team_id), title: `${surname(p.player)} · ${lineLabel(l.stat, l.line)}`,
-        sub: `${Math.round(l.p_model * 10)}/10 · lo más firme del partido`, book: l.best_book, price: l.best_price, ok: l.best_price != null && l.best_price >= l.min_odds }));
+    m.players.forEach(p => p.lines.forEach(l => {
+      if (l.p_model >= 0.55 && l.best_price != null && l.best_price >= HL_MIN_ODDS) sure.push({ p, l });
+    }));
+    sure.sort((x, y) => (y.l.p_model - x.l.p_model) || (y.l.best_price - x.l.best_price));
+    const seenP = new Set(mp.map(k => k.player_id));     // un renglón por jugador
+    const firm = [];
+    for (const x of sure) {
+      if (firm.length >= 2 || seenP.has(x.p.player_id)) continue;
+      seenP.add(x.p.player_id);
+      firm.push(x);
+    }
+    firm.forEach(({ p, l }) => items.push({ kind: 'sure', p, team: teamOf(m, p.team_id), title: `${surname(p.player)} · ${lineLabel(l.stat, l.line)}`,
+        sub: `${Math.round(l.p_model * 10)}/10 · lo más firme con cuota jugable`, book: l.best_book, price: l.best_price, ok: l.best_price >= l.min_odds }));
     const tl = [];
     ['home', 'away'].forEach(sd => Object.entries(m.teams[sd].shots_over || {}).forEach(([ln, pr]) => tl.push({ t: m.teams[sd], ln, pr })));
     const even = tl.sort((x, y) => Math.abs(x.pr - 0.6) - Math.abs(y.pr - 0.6))[0];
@@ -1069,9 +1086,9 @@
       <div class="fb-fxp">
         <div class="fb-fxp-top">
           ${simControl(m)}
-          ${lastSimBlock(m)}
           <button class="fb-fxp-open" data-ev="${esc(m.event_id)}">Ver partido completo ${I.back}</button>
         </div>
+        ${lastSimBlock(m)}
         ${m.computed_at ? `<div class="fb-simage">${I.clock}Simulado ${esc(ago(m.computed_at))}${m.custom_lineup ? ' · con tu alineación' : m.lineup_confirmed ? ' · con formación confirmada' : ' · con formaciones probables'}</div>` : ''}
         <div class="fb-fxp-grid">
           ${simPreview(m)}
@@ -1740,6 +1757,13 @@
 
   function onClick(e) {
     const t = e.target;
+    const chg = t.closest('[data-chg]');
+    if (chg) {
+      state.chgOpen = state.chgOpen || new Set();
+      const id = chg.dataset.chg;
+      if (state.chgOpen.has(id)) state.chgOpen.delete(id); else state.chgOpen.add(id);
+      render(); return;
+    }
     if (t.closest('[data-menu]')) { state.menuOpen = !state.menuOpen; state.creditsOpen = false; renderTopTools(); return; }
     if (t.closest('[data-credits-refresh]')) { loadUsage(true); return; }
     if (t.closest('[data-credits]')) { state.creditsOpen = !state.creditsOpen; state.menuOpen = false; renderTopTools(); if (state.creditsOpen) loadUsage(); return; }

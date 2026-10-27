@@ -5368,6 +5368,17 @@ def _fb_mtime(name: str) -> float | None:
     return f.stat().st_mtime if f.exists() else None
 
 
+# Foto del jugador sin el fondo blanco (se recorta una vez y queda guardada).
+@app.get("/api/futbol/photo/{pid}.png")
+def get_futbol_photo(pid: str):
+    from fastapi import Response
+    from futbol import cutout
+    png = cutout.get(pid)
+    if png is None:
+        raise HTTPException(404, "sin foto")
+    return Response(png, media_type="image/png", headers={"Cache-Control": "public, max-age=2592000"})
+
+
 @app.get("/api/futbol/status")
 def get_futbol_status():
     return {"version": _fb_mtime("jornada.json"), "prefs_version": _fb_mtime("prefs.json"),

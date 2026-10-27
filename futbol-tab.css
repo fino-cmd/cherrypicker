@@ -3530,3 +3530,33 @@ body.lg-arg #section-futbol .fb-block-head h3, body.lg-arg #section-futbol .fb-t
 body.lg-arg #section-futbol .fb-hl-head b, #section-futbol .lg-arg .fb-hl-head b {
   font-weight: 700 !important; font-size: 19px !important; line-height: 1.2 !important; letter-spacing: .01em !important;
 }
+
+/* ── Fotos de jugadores: recortadas (sin fondo blanco) y un poco más grandes.
+   Detrás va un círculo con el color de la liga, así la cara resalta. ── */
+#section-futbol .fb-tk-face, #section-futbol .fb-ws-face, #section-futbol .fb-hl-face:not(.is-team), #section-futbol .fb-dt-face, #section-futbol .fb-face {
+  background: radial-gradient(circle at 50% 35%, rgba(var(--fb-rgb, 120, 160, 200), .30) 0%, var(--card2, #151b22) 72%);
+}
+#section-futbol .fb-tk-face > img:first-child, #section-futbol .fb-ws-face img, #section-futbol .fb-hl-face > img:first-child,
+#section-futbol .fb-dt-face img, #section-futbol .fb-face > img:first-child { background: transparent !important; object-fit: cover; object-position: center 12%; }
+#section-futbol .fb-tk-face { width: 54px; height: 54px; }
+#section-futbol .fb-ws-face { width: 46px; height: 46px; }
+#section-futbol .fb-hl-face { width: 48px; height: 48px; }
+#section-futbol .fb-hl-face.is-team img { width: 30px; height: 30px; }
+#section-futbol .fb-face--sm { width: 58px; height: 58px; }
+#section-futbol .fb-dt-face { width: 36px; height: 36px; }
+@media (max-width: 768px) {
+  #section-futbol .fb-tk-face { width: 48px; height: 48px; }
+  #section-futbol .fb-ws-face { width: 42px; height: 42px; }
+  #section-futbol .fb-hl-face { width: 44px; height: 44px; }
+}
+/* LPF: nombres de jugadores en ProtoFont Medium (la redondeada), más legible que
+   la negrita cuadrada del logo. Destacados, Top rematadores y Jugadas del partido. */
+body.lg-arg #section-futbol .fb-hl-txt b, #section-futbol .lg-arg .fb-hl-txt b,
+body.lg-arg #section-futbol .fb-ws-id b, #section-futbol .lg-arg .fb-ws-id b,
+body.lg-arg #section-futbol .fb-tk-who b, #section-futbol .lg-arg .fb-tk-who b,
+body.lg-arg #section-futbol .fb-tk-bet, #section-futbol .lg-arg .fb-tk-bet {
+  font-family: 'ProtoFont', sans-serif !important; font-weight: 500 !important; letter-spacing: 0 !important;
+}
+body.lg-arg #section-futbol .fb-hl-txt b, body.lg-arg #section-futbol .fb-ws-id b { font-size: 15.5px; }
+body.lg-arg #section-futbol .fb-tk-who b { font-size: 16px; }
+body.lg-arg #section-futbol .fb-tk-bet b, body.lg-arg #section-futbol .fb-tk-bet em { font-weight: 500 !important; }

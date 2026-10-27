@@ -14,6 +14,11 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const apiBase = () => window.FB_API_BASE || (typeof API !== 'undefined' ? API : 'http://localhost:8002');
+  // Fotos de API-Football: se piden recortadas (sin el fondo blanco) al backend.
+  const photoSrc = (u) => {
+    const m = /media\.api-sports\.io\/football\/players\/(\d+)\.png/.exec(u || '');
+    return m ? `${apiBase()}/api/futbol/photo/${m[1]}.png` : u;
+  };
 
   // Nombres y logos oficiales (logos de ESPN, versión para fondo oscuro).
   const LEAGUES = [
@@ -456,7 +461,7 @@
       <article class="fb-pick" data-ev="${esc(k.event_id)}">
         <div class="fb-pick-who">
           <div class="fb-face fb-face--sm">
-            ${photo ? `<img src="${esc(photo)}" alt="" loading="lazy">` : `<span>${esc(initials(k.player))}</span>`}
+            ${photo ? `<img src="${esc(photoSrc(photo))}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${esc(initials(k.player))}'}))">` : `<span>${esc(initials(k.player))}</span>`}
             ${team ? `<img class="fb-face-crest" src="${logo(team.team_id)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
           </div>
           <div class="fb-pick-name">
@@ -555,7 +560,7 @@
     return `
       <article class="fb-tk fb-tk--${v.c}${on ? ' is-in' : ''}">
         <div class="fb-tk-face">
-          ${pl && pl.photo ? `<img src="${esc(pl.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+          ${pl && pl.photo ? `<img src="${esc(photoSrc(pl.photo))}" alt="" loading="lazy" onerror="this.remove()">` : ''}
           <span>${esc(initials(k.player))}</span>
           ${team ? `<img class="fb-tk-crest" src="${logo(team.team_id)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
         </div>
@@ -777,7 +782,7 @@
       <article class="fb-card${(state.data.picks || []).some(k => k.event_id === m.event_id && k.player_id === p.player_id) ? ' fb-card--pick' : ''}">
         <div class="fb-card-top">
           <div class="fb-face">
-            ${p.photo ? `<img src="${esc(p.photo)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${esc(initials(p.player))}'}))">`
+            ${p.photo ? `<img src="${esc(photoSrc(p.photo))}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${esc(initials(p.player))}'}))">`
               : `<span>${esc(initials(p.player))}</span>`}
             <img class="fb-face-crest" src="${logo(team.team_id)}" alt="" loading="lazy" onerror="this.remove()">
           </div>
@@ -1068,7 +1073,7 @@
     if (!items.length) return '';
     const face = (it) => it.kind === 'team'
       ? `<span class="fb-hl-face is-team"><img src="${logo(it.team.team_id)}" alt="" onerror="this.remove()"></span>`
-      : `<span class="fb-hl-face">${it.p && it.p.photo ? `<img src="${esc(it.p.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<i>${esc(initials(it.p ? it.p.player : it.title))}</i>
+      : `<span class="fb-hl-face">${it.p && it.p.photo ? `<img src="${esc(photoSrc(it.p.photo))}" alt="" loading="lazy" onerror="this.remove()">` : ''}<i>${esc(initials(it.p ? it.p.player : it.title))}</i>
           ${it.team ? `<img class="fb-hl-crest" src="${logo(it.team.team_id)}" alt="" onerror="this.remove()">` : ''}</span>`;
     return `
       <div class="fb-hl">
@@ -1276,7 +1281,7 @@
     return `
       <div class="fb-ws${open ? ' is-open' : ''}${hasPick ? ' has-pick' : ''}">
         <button class="fb-ws-row" data-wsp="${esc(p.player_id)}" aria-expanded="${open}">
-          <span class="fb-ws-face">${p.photo ? `<img src="${esc(p.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<i>${esc(initials(p.player))}</i></span>
+          <span class="fb-ws-face">${p.photo ? `<img src="${esc(photoSrc(p.photo))}" alt="" loading="lazy" onerror="this.remove()">` : ''}<i>${esc(initials(p.player))}</i></span>
           <span class="fb-ws-id">
             <b>${esc(p.player)}${hasPick ? `<em class="fb-ws-pk">jugada</em>` : ''}</b>
             <small><img src="${logo(team.team_id)}" alt="" onerror="this.remove()">${esc(roleName(p))} · ${p.exp_minutes}'</small>
@@ -1461,7 +1466,7 @@
         <div class="fb-dt-menu-list">
           ${list.length ? list.map(c => `
             <button class="fb-dt-opt" data-dtpick="${esc(c.player_id)}">
-              <span class="fb-dt-face">${c.photo ? `<img src="${esc(c.photo)}" alt="" onerror="this.remove()">` : ''}<i>${esc(initials(c.player))}</i></span>
+              <span class="fb-dt-face">${c.photo ? `<img src="${esc(photoSrc(c.photo))}" alt="" onerror="this.remove()">` : ''}<i>${esc(initials(c.player))}</i></span>
               <span class="fb-dt-opt-txt"><b>${esc(c.player)}</b><small>${esc(roleName(c) || (c.pos === 'G' ? 'Arquero' : 'Suplente'))}${c.shots ? ` · ${num1(c.shots)} rem.` : ''}</small></span>
             </button>`).join('') : '<p class="fb-dt-empty">No hay más jugadores del plantel.</p>'}
         </div>

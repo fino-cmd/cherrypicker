@@ -3522,3 +3522,11 @@ body.lg-arg #section-futbol .fb-sec-head h2 { font-size: 34px !important; line-h
 @media (max-width: 768px) { body.lg-arg #section-futbol .fb-sec-head h2 { font-size: 30px !important; } }
 body.lg-arg #section-futbol .fb-res--won .fb-res-bet small, body.lg-arg #section-futbol .fb-book--good small,
 body.lg-arg #section-futbol .fb-tk-others .ok { color: #9ff8ff; }
+/* LPF: títulos en ProtoFont 700 mayúscula (como la web); Gothiks quedaba muy apretada */
+.lg-arg, body[data-sport="futbol"].lg-arg { --lg-title: 'ProtoFont', 'Rubik', sans-serif; }
+body.lg-arg #section-futbol .fb-sec-head h2 { font-weight: 700 !important; font-size: 30px !important; line-height: 1.1 !important; letter-spacing: .01em !important; }
+@media (max-width: 768px) { body.lg-arg #section-futbol .fb-sec-head h2 { font-size: 25px !important; } }
+body.lg-arg #section-futbol .fb-block-head h3, body.lg-arg #section-futbol .fb-totals summary h3,
+body.lg-arg #section-futbol .fb-hl-head b, #section-futbol .lg-arg .fb-hl-head b {
+  font-weight: 700 !important; font-size: 19px !important; line-height: 1.2 !important; letter-spacing: .01em !important;
+}

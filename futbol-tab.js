@@ -17,13 +17,13 @@
 
   // Nombres y logos oficiales (logos de ESPN, versión para fondo oscuro).
   const LEAGUES = [
-    { id: 'arg', name: 'Liga Profesional de Fútbol', short: 'LPF', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/1.png' },
+    { id: 'arg', name: 'Liga Profesional de Fútbol', short: 'LPF', logo: 'assets/lpf/mark-2026.png' },
     { id: 'bra', name: 'Brasileirão Série A', short: 'Série A', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/85.png' },
     { id: 'eng', name: 'Premier League', short: 'PL', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png' },
     { id: 'ita', name: 'Serie A', short: 'Italia', logo: 'assets/ita/mark-seriea.png' },
   ];
   // Lockup de la LPF: escudo | LIGA / PROFESIONAL / DE FÚTBOL (como el oficial).
-  const lpfLockup = (cls = '') => `<span class="fb-lpf-lockup ${cls}"><img src="https://a.espncdn.com/i/leaguelogos/soccer/500-dark/1.png" alt="LPF"><i></i><b>Liga<br>Profesional<br>de Fútbol</b></span>`;
+  const lpfLockup = (cls = '') => `<span class="fb-lpf-lockup ${cls}"><img src="assets/lpf/mark-2026.png" alt="LPF"><i></i><b>Liga<br>Profesional<br>de Fútbol</b></span>`;
   // Banners de cada liga (como las webs oficiales): grande arriba al filtrar, chico dentro del partido.
   const PL_LOGO = 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png';
   function leagueHero(lg) {
@@ -1335,8 +1335,8 @@
       const row = xi.players.filter(p => p.line === ln)
         .sort((a, b) => lateral(a.pos) - lateral(b.pos) || (a.place || 0) - (b.place || 0));
       const i = outfield.indexOf(ln);
-      const y = ln === 0 ? 88 : 70 - i * (56 / Math.max(1, outfield.length - 1));
-      row.forEach((p, j) => out.push({ p, x: 8 + ((j + 1) / (row.length + 1)) * 84, y, n: row.length }));
+      const y = ln === 0 ? 88 : 66 - i * (54 / Math.max(1, outfield.length - 1));
+      row.forEach((p, j) => out.push({ p, x: 6 + ((j + 0.5) / row.length) * 88, y, n: row.length }));
     });
     return out;
   }
@@ -1345,7 +1345,7 @@
     const shots = p.line === 0 ? 'AR' : mp ? num1(mp.shots) : '–';
     const ps = Math.round((p.p_start || 0) * 100);
     return `
-      <div class="fb-xd${p.doubt ? ' is-doubt' : ''}${mp && mp.shots >= 1.5 ? ' is-hot' : ''}${n >= 5 ? ' is-tight' : ''}" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%"
+      <div class="fb-xd${p.doubt ? ' is-doubt' : ''}${mp && mp.shots >= 1.5 ? ' is-hot' : ''}${n >= 5 ? ' is-tight' : ''}" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--n:${n}"
            title="${esc(p.player)} · ${esc(p.pos || '')} · ${shots} remates esperados${confirmed ? '' : ` · titular ${ps}%`}">
         <span class="fb-xd-n">${shots}</span>
         <b>${esc(surname(p.player))}</b>
@@ -1522,7 +1522,7 @@
         </div>
           ${editing && state.dtMenu ? dtMenu(m, side) : ''}
         </div>
-        ${editing ? '' : `<p class="fb-note">En cada círculo: <b>remates esperados</b>${conf || shown.custom ? '' : '. El % de abajo es su chance de ser titular; el borde punteado marca las dudas'}.
+        ${editing ? '' : `<p class="fb-note">En cada círculo: <b>remates esperados</b>${conf || shown.custom ? '' : '. El % del globito es su chance de ser titular; el borde punteado marca las dudas'}.
           ${!shown.custom && doubts.length ? ` Dudas: ${doubts.map(p => `<b>${esc(surname(p.player))}</b>`).join(', ')}.` : ''}
           ${shown.custom ? 'Es tu alineación: tocá <b>Simular con mi alineación</b> para recalcular el partido con ella.' : conf ? 'Formación oficial (ESPN).' : 'Armada con el esquema del último partido y quién jugó cada puesto en las últimas 5 fechas.'}</p>`}
       </section>`;

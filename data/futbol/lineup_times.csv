@@ -1,0 +1,415 @@
+event_id,league,match,kickoff,source,seen_at,min_before
+401841655,arg,Estudiantes de Río Cuarto vs Gimnasia La Plata,2026-10-30T22:00Z,espn,2026-10-30T21:27:04+00:00,32.9
+401841655,arg,Estudiantes de Río Cuarto vs Gimnasia La Plata,2026-10-30T22:00Z,espn,2026-10-30T21:29:21+00:00,30.6
+401841655,arg,Estudiantes de Río Cuarto vs Gimnasia La Plata,2026-10-30T22:00Z,highlightly,2026-10-30T21:31:57+00:00,28.0
+401841655,arg,Estudiantes de Río Cuarto vs Gimnasia La Plata,2026-10-30T22:00Z,api-football,2026-10-30T21:33:00+00:00,27.0
+401841653,arg,Huracán vs Tigre,2026-10-30T22:00Z,espn,2026-10-30T21:39:48+00:00,20.2
+401841653,arg,Huracán vs Tigre,2026-10-30T22:00Z,api-football,2026-10-30T21:43:25+00:00,16.6
+401841653,arg,Huracán vs Tigre,2026-10-30T22:00Z,highlightly,2026-10-30T21:47:01+00:00,13.0
+401841653,arg,Huracán vs Tigre,2026-10-30T22:00Z,espn,2026-10-30T21:48:33+00:00,11.4
+401841653,arg,Huracán vs Tigre,2026-10-30T22:00Z,api-football,2026-10-30T21:48:33+00:00,11.4
+401841653,arg,Huracán vs Tigre,2026-10-30T22:00Z,highlightly,2026-10-30T21:49:01+00:00,11.0
+401841295,bra,Corinthians vs Mirassol,2026-10-30T23:00Z,espn,2026-10-30T22:11:44+00:00,48.3
+401841295,bra,Corinthians vs Mirassol,2026-10-30T23:00Z,espn,2026-10-30T22:15:49+00:00,44.2
+401841295,bra,Corinthians vs Mirassol,2026-10-30T23:00Z,api-football,2026-10-30T22:33:28+00:00,26.5
+401841295,bra,Corinthians vs Mirassol,2026-10-30T23:00Z,highlightly,2026-10-30T22:45:00+00:00,15.0
+401841647,arg,Sarmiento (Junín) vs Rosario Central,2026-10-31T00:15Z,espn,2026-10-30T23:30:06+00:00,44.9
+401841648,arg,Racing Club vs Aldosivi,2026-10-31T00:15Z,espn,2026-10-30T23:32:18+00:00,42.7
+401841647,arg,Sarmiento (Junín) vs Rosario Central,2026-10-31T00:15Z,espn,2026-10-30T23:33:28+00:00,41.5
+401841648,arg,Racing Club vs Aldosivi,2026-10-31T00:15Z,api-football,2026-10-30T23:48:06+00:00,26.9
+401841647,arg,Sarmiento (Junín) vs Rosario Central,2026-10-31T00:15Z,api-football,2026-10-30T23:48:06+00:00,26.9
+401841648,arg,Racing Club vs Aldosivi,2026-10-31T00:15Z,highlightly,2026-10-31T00:00:16+00:00,14.7
+401841647,arg,Sarmiento (Junín) vs Rosario Central,2026-10-31T00:15Z,highlightly,2026-10-31T00:00:16+00:00,14.7
+401879248,eng,Chelsea vs Manchester United,2026-10-31T12:30Z,espn,2026-10-31T11:32:08+00:00,57.9
+401879248,eng,Chelsea vs Manchester United,2026-10-31T12:30Z,espn,2026-10-31T11:36:14+00:00,53.8
+401879248,eng,Chelsea vs Manchester United,2026-10-31T12:30Z,api-football,2026-10-31T12:00:54+00:00,29.1
+401879248,eng,Chelsea vs Manchester United,2026-10-31T12:30Z,highlightly,2026-10-31T12:02:58+00:00,27.0
+401874798,ita,Bologna vs Monza,2026-10-31T14:00Z,espn,2026-10-31T13:25:43+00:00,34.3
+401874798,ita,Bologna vs Monza,2026-10-31T14:00Z,api-football,2026-10-31T13:31:08+00:00,28.9
+401874798,ita,Bologna vs Monza,2026-10-31T14:00Z,highlightly,2026-10-31T13:47:09+00:00,12.8
+401879251,eng,AFC Bournemouth vs Leeds United,2026-10-31T15:00Z,espn,2026-10-31T14:01:33+00:00,58.4
+401879249,eng,Brentford vs Nottingham Forest,2026-10-31T15:00Z,espn,2026-10-31T14:02:06+00:00,57.9
+401879247,eng,Coventry City vs Sunderland,2026-10-31T15:00Z,espn,2026-10-31T14:02:06+00:00,57.9
+401878763,eng,Hull City vs Ipswich Town,2026-10-31T15:00Z,espn,2026-10-31T14:02:06+00:00,57.9
+401879245,eng,Manchester City vs Brighton & Hove Albion,2026-10-31T15:00Z,espn,2026-10-31T14:02:06+00:00,57.9
+401879251,eng,AFC Bournemouth vs Leeds United,2026-10-31T15:00Z,espn,2026-10-31T14:17:16+00:00,42.7
+401879249,eng,Brentford vs Nottingham Forest,2026-10-31T15:00Z,espn,2026-10-31T14:17:16+00:00,42.7
+401879245,eng,Manchester City vs Brighton & Hove Albion,2026-10-31T15:00Z,espn,2026-10-31T14:24:10+00:00,35.8
+401879247,eng,Coventry City vs Sunderland,2026-10-31T15:00Z,espn,2026-10-31T14:27:12+00:00,32.8
+401878763,eng,Hull City vs Ipswich Town,2026-10-31T15:00Z,espn,2026-10-31T14:27:12+00:00,32.8
+401879251,eng,AFC Bournemouth vs Leeds United,2026-10-31T15:00Z,api-football,2026-10-31T14:32:48+00:00,27.2
+401879249,eng,Brentford vs Nottingham Forest,2026-10-31T15:00Z,api-football,2026-10-31T14:33:20+00:00,26.7
+401879247,eng,Coventry City vs Sunderland,2026-10-31T15:00Z,api-football,2026-10-31T14:33:20+00:00,26.7
+401878763,eng,Hull City vs Ipswich Town,2026-10-31T15:00Z,api-football,2026-10-31T14:33:20+00:00,26.7
+401879245,eng,Manchester City vs Brighton & Hove Albion,2026-10-31T15:00Z,api-football,2026-10-31T14:33:20+00:00,26.7
+401874990,ita,Udinese vs AS Roma,2026-10-31T17:00Z,espn,2026-10-31T16:22:06+00:00,37.9
+401874990,ita,Udinese vs AS Roma,2026-10-31T17:00Z,api-football,2026-10-31T16:31:55+00:00,28.1
+401878761,eng,Tottenham Hotspur vs Crystal Palace,2026-10-31T17:30Z,espn,2026-10-31T16:31:55+00:00,58.1
+401874990,ita,Udinese vs AS Roma,2026-10-31T17:00Z,espn,2026-10-31T16:36:58+00:00,23.0
+401874990,ita,Udinese vs AS Roma,2026-10-31T17:00Z,api-football,2026-10-31T16:36:58+00:00,23.0
+401878761,eng,Tottenham Hotspur vs Crystal Palace,2026-10-31T17:30Z,espn,2026-10-31T16:55:37+00:00,34.4
+401878761,eng,Tottenham Hotspur vs Crystal Palace,2026-10-31T17:30Z,api-football,2026-10-31T17:00:41+00:00,29.3
+401841294,bra,Coritiba vs Vitória,2026-10-31T19:00Z,espn,2026-10-31T18:16:46+00:00,43.2
+401841294,bra,Coritiba vs Vitória,2026-10-31T19:00Z,espn,2026-10-31T18:17:50+00:00,42.2
+401841294,bra,Coritiba vs Vitória,2026-10-31T19:00Z,api-football,2026-10-31T18:34:45+00:00,25.2
+401879250,eng,Aston Villa vs Fulham,2026-10-31T20:00Z,espn,2026-10-31T19:01:15+00:00,58.7
+401874795,ita,AC Milan vs Internazionale,2026-10-31T19:45Z,espn,2026-10-31T19:02:20+00:00,42.7
+401879250,eng,Aston Villa vs Fulham,2026-10-31T20:00Z,espn,2026-10-31T19:15:48+00:00,44.2
+401841656,arg,Deportivo Riestra vs Talleres (Córdoba),2026-10-31T20:00Z,espn,2026-10-31T19:23:59+00:00,36.0
+401841646,arg,Vélez Sarsfield vs San Lorenzo,2026-10-31T22:15Z,espn,2026-10-31T21:44:34+00:00,30.4
+401841646,arg,Vélez Sarsfield vs San Lorenzo,2026-10-31T22:15Z,espn,2026-10-31T21:46:07+00:00,28.9
+401841654,arg,Estudiantes de La Plata vs Instituto (Córdoba),2026-11-01T00:30Z,espn,2026-11-01T00:02:32+00:00,27.5
+401841654,arg,Estudiantes de La Plata vs Instituto (Córdoba),2026-11-01T00:30Z,espn,2026-11-01T00:08:09+00:00,21.8
+401841654,arg,Estudiantes de La Plata vs Instituto (Córdoba),2026-11-01T00:30Z,api-football,2026-11-01T00:18:37+00:00,11.4
+401841654,arg,Estudiantes de La Plata vs Instituto (Córdoba),2026-11-01T00:30Z,highlightly,2026-11-01T00:30:57+00:00,-1.0
+401875002,ita,Como vs Venezia,2026-11-01T11:30Z,espn,2026-11-01T10:49:39+00:00,40.3
+401875002,ita,Como vs Venezia,2026-11-01T11:30Z,api-football,2026-11-01T11:01:33+00:00,28.4
+401875002,ita,Como vs Venezia,2026-11-01T11:30Z,highlightly,2026-11-01T11:03:06+00:00,26.9
+401874782,ita,Frosinone vs Torino,2026-11-01T14:00Z,espn,2026-11-01T13:15:12+00:00,44.8
+401874983,ita,Lazio vs Cagliari,2026-11-01T14:00Z,espn,2026-11-01T13:18:08+00:00,41.9
+401874782,ita,Frosinone vs Torino,2026-11-01T14:00Z,highlightly,2026-11-01T13:31:49+00:00,28.2
+401874983,ita,Lazio vs Cagliari,2026-11-01T14:00Z,highlightly,2026-11-01T13:31:49+00:00,28.2
+401874782,ita,Frosinone vs Torino,2026-11-01T14:00Z,espn,2026-11-01T13:32:51+00:00,27.1
+401874782,ita,Frosinone vs Torino,2026-11-01T14:00Z,api-football,2026-11-01T13:32:51+00:00,27.1
+401874983,ita,Lazio vs Cagliari,2026-11-01T14:00Z,api-football,2026-11-01T13:32:51+00:00,27.1
+401874782,ita,Frosinone vs Torino,2026-11-01T14:00Z,highlightly,2026-11-01T13:35:02+00:00,25.0
+401874983,ita,Lazio vs Cagliari,2026-11-01T14:00Z,espn,2026-11-01T13:35:02+00:00,25.0
+401874983,ita,Lazio vs Cagliari,2026-11-01T14:00Z,highlightly,2026-11-01T13:35:02+00:00,25.0
+401874983,ita,Lazio vs Cagliari,2026-11-01T14:00Z,api-football,2026-11-01T13:38:34+00:00,21.4
+401879246,eng,Liverpool vs Arsenal,2026-11-01T16:30Z,espn,2026-11-01T15:32:05+00:00,57.9
+401879246,eng,Liverpool vs Arsenal,2026-11-01T16:30Z,espn,2026-11-01T15:34:11+00:00,55.8
+401879246,eng,Liverpool vs Arsenal,2026-11-01T16:30Z,highlightly,2026-11-01T16:01:31+00:00,28.5
+401879246,eng,Liverpool vs Arsenal,2026-11-01T16:30Z,api-football,2026-11-01T16:03:39+00:00,26.3
+401874968,ita,Lecce vs Genoa,2026-11-01T17:00Z,espn,2026-11-01T16:10:13+00:00,49.8
+401874968,ita,Lecce vs Genoa,2026-11-01T17:00Z,api-football,2026-11-01T16:54:54+00:00,5.1
+401841658,arg,Boca Juniors vs River Plate,2026-11-01T18:00Z,espn,2026-11-01T17:38:49+00:00,21.2
+401874949,ita,Juventus vs Napoli,2026-11-01T19:45Z,espn,2026-11-01T19:06:09+00:00,38.8
+401874949,ita,Juventus vs Napoli,2026-11-01T19:45Z,espn,2026-11-01T19:08:18+00:00,36.7
+401874949,ita,Juventus vs Napoli,2026-11-01T19:45Z,api-football,2026-11-01T19:18:29+00:00,26.5
+401841645,arg,Belgrano (Córdoba) vs Barracas Central,2026-11-01T21:30Z,espn,2026-11-01T21:52:06+00:00,-22.1
+401841650,arg,Newell's Old Boys vs Unión (Santa Fe),2026-11-01T21:30Z,espn,2026-11-01T21:52:06+00:00,-22.1
+401841651,arg,Lanús vs Gimnasia (Mendoza),2026-11-01T23:45Z,espn,2026-11-01T23:02:25+00:00,42.6
+401874963,ita,Sassuolo vs Fiorentina,2026-11-02T17:30Z,pitchapi,2026-11-02T17:07:54+00:00,22.1
+401874963,ita,Sassuolo vs Fiorentina,2026-11-02T17:30Z,pitchapi,2026-11-02T17:09:26+00:00,20.6
+401878762,eng,Newcastle United vs Everton,2026-11-02T20:00Z,pitchapi,2026-11-02T19:07:35+00:00,52.4
+401874971,ita,Atalanta vs Parma,2026-11-02T19:45Z,pitchapi,2026-11-02T19:08:38+00:00,36.4
+401874971,ita,Atalanta vs Parma,2026-11-02T19:45Z,pitchapi,2026-11-02T19:16:16+00:00,28.7
+401841657,arg,Defensa y Justicia vs Independiente,2026-11-02T22:00Z,espn,2026-11-02T21:46:08+00:00,13.9
+401841649,arg,Platense vs Central Córdoba (Santiago del Estero),2026-11-02T22:00Z,espn,2026-11-02T21:46:08+00:00,13.9
+401841657,arg,Defensa y Justicia vs Independiente,2026-11-02T22:00Z,espn,2026-11-02T21:47:04+00:00,12.9
+401841649,arg,Platense vs Central Córdoba (Santiago del Estero),2026-11-02T22:00Z,espn,2026-11-02T21:47:30+00:00,12.5
+401841649,arg,Platense vs Central Córdoba (Santiago del Estero),2026-11-02T22:00Z,pitchapi,2026-11-02T22:07:25+00:00,-7.4
+401841657,arg,Defensa y Justicia vs Independiente,2026-11-02T22:00Z,pitchapi,2026-11-02T22:08:28+00:00,-8.5
+401841299,bra,Red Bull Bragantino vs Santos,2026-11-02T23:00Z,espn,2026-11-02T22:10:04+00:00,49.9
+401841299,bra,Red Bull Bragantino vs Santos,2026-11-02T23:00Z,espn,2026-11-02T22:11:26+00:00,48.6
+401841299,bra,Red Bull Bragantino vs Santos,2026-11-02T23:00Z,pitchapi,2026-11-02T23:08:11+00:00,-8.2
+401841644,arg,Atlético Tucumán vs Argentinos Juniors,2026-11-03T00:15Z,espn,2026-11-02T23:33:43+00:00,41.3
+401841644,arg,Atlético Tucumán vs Argentinos Juniors,2026-11-03T00:15Z,espn,2026-11-02T23:34:43+00:00,40.3
+401841652,arg,Independiente Rivadavia vs Banfield,2026-11-03T00:15Z,espn,2026-11-02T23:36:54+00:00,38.1
+401841644,arg,Atlético Tucumán vs Argentinos Juniors,2026-11-03T00:15Z,pitchapi,2026-11-03T00:07:34+00:00,7.4
+401841652,arg,Independiente Rivadavia vs Banfield,2026-11-03T00:15Z,pitchapi,2026-11-03T00:07:34+00:00,7.4
+401915311,ucl,Galatasaray vs VfB Stuttgart,2026-11-03T17:45Z,espn,2026-11-03T16:45:54+00:00,59.1
+401915310,ucl,Shakhtar Donetsk vs Sporting CP,2026-11-03T17:45Z,espn,2026-11-03T16:45:54+00:00,59.1
+401915311,ucl,Galatasaray vs VfB Stuttgart,2026-11-03T17:45Z,espn,2026-11-03T16:57:19+00:00,47.7
+401915310,ucl,Shakhtar Donetsk vs Sporting CP,2026-11-03T17:45Z,espn,2026-11-03T16:57:19+00:00,47.7
+401915311,ucl,Galatasaray vs VfB Stuttgart,2026-11-03T17:45Z,pitchapi,2026-11-03T17:08:17+00:00,36.7
+401915310,ucl,Shakhtar Donetsk vs Sporting CP,2026-11-03T17:45Z,pitchapi,2026-11-03T17:08:17+00:00,36.7
+401915386,ucl,Atlético Madrid vs Bayern Munich,2026-11-03T20:00Z,espn,2026-11-03T19:05:54+00:00,54.1
+401915387,ucl,Barcelona vs Aston Villa,2026-11-03T20:00Z,espn,2026-11-03T19:05:54+00:00,54.1
+401915384,ucl,Bodo/Glimt vs Lille,2026-11-03T20:00Z,espn,2026-11-03T19:05:54+00:00,54.1
+401915307,ucl,Feyenoord Rotterdam vs Internazionale,2026-11-03T20:00Z,espn,2026-11-03T19:05:54+00:00,54.1
+401915385,ucl,LASK Linz vs Slovan Bratislava,2026-11-03T20:00Z,espn,2026-11-03T19:05:54+00:00,54.1
+401915308,ucl,Manchester United vs AS Roma,2026-11-03T20:00Z,espn,2026-11-03T19:05:54+00:00,54.1
+401915309,ucl,Villarreal vs Paris Saint-Germain,2026-11-03T20:00Z,espn,2026-11-03T19:05:54+00:00,54.1
+401915386,ucl,Atlético Madrid vs Bayern Munich,2026-11-03T20:00Z,pitchapi,2026-11-03T19:07:31+00:00,52.5
+401915386,ucl,Atlético Madrid vs Bayern Munich,2026-11-03T20:00Z,espn,2026-11-03T19:08:32+00:00,51.5
+401915387,ucl,Barcelona vs Aston Villa,2026-11-03T20:00Z,espn,2026-11-03T19:08:32+00:00,51.5
+401915387,ucl,Barcelona vs Aston Villa,2026-11-03T20:00Z,pitchapi,2026-11-03T19:08:32+00:00,51.5
+401915384,ucl,Bodo/Glimt vs Lille,2026-11-03T20:00Z,espn,2026-11-03T19:08:32+00:00,51.5
+401915384,ucl,Bodo/Glimt vs Lille,2026-11-03T20:00Z,pitchapi,2026-11-03T19:08:32+00:00,51.5
+401915307,ucl,Feyenoord Rotterdam vs Internazionale,2026-11-03T20:00Z,pitchapi,2026-11-03T19:08:32+00:00,51.5
+401915385,ucl,LASK Linz vs Slovan Bratislava,2026-11-03T20:00Z,pitchapi,2026-11-03T19:08:32+00:00,51.5
+401915308,ucl,Manchester United vs AS Roma,2026-11-03T20:00Z,pitchapi,2026-11-03T19:08:32+00:00,51.5
+401915309,ucl,Villarreal vs Paris Saint-Germain,2026-11-03T20:00Z,pitchapi,2026-11-03T19:08:32+00:00,51.5
+401915386,ucl,Atlético Madrid vs Bayern Munich,2026-11-03T20:00Z,pitchapi,2026-11-03T19:09:11+00:00,50.8
+401915307,ucl,Feyenoord Rotterdam vs Internazionale,2026-11-03T20:00Z,espn,2026-11-03T19:13:46+00:00,46.2
+401915307,ucl,Feyenoord Rotterdam vs Internazionale,2026-11-03T20:00Z,pitchapi,2026-11-03T19:13:46+00:00,46.2
+401915385,ucl,LASK Linz vs Slovan Bratislava,2026-11-03T20:00Z,espn,2026-11-03T19:15:17+00:00,44.7
+401915385,ucl,LASK Linz vs Slovan Bratislava,2026-11-03T20:00Z,pitchapi,2026-11-03T19:15:17+00:00,44.7
+401915308,ucl,Manchester United vs AS Roma,2026-11-03T20:00Z,espn,2026-11-03T19:15:17+00:00,44.7
+401915308,ucl,Manchester United vs AS Roma,2026-11-03T20:00Z,pitchapi,2026-11-03T19:15:17+00:00,44.7
+401915309,ucl,Villarreal vs Paris Saint-Germain,2026-11-03T20:00Z,espn,2026-11-03T19:15:51+00:00,44.1
+401915309,ucl,Villarreal vs Paris Saint-Germain,2026-11-03T20:00Z,pitchapi,2026-11-03T19:15:51+00:00,44.1
+401841304,bra,Chapecoense vs Mirassol,2026-11-03T22:30Z,espn,2026-11-03T21:42:35+00:00,47.4
+401841304,bra,Chapecoense vs Mirassol,2026-11-03T22:30Z,espn,2026-11-03T21:43:52+00:00,46.1
+401841304,bra,Chapecoense vs Mirassol,2026-11-03T22:30Z,pitchapi,2026-11-03T22:08:19+00:00,21.7
+401841301,bra,Internacional vs Coritiba,2026-11-04T00:30Z,espn,2026-11-03T23:49:01+00:00,41.0
+401841301,bra,Internacional vs Coritiba,2026-11-04T00:30Z,espn,2026-11-03T23:50:34+00:00,39.4
+401841301,bra,Internacional vs Coritiba,2026-11-04T00:30Z,pitchapi,2026-11-04T00:07:39+00:00,22.3
+401915551,uel,Stade Rennais vs Olympiacos,2026-11-04T15:30Z,espn,2026-11-04T14:31:40+00:00,58.3
+401915551,uel,Stade Rennais vs Olympiacos,2026-11-04T15:30Z,pitchapi,2026-11-04T15:07:07+00:00,22.9
+401915383,ucl,AEK Athens vs Real Madrid,2026-11-04T17:45Z,espn,2026-11-04T16:46:36+00:00,58.4
+401915382,ucl,Fenerbahce vs Liverpool,2026-11-04T17:45Z,espn,2026-11-04T16:46:36+00:00,58.4
+401915383,ucl,AEK Athens vs Real Madrid,2026-11-04T17:45Z,espn,2026-11-04T16:48:25+00:00,56.6
+401915382,ucl,Fenerbahce vs Liverpool,2026-11-04T17:45Z,espn,2026-11-04T16:48:25+00:00,56.6
+401915383,ucl,AEK Athens vs Real Madrid,2026-11-04T17:45Z,pitchapi,2026-11-04T17:07:37+00:00,37.4
+401915382,ucl,Fenerbahce vs Liverpool,2026-11-04T17:45Z,pitchapi,2026-11-04T17:07:37+00:00,37.4
+401915301,ucl,FC Porto vs Napoli,2026-11-04T20:00Z,espn,2026-11-04T19:00:46+00:00,59.2
+401915303,ucl,PSV Eindhoven vs Club Brugge,2026-11-04T20:00Z,espn,2026-11-04T19:00:46+00:00,59.2
+401915304,ucl,Borussia Dortmund vs Real Betis,2026-11-04T20:00Z,espn,2026-11-04T19:01:48+00:00,58.2
+401915306,ucl,RB Leipzig vs Manchester City,2026-11-04T20:00Z,espn,2026-11-04T19:01:48+00:00,58.2
+401915381,ucl,Slavia Prague vs Arsenal,2026-11-04T20:00Z,espn,2026-11-04T19:01:48+00:00,58.2
+401915302,ucl,Viking FK vs Sabah FK,2026-11-04T20:00Z,espn,2026-11-04T19:01:48+00:00,58.2
+401915305,ucl,Lens vs Como,2026-11-04T20:00Z,espn,2026-11-04T19:03:43+00:00,56.3
+401915304,ucl,Borussia Dortmund vs Real Betis,2026-11-04T20:00Z,pitchapi,2026-11-04T19:07:27+00:00,52.5
+401915301,ucl,FC Porto vs Napoli,2026-11-04T20:00Z,pitchapi,2026-11-04T19:07:27+00:00,52.5
+401915305,ucl,Lens vs Como,2026-11-04T20:00Z,pitchapi,2026-11-04T19:07:27+00:00,52.5
+401915303,ucl,PSV Eindhoven vs Club Brugge,2026-11-04T20:00Z,pitchapi,2026-11-04T19:07:27+00:00,52.5
+401915302,ucl,Viking FK vs Sabah FK,2026-11-04T20:00Z,pitchapi,2026-11-04T19:07:27+00:00,52.5
+401915381,ucl,Slavia Prague vs Arsenal,2026-11-04T20:00Z,pitchapi,2026-11-04T19:09:18+00:00,50.7
+401915304,ucl,Borussia Dortmund vs Real Betis,2026-11-04T20:00Z,espn,2026-11-04T19:25:53+00:00,34.1
+401915304,ucl,Borussia Dortmund vs Real Betis,2026-11-04T20:00Z,pitchapi,2026-11-04T19:26:34+00:00,33.4
+401915301,ucl,FC Porto vs Napoli,2026-11-04T20:00Z,espn,2026-11-04T19:29:51+00:00,30.1
+401915301,ucl,FC Porto vs Napoli,2026-11-04T20:00Z,pitchapi,2026-11-04T19:29:51+00:00,30.1
+401915305,ucl,Lens vs Como,2026-11-04T20:00Z,espn,2026-11-04T19:29:51+00:00,30.1
+401915305,ucl,Lens vs Como,2026-11-04T20:00Z,pitchapi,2026-11-04T19:29:51+00:00,30.1
+401915303,ucl,PSV Eindhoven vs Club Brugge,2026-11-04T20:00Z,espn,2026-11-04T19:29:51+00:00,30.1
+401915303,ucl,PSV Eindhoven vs Club Brugge,2026-11-04T20:00Z,pitchapi,2026-11-04T19:29:51+00:00,30.1
+401915306,ucl,RB Leipzig vs Manchester City,2026-11-04T20:00Z,espn,2026-11-04T19:29:51+00:00,30.1
+401915381,ucl,Slavia Prague vs Arsenal,2026-11-04T20:00Z,espn,2026-11-04T19:29:51+00:00,30.1
+401915381,ucl,Slavia Prague vs Arsenal,2026-11-04T20:00Z,pitchapi,2026-11-04T19:29:51+00:00,30.1
+401915302,ucl,Viking FK vs Sabah FK,2026-11-04T20:00Z,espn,2026-11-04T19:29:51+00:00,30.1
+401915302,ucl,Viking FK vs Sabah FK,2026-11-04T20:00Z,pitchapi,2026-11-04T19:29:51+00:00,30.1
+401915306,ucl,RB Leipzig vs Manchester City,2026-11-04T20:00Z,pitchapi,2026-11-04T20:08:39+00:00,-8.7
+401841307,bra,Flamengo vs Grêmio,2026-11-04T22:30Z,espn,2026-11-04T21:38:10+00:00,51.8
+401841306,bra,Athletico-PR vs Vasco da Gama,2026-11-04T22:30Z,espn,2026-11-04T21:42:33+00:00,47.4
+401841306,bra,Athletico-PR vs Vasco da Gama,2026-11-04T22:30Z,espn,2026-11-04T21:51:39+00:00,38.3
+401841307,bra,Flamengo vs Grêmio,2026-11-04T22:30Z,espn,2026-11-04T21:51:39+00:00,38.3
+401841306,bra,Athletico-PR vs Vasco da Gama,2026-11-04T22:30Z,pitchapi,2026-11-04T22:08:25+00:00,21.6
+401841307,bra,Flamengo vs Grêmio,2026-11-04T22:30Z,pitchapi,2026-11-04T22:08:25+00:00,21.6
+401841298,bra,São Paulo vs Corinthians,2026-11-05T00:30Z,espn,2026-11-04T23:40:27+00:00,49.5
+401841305,bra,Botafogo vs Atlético-MG,2026-11-05T00:30Z,espn,2026-11-04T23:55:47+00:00,34.2
+401841305,bra,Botafogo vs Atlético-MG,2026-11-05T00:30Z,pitchapi,2026-11-05T00:07:19+00:00,22.7
+401841298,bra,São Paulo vs Corinthians,2026-11-05T00:30Z,pitchapi,2026-11-05T00:07:53+00:00,22.1
+401915538,uel,Anderlecht vs RB Salzburg,2026-11-05T17:45Z,espn,2026-11-05T16:46:44+00:00,58.3
+401915536,uel,Levski Sofia vs Jagiellonia Bialystok,2026-11-05T17:45Z,espn,2026-11-05T16:46:44+00:00,58.3
+401915527,uel,Lillestrom vs Viktoria Plzen,2026-11-05T17:45Z,espn,2026-11-05T16:46:44+00:00,58.3
+401915535,uel,NEC Nijmegen vs Omonia Nicosia,2026-11-05T17:45Z,espn,2026-11-05T16:46:44+00:00,58.3
+401915537,uel,Real Sociedad vs Lyon,2026-11-05T17:45Z,espn,2026-11-05T16:48:02+00:00,57.0
+401915528,uel,Sparta Prague vs AFC Bournemouth,2026-11-05T17:45Z,espn,2026-11-05T16:48:02+00:00,57.0
+401915534,uel,AC Milan vs Ferencvaros,2026-11-05T17:45Z,espn,2026-11-05T16:49:58+00:00,55.0
+401915526,uel,Crystal Palace vs TSG Hoffenheim,2026-11-05T17:45Z,espn,2026-11-05T16:51:56+00:00,53.1
+401915527,uel,Lillestrom vs Viktoria Plzen,2026-11-05T17:45Z,pitchapi,2026-11-05T17:07:30+00:00,37.5
+401915535,uel,NEC Nijmegen vs Omonia Nicosia,2026-11-05T17:45Z,pitchapi,2026-11-05T17:07:30+00:00,37.5
+401915537,uel,Real Sociedad vs Lyon,2026-11-05T17:45Z,pitchapi,2026-11-05T17:07:30+00:00,37.5
+401915528,uel,Sparta Prague vs AFC Bournemouth,2026-11-05T17:45Z,pitchapi,2026-11-05T17:07:30+00:00,37.5
+401915534,uel,AC Milan vs Ferencvaros,2026-11-05T17:45Z,pitchapi,2026-11-05T17:09:21+00:00,35.6
+401915538,uel,Anderlecht vs RB Salzburg,2026-11-05T17:45Z,pitchapi,2026-11-05T17:09:21+00:00,35.6
+401915526,uel,Crystal Palace vs TSG Hoffenheim,2026-11-05T17:45Z,pitchapi,2026-11-05T17:09:21+00:00,35.6
+401915536,uel,Levski Sofia vs Jagiellonia Bialystok,2026-11-05T17:45Z,pitchapi,2026-11-05T17:09:21+00:00,35.6
+401915538,uel,Anderlecht vs RB Salzburg,2026-11-05T17:45Z,espn,2026-11-05T17:16:34+00:00,28.4
+401915538,uel,Anderlecht vs RB Salzburg,2026-11-05T17:45Z,pitchapi,2026-11-05T17:16:34+00:00,28.4
+401841659,arg,Aldosivi vs River Plate,2026-11-05T18:00Z,espn,2026-11-05T17:16:34+00:00,43.4
+401915534,uel,AC Milan vs Ferencvaros,2026-11-05T17:45Z,espn,2026-11-05T17:19:50+00:00,25.2
+401915534,uel,AC Milan vs Ferencvaros,2026-11-05T17:45Z,pitchapi,2026-11-05T17:19:50+00:00,25.2
+401915526,uel,Crystal Palace vs TSG Hoffenheim,2026-11-05T17:45Z,espn,2026-11-05T17:19:50+00:00,25.2
+401915526,uel,Crystal Palace vs TSG Hoffenheim,2026-11-05T17:45Z,pitchapi,2026-11-05T17:19:50+00:00,25.2
+401915536,uel,Levski Sofia vs Jagiellonia Bialystok,2026-11-05T17:45Z,espn,2026-11-05T17:19:50+00:00,25.2
+401915536,uel,Levski Sofia vs Jagiellonia Bialystok,2026-11-05T17:45Z,pitchapi,2026-11-05T17:19:50+00:00,25.2
+401915527,uel,Lillestrom vs Viktoria Plzen,2026-11-05T17:45Z,espn,2026-11-05T17:19:50+00:00,25.2
+401915527,uel,Lillestrom vs Viktoria Plzen,2026-11-05T17:45Z,pitchapi,2026-11-05T17:19:50+00:00,25.2
+401915535,uel,NEC Nijmegen vs Omonia Nicosia,2026-11-05T17:45Z,espn,2026-11-05T17:19:50+00:00,25.2
+401915535,uel,NEC Nijmegen vs Omonia Nicosia,2026-11-05T17:45Z,pitchapi,2026-11-05T17:19:50+00:00,25.2
+401915537,uel,Real Sociedad vs Lyon,2026-11-05T17:45Z,espn,2026-11-05T17:19:50+00:00,25.2
+401915537,uel,Real Sociedad vs Lyon,2026-11-05T17:45Z,pitchapi,2026-11-05T17:19:50+00:00,25.2
+401915528,uel,Sparta Prague vs AFC Bournemouth,2026-11-05T17:45Z,espn,2026-11-05T17:19:50+00:00,25.2
+401915528,uel,Sparta Prague vs AFC Bournemouth,2026-11-05T17:45Z,pitchapi,2026-11-05T17:19:50+00:00,25.2
+401841659,arg,Aldosivi vs River Plate,2026-11-05T18:00Z,espn,2026-11-05T17:21:04+00:00,38.9
+401841659,arg,Aldosivi vs River Plate,2026-11-05T18:00Z,pitchapi,2026-11-05T18:08:25+00:00,-8.4
+401915529,uel,AZ Alkmaar vs Juventus,2026-11-05T20:00Z,espn,2026-11-05T19:01:45+00:00,58.2
+401915532,uel,Hapoel Be'er vs OFI Crete,2026-11-05T20:00Z,espn,2026-11-05T19:01:45+00:00,58.2
+401915524,uel,SK Sturm Graz vs NK Celje,2026-11-05T20:00Z,espn,2026-11-05T19:01:45+00:00,58.2
+401915531,uel,Celta Vigo vs Union St.-Gilloise,2026-11-05T20:00Z,espn,2026-11-05T19:03:17+00:00,56.7
+401915533,uel,Bayer Leverkusen vs Marseille,2026-11-05T20:00Z,espn,2026-11-05T19:05:14+00:00,54.8
+401915525,uel,Benfica vs Lech Poznan,2026-11-05T20:00Z,espn,2026-11-05T19:05:14+00:00,54.8
+401915522,uel,Celtic vs Besiktas,2026-11-05T20:00Z,espn,2026-11-05T19:05:14+00:00,54.8
+401915523,uel,Sunderland vs Dinamo Zagreb,2026-11-05T20:00Z,espn,2026-11-05T19:07:13+00:00,52.8
+401915529,uel,AZ Alkmaar vs Juventus,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915533,uel,Bayer Leverkusen vs Marseille,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915525,uel,Benfica vs Lech Poznan,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915531,uel,Celta Vigo vs Union St.-Gilloise,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915522,uel,Celtic vs Besiktas,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915532,uel,Hapoel Be'er vs OFI Crete,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915524,uel,SK Sturm Graz vs NK Celje,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915523,uel,Sunderland vs Dinamo Zagreb,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915530,uel,Torreense vs Ararat-Armenia,2026-11-05T20:00Z,espn,2026-11-05T19:09:10+00:00,50.8
+401915530,uel,Torreense vs Ararat-Armenia,2026-11-05T20:00Z,pitchapi,2026-11-05T19:09:10+00:00,50.8
+401915529,uel,AZ Alkmaar vs Juventus,2026-11-05T20:00Z,espn,2026-11-05T19:17:19+00:00,42.7
+401915529,uel,AZ Alkmaar vs Juventus,2026-11-05T20:00Z,pitchapi,2026-11-05T19:17:19+00:00,42.7
+401915533,uel,Bayer Leverkusen vs Marseille,2026-11-05T20:00Z,espn,2026-11-05T19:17:19+00:00,42.7
+401915533,uel,Bayer Leverkusen vs Marseille,2026-11-05T20:00Z,pitchapi,2026-11-05T19:17:19+00:00,42.7
+401915525,uel,Benfica vs Lech Poznan,2026-11-05T20:00Z,espn,2026-11-05T19:17:19+00:00,42.7
+401915525,uel,Benfica vs Lech Poznan,2026-11-05T20:00Z,pitchapi,2026-11-05T19:17:19+00:00,42.7
+401841300,bra,Palmeiras vs Remo,2026-11-05T22:30Z,espn,2026-11-05T21:44:07+00:00,45.9
+401841300,bra,Palmeiras vs Remo,2026-11-05T22:30Z,espn,2026-11-05T21:46:48+00:00,43.2
+401841667,arg,Gimnasia La Plata vs Belgrano (Córdoba),2026-11-05T22:15Z,espn,2026-11-05T21:51:47+00:00,23.2
+401841667,arg,Gimnasia La Plata vs Belgrano (Córdoba),2026-11-05T22:15Z,espn,2026-11-05T21:53:37+00:00,21.4
+401841667,arg,Gimnasia La Plata vs Belgrano (Córdoba),2026-11-05T22:15Z,pitchapi,2026-11-05T22:08:35+00:00,6.4
+401841300,bra,Palmeiras vs Remo,2026-11-05T22:30Z,pitchapi,2026-11-05T22:08:35+00:00,21.4
+401841303,bra,Cruzeiro vs Bahia,2026-11-06T00:30Z,espn,2026-11-05T23:41:09+00:00,48.8
+401841303,bra,Cruzeiro vs Bahia,2026-11-06T00:30Z,espn,2026-11-05T23:44:50+00:00,45.2
+401841303,bra,Cruzeiro vs Bahia,2026-11-06T00:30Z,pitchapi,2026-11-06T00:08:27+00:00,21.5
+401841670,arg,Barracas Central vs Racing Club,2026-11-06T18:00Z,espn,2026-11-06T17:28:54+00:00,31.1
+401841670,arg,Barracas Central vs Racing Club,2026-11-06T18:00Z,pitchapi,2026-11-06T18:08:16+00:00,-8.3
+401879242,eng,Everton vs Coventry City,2026-11-06T20:00Z,espn,2026-11-06T19:01:11+00:00,58.8
+401874815,ita,Venezia vs Udinese,2026-11-06T19:45Z,pitchapi,2026-11-06T19:09:05+00:00,35.9
+401879242,eng,Everton vs Coventry City,2026-11-06T20:00Z,espn,2026-11-06T19:09:05+00:00,50.9
+401879242,eng,Everton vs Coventry City,2026-11-06T20:00Z,pitchapi,2026-11-06T19:09:05+00:00,50.9
+401874815,ita,Venezia vs Udinese,2026-11-06T19:45Z,espn,2026-11-06T19:10:10+00:00,34.8
+401874815,ita,Venezia vs Udinese,2026-11-06T19:45Z,pitchapi,2026-11-06T19:10:43+00:00,34.3
+401874815,ita,Venezia vs Udinese,2026-11-06T19:45Z,espn,2026-11-06T19:11:13+00:00,33.8
+401841665,arg,Independiente vs Deportivo Riestra,2026-11-06T22:00Z,espn,2026-11-06T21:46:00+00:00,14.0
+401841665,arg,Independiente vs Deportivo Riestra,2026-11-06T22:00Z,espn,2026-11-06T21:49:56+00:00,10.1
+401841662,arg,San Lorenzo vs Platense,2026-11-06T22:00Z,espn,2026-11-06T21:49:56+00:00,10.1
+401841660,arg,Unión (Santa Fe) vs Vélez Sarsfield,2026-11-06T22:00Z,espn,2026-11-06T21:56:55+00:00,3.1
+401841665,arg,Independiente vs Deportivo Riestra,2026-11-06T22:00Z,pitchapi,2026-11-06T22:07:48+00:00,-7.8
+401841662,arg,San Lorenzo vs Platense,2026-11-06T22:00Z,pitchapi,2026-11-06T22:07:48+00:00,-7.8
+401841660,arg,Unión (Santa Fe) vs Vélez Sarsfield,2026-11-06T22:00Z,pitchapi,2026-11-06T22:07:48+00:00,-7.8
+401841665,arg,Independiente vs Deportivo Riestra,2026-11-06T22:00Z,pitchapi,2026-11-06T22:09:37+00:00,-9.6
+401841662,arg,San Lorenzo vs Platense,2026-11-06T22:00Z,pitchapi,2026-11-06T22:09:37+00:00,-9.6
+401841660,arg,Unión (Santa Fe) vs Vélez Sarsfield,2026-11-06T22:00Z,pitchapi,2026-11-06T22:09:37+00:00,-9.6
+401841302,bra,Vitória vs Fluminense,2026-11-06T23:00Z,espn,2026-11-06T22:13:00+00:00,47.0
+401841302,bra,Vitória vs Fluminense,2026-11-06T23:00Z,pitchapi,2026-11-06T23:08:34+00:00,-8.6
+401841673,arg,Tigre vs Sarmiento (Junín),2026-11-07T01:00Z,espn,2026-11-07T00:18:11+00:00,41.8
+401841673,arg,Tigre vs Sarmiento (Junín),2026-11-07T01:00Z,espn,2026-11-07T00:20:21+00:00,39.6
+401841671,arg,Banfield vs Atlético Tucumán,2026-11-07T01:00Z,espn,2026-11-07T00:21:13+00:00,38.8
+401841671,arg,Banfield vs Atlético Tucumán,2026-11-07T01:00Z,espn,2026-11-07T00:24:40+00:00,35.3
+401841671,arg,Banfield vs Atlético Tucumán,2026-11-07T01:00Z,pitchapi,2026-11-07T01:08:41+00:00,-8.7
+401841673,arg,Tigre vs Sarmiento (Junín),2026-11-07T01:00Z,pitchapi,2026-11-07T01:08:41+00:00,-8.7
+401874791,ita,Cagliari vs Frosinone,2026-11-07T14:00Z,pitchapi,2026-11-07T13:08:44+00:00,51.3
+401874811,ita,Torino vs Lecce,2026-11-07T14:00Z,espn,2026-11-07T13:17:09+00:00,42.8
+401874791,ita,Cagliari vs Frosinone,2026-11-07T14:00Z,espn,2026-11-07T13:20:50+00:00,39.2
+401878760,eng,Arsenal vs Hull City,2026-11-07T15:00Z,espn,2026-11-07T14:01:26+00:00,58.6
+401879241,eng,Fulham vs Newcastle United,2026-11-07T15:00Z,espn,2026-11-07T14:01:26+00:00,58.6
+401874811,ita,Torino vs Lecce,2026-11-07T14:00Z,pitchapi,2026-11-07T14:09:01+00:00,-9.0
+401878760,eng,Arsenal vs Hull City,2026-11-07T15:00Z,pitchapi,2026-11-07T14:09:01+00:00,51.0
+401879241,eng,Fulham vs Newcastle United,2026-11-07T15:00Z,pitchapi,2026-11-07T14:09:01+00:00,51.0
+401874974,ita,Parma vs Bologna,2026-11-07T17:00Z,pitchapi,2026-11-07T16:08:17+00:00,51.7
+401874974,ita,Parma vs Bologna,2026-11-07T17:00Z,espn,2026-11-07T16:16:54+00:00,43.1
+401878757,eng,Nottingham Forest vs Manchester City,2026-11-07T17:30Z,espn,2026-11-07T16:32:19+00:00,57.7
+401878757,eng,Nottingham Forest vs Manchester City,2026-11-07T17:30Z,pitchapi,2026-11-07T17:07:40+00:00,22.3
+401841666,arg,Gimnasia (Mendoza) vs Independiente Rivadavia,2026-11-07T18:00Z,espn,2026-11-07T17:37:12+00:00,22.8
+401841661,arg,Talleres (Córdoba) vs Estudiantes de La Plata,2026-11-07T18:00Z,espn,2026-11-07T17:37:12+00:00,22.8
+401841666,arg,Gimnasia (Mendoza) vs Independiente Rivadavia,2026-11-07T18:00Z,pitchapi,2026-11-07T18:09:08+00:00,-9.1
+401841661,arg,Talleres (Córdoba) vs Estudiantes de La Plata,2026-11-07T18:00Z,pitchapi,2026-11-07T18:09:08+00:00,-9.1
+401874803,ita,AS Roma vs Sassuolo,2026-11-07T19:45Z,espn,2026-11-07T19:07:58+00:00,37.0
+401874803,ita,AS Roma vs Sassuolo,2026-11-07T19:45Z,pitchapi,2026-11-07T19:07:58+00:00,37.0
+401841672,arg,Argentinos Juniors vs Huracán,2026-11-07T20:30Z,espn,2026-11-07T19:50:28+00:00,39.5
+401841663,arg,Rosario Central vs Estudiantes de Río Cuarto,2026-11-07T20:30Z,espn,2026-11-07T19:57:06+00:00,32.9
+401841669,arg,Boca Juniors vs Defensa y Justicia,2026-11-07T20:30Z,espn,2026-11-07T19:59:17+00:00,30.7
+401841672,arg,Argentinos Juniors vs Huracán,2026-11-07T20:30Z,pitchapi,2026-11-07T20:08:32+00:00,21.5
+401841669,arg,Boca Juniors vs Defensa y Justicia,2026-11-07T20:30Z,pitchapi,2026-11-07T20:08:32+00:00,21.5
+401841663,arg,Rosario Central vs Estudiantes de Río Cuarto,2026-11-07T20:30Z,pitchapi,2026-11-07T20:08:32+00:00,21.5
+401841664,arg,Instituto (Córdoba) vs Newell's Old Boys,2026-11-08T01:00Z,espn,2026-11-08T00:27:17+00:00,32.7
+401841664,arg,Instituto (Córdoba) vs Newell's Old Boys,2026-11-08T01:00Z,pitchapi,2026-11-08T01:07:26+00:00,-7.4
+401874810,ita,Napoli vs Lazio,2026-11-08T11:30Z,espn,2026-11-08T10:54:41+00:00,35.3
+401874810,ita,Napoli vs Lazio,2026-11-08T11:30Z,pitchapi,2026-11-08T11:08:24+00:00,21.6
+401879244,eng,Brighton & Hove Albion vs Brentford,2026-11-08T14:00Z,espn,2026-11-08T13:01:26+00:00,58.6
+401879243,eng,Crystal Palace vs Liverpool,2026-11-08T14:00Z,espn,2026-11-08T13:01:26+00:00,58.6
+401878759,eng,Ipswich Town vs AFC Bournemouth,2026-11-08T14:00Z,espn,2026-11-08T13:01:26+00:00,58.6
+401879239,eng,Sunderland vs Chelsea,2026-11-08T14:00Z,espn,2026-11-08T13:01:26+00:00,58.6
+401879244,eng,Brighton & Hove Albion vs Brentford,2026-11-08T14:00Z,pitchapi,2026-11-08T13:07:53+00:00,52.1
+401879243,eng,Crystal Palace vs Liverpool,2026-11-08T14:00Z,pitchapi,2026-11-08T13:09:01+00:00,51.0
+401878759,eng,Ipswich Town vs AFC Bournemouth,2026-11-08T14:00Z,pitchapi,2026-11-08T13:09:01+00:00,51.0
+401879239,eng,Sunderland vs Chelsea,2026-11-08T14:00Z,pitchapi,2026-11-08T13:09:01+00:00,51.0
+401875018,ita,Genoa vs AC Milan,2026-11-08T14:00Z,pitchapi,2026-11-08T13:09:01+00:00,51.0
+401874800,ita,Monza vs Atalanta,2026-11-08T14:00Z,pitchapi,2026-11-08T13:09:01+00:00,51.0
+401875018,ita,Genoa vs AC Milan,2026-11-08T14:00Z,espn,2026-11-08T13:16:20+00:00,43.7
+401874800,ita,Monza vs Atalanta,2026-11-08T14:00Z,espn,2026-11-08T13:20:38+00:00,39.4
+401879240,eng,Manchester United vs Aston Villa,2026-11-08T16:30Z,espn,2026-11-08T15:31:46+00:00,58.2
+401874808,ita,Internazionale vs Como,2026-11-08T17:00Z,espn,2026-11-08T16:58:41+00:00,1.3
+401874808,ita,Internazionale vs Como,2026-11-08T17:00Z,pitchapi,2026-11-08T16:58:41+00:00,1.3
+401882815,esp,Celta Vigo vs Levante,2026-11-08T17:30Z,espn,2026-11-08T17:11:06+00:00,18.9
+401882815,esp,Celta Vigo vs Levante,2026-11-08T17:30Z,pitchapi,2026-11-08T17:11:06+00:00,18.9
+401882807,esp,Villarreal vs Getafe,2026-11-08T17:30Z,espn,2026-11-08T17:11:06+00:00,18.9
+401882807,esp,Villarreal vs Getafe,2026-11-08T17:30Z,pitchapi,2026-11-08T17:11:06+00:00,18.9
+401882816,esp,Atlético Madrid vs Barcelona,2026-11-08T20:00Z,espn,2026-11-08T19:01:37+00:00,58.4
+401875003,ita,Fiorentina vs Juventus,2026-11-08T19:45Z,espn,2026-11-08T19:02:42+00:00,42.3
+401875003,ita,Fiorentina vs Juventus,2026-11-08T19:45Z,pitchapi,2026-11-08T19:07:30+00:00,37.5
+401882816,esp,Atlético Madrid vs Barcelona,2026-11-08T20:00Z,pitchapi,2026-11-08T19:09:05+00:00,50.9
+401913107,cdb,Vasco da Gama vs Palmeiras,2026-11-08T20:00Z,espn,2026-11-08T19:14:25+00:00,45.6
+401841668,arg,Central Córdoba (Santiago del Estero) vs Lanús,2026-11-08T22:30Z,espn,2026-11-08T21:57:43+00:00,32.3
+401861145,unl,Türkiye vs Belgium,2026-11-12T17:00Z,espn,2026-11-12T16:01:12+00:00,58.8
+401861146,unl,Armenia vs Cyprus,2026-11-12T17:00Z,espn,2026-11-12T16:11:22+00:00,48.6
+401861148,unl,Czechia vs Spain,2026-11-12T19:45Z,espn,2026-11-12T18:46:14+00:00,58.8
+401861150,unl,England vs Croatia,2026-11-12T19:45Z,espn,2026-11-12T18:46:14+00:00,58.8
+401861151,unl,Italy vs France,2026-11-12T19:45Z,espn,2026-11-12T18:46:14+00:00,58.8
+401861152,unl,Montenegro vs Latvia,2026-11-12T19:45Z,espn,2026-11-12T18:46:14+00:00,58.8
+401861149,unl,San Marino vs Belarus,2026-11-12T19:45Z,espn,2026-11-12T18:46:14+00:00,58.8
+401861147,unl,Albania vs Finland,2026-11-12T19:45Z,espn,2026-11-12T18:48:27+00:00,56.5
+401861162,unl,Moldova vs Kazakhstan,2026-11-13T17:00Z,espn,2026-11-13T16:06:00+00:00,54.0
+401861155,unl,Andorra vs Gibraltar,2026-11-13T19:45Z,espn,2026-11-13T18:46:25+00:00,58.6
+401861157,unl,Bulgaria vs Iceland,2026-11-13T19:45Z,espn,2026-11-13T18:46:25+00:00,58.6
+401861159,unl,Netherlands vs Greece,2026-11-13T19:45Z,espn,2026-11-13T18:46:25+00:00,58.6
+401861160,unl,Slovakia vs Faroe Islands,2026-11-13T19:45Z,espn,2026-11-13T18:46:25+00:00,58.6
+401861156,unl,Slovenia vs Switzerland,2026-11-13T19:45Z,espn,2026-11-13T18:46:25+00:00,58.6
+401861158,unl,Serbia vs Germany,2026-11-13T19:45Z,espn,2026-11-13T18:47:47+00:00,57.2
+401861161,unl,Scotland vs North Macedonia,2026-11-13T19:45Z,espn,2026-11-13T18:50:09+00:00,54.8
+401861154,unl,Luxembourg vs Estonia,2026-11-13T19:45Z,espn,2026-11-13T18:54:56+00:00,50.1
+401861153,unl,Liechtenstein vs Azerbaijan,2026-11-13T19:45Z,espn,2026-11-13T18:56:06+00:00,48.9
+401861163,unl,Kosovo vs Israel,2026-11-14T14:00Z,espn,2026-11-14T13:07:01+00:00,53.0
+401861165,unl,Norway vs Wales,2026-11-14T17:00Z,espn,2026-11-14T16:04:27+00:00,55.5
+401861164,unl,Georgia vs Hungary,2026-11-14T17:00Z,espn,2026-11-14T16:06:35+00:00,53.4
+401861170,unl,Austria vs Republic of Ireland,2026-11-14T19:45Z,espn,2026-11-14T18:46:22+00:00,58.6
+401861166,unl,Sweden vs Bosnia-Herzegovina,2026-11-14T19:45Z,espn,2026-11-14T18:46:22+00:00,58.6
+401861169,unl,Northern Ireland vs Ukraine,2026-11-14T19:45Z,espn,2026-11-14T18:47:41+00:00,57.3
+401861167,unl,Portugal vs Denmark,2026-11-14T19:45Z,espn,2026-11-14T18:49:53+00:00,55.1
+401861168,unl,Romania vs Poland,2026-11-14T19:45Z,espn,2026-11-14T18:56:46+00:00,48.2
+401841311,bra,Mirassol vs Atlético-MG,2026-11-14T21:30Z,espn,2026-11-14T21:06:49+00:00,23.2
+401841311,bra,Mirassol vs Atlético-MG,2026-11-14T21:30Z,pitchapi,2026-11-14T21:08:53+00:00,21.1
+401841311,bra,Mirassol vs Atlético-MG,2026-11-14T21:30Z,espn,2026-11-14T21:17:12+00:00,12.8
+401841311,bra,Mirassol vs Atlético-MG,2026-11-14T21:30Z,pitchapi,2026-11-14T21:17:12+00:00,12.8
+401841311,bra,Mirassol vs Atlético-MG,2026-11-14T21:30Z,espn,2026-11-14T21:21:43+00:00,8.3
+401841311,bra,Mirassol vs Atlético-MG,2026-11-14T21:30Z,pitchapi,2026-11-14T21:21:43+00:00,8.3
+401841175,bra,Chapecoense vs Vasco da Gama,2026-11-14T23:30Z,espn,2026-11-14T23:03:16+00:00,26.7
+401841175,bra,Chapecoense vs Vasco da Gama,2026-11-14T23:30Z,pitchapi,2026-11-14T23:07:59+00:00,22.0
+401861171,unl,Latvia vs Armenia,2026-11-15T14:00Z,espn,2026-11-15T13:02:06+00:00,57.9
+401861172,unl,Cyprus vs Montenegro,2026-11-15T14:00Z,espn,2026-11-15T13:23:36+00:00,36.4
+401861173,unl,Belarus vs Albania,2026-11-15T17:00Z,espn,2026-11-15T16:02:05+00:00,57.9
+401861174,unl,Finland vs San Marino,2026-11-15T17:00Z,espn,2026-11-15T16:02:05+00:00,57.9
+401861176,unl,Belgium vs Italy,2026-11-15T19:45Z,espn,2026-11-15T18:46:41+00:00,58.3
+401861177,unl,France vs Türkiye,2026-11-15T19:45Z,espn,2026-11-15T18:46:41+00:00,58.3
+401861175,unl,Spain vs England,2026-11-15T19:45Z,espn,2026-11-15T18:46:41+00:00,58.3
+401861178,unl,Croatia vs Czechia,2026-11-15T19:45Z,espn,2026-11-15T18:50:16+00:00,54.7
+401861180,unl,Faroe Islands vs Moldova,2026-11-16T15:00Z,espn,2026-11-16T14:01:59+00:00,58.0
+401861181,unl,Kazakhstan vs Slovakia,2026-11-16T15:00Z,espn,2026-11-16T14:22:09+00:00,37.8
+401861183,unl,Estonia vs Bulgaria,2026-11-16T17:00Z,espn,2026-11-16T16:02:31+00:00,57.5
+401861182,unl,Iceland vs Luxembourg,2026-11-16T17:00Z,espn,2026-11-16T16:04:23+00:00,55.6
+401861184,unl,Lithuania vs Liechtenstein,2026-11-16T17:00Z,espn,2026-11-16T16:07:46+00:00,52.2
+401861185,unl,Germany vs Netherlands,2026-11-16T19:45Z,espn,2026-11-16T18:45:48+00:00,59.2
+401861186,unl,Switzerland vs Scotland,2026-11-16T19:45Z,espn,2026-11-16T18:45:48+00:00,59.2
+401861179,unl,Gibraltar vs Malta,2026-11-16T19:45Z,espn,2026-11-16T18:50:58+00:00,54.0
+401861188,unl,Greece vs Serbia,2026-11-16T19:45Z,espn,2026-11-16T19:02:01+00:00,43.0
+401861187,unl,North Macedonia vs Slovenia,2026-11-16T19:45Z,espn,2026-11-16T19:02:59+00:00,42.0
+401861193,unl,Israel vs Austria,2026-11-17T19:45Z,espn,2026-11-17T18:46:31+00:00,58.5
+401861195,unl,Poland vs Sweden,2026-11-17T19:45Z,espn,2026-11-17T18:46:31+00:00,58.5
+401861192,unl,Republic of Ireland vs Kosovo,2026-11-17T19:45Z,espn,2026-11-17T18:46:31+00:00,58.5
+401861190,unl,Ukraine vs Georgia,2026-11-17T19:45Z,espn,2026-11-17T18:46:31+00:00,58.5
+401861189,unl,Wales vs Portugal,2026-11-17T19:45Z,espn,2026-11-17T18:46:31+00:00,58.5
+401861196,unl,Bosnia-Herzegovina vs Romania,2026-11-17T19:45Z,espn,2026-11-17T18:49:27+00:00,55.5
+401861194,unl,Denmark vs Norway,2026-11-17T19:45Z,espn,2026-11-17T18:49:27+00:00,55.5
+401861191,unl,Hungary vs Northern Ireland,2026-11-17T19:45Z,espn,2026-11-17T18:49:27+00:00,55.5
+401841315,bra,Coritiba vs Santos,2026-11-18T22:30Z,espn,2026-11-18T21:39:47+00:00,50.2
+401841310,bra,Remo vs Chapecoense,2026-11-18T23:00Z,espn,2026-11-18T22:19:56+00:00,40.1
+401841313,bra,Flamengo vs Athletico-PR,2026-11-18T23:30Z,espn,2026-11-18T22:44:28+00:00,45.5
+401841314,bra,Cruzeiro vs Palmeiras,2026-11-18T23:30Z,espn,2026-11-18T22:52:31+00:00,37.5
+401841310,bra,Remo vs Chapecoense,2026-11-18T23:00Z,pitchapi,2026-11-18T23:07:16+00:00,-7.3
+401841314,bra,Cruzeiro vs Palmeiras,2026-11-18T23:30Z,pitchapi,2026-11-18T23:07:16+00:00,22.7
+401841313,bra,Flamengo vs Athletico-PR,2026-11-18T23:30Z,pitchapi,2026-11-18T23:07:16+00:00,22.7
+401841316,bra,Corinthians vs Botafogo,2026-11-19T00:30Z,espn,2026-11-18T23:42:11+00:00,47.8
+401841312,bra,Grêmio vs Bahia,2026-11-19T00:30Z,espn,2026-11-18T23:42:11+00:00,47.8
+401841316,bra,Corinthians vs Botafogo,2026-11-19T00:30Z,pitchapi,2026-11-19T00:08:39+00:00,21.3
+401841312,bra,Grêmio vs Bahia,2026-11-19T00:30Z,pitchapi,2026-11-19T00:08:39+00:00,21.3
+401841308,bra,Vasco da Gama vs Internacional,2026-11-19T22:30Z,espn,2026-11-19T21:39:45+00:00,50.2
+401841317,bra,Vitória vs Red Bull Bragantino,2026-11-19T22:30Z,espn,2026-11-19T21:46:04+00:00,43.9
+401841309,bra,São Paulo vs Fluminense,2026-11-20T00:30Z,espn,2026-11-19T23:41:35+00:00,48.4

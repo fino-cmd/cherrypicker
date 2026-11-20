@@ -60,7 +60,8 @@ if "%FRONT_UP%"=="1" (
     echo  [2/3] Frontend: ya hay uno corriendo en el puerto 5500, no levanto otro.
 ) else (
     echo  [2/3] Frontend estatico -^>  puerto 5500
-    start "CherryPick frontend (5500)" /d "%ROOT%" cmd /k python -m http.server 5500 --bind 0.0.0.0
+    rem serve.py = http.server sin cache: el navegador siempre trae la version nueva
+    start "CherryPick frontend (5500)" /d "%ROOT%" cmd /k python serve.py 5500
 )
 
 if "%BACK_UP%"=="0" (

@@ -70,6 +70,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Comprimido: la jornada de fútbol pesa ~1,5 MB y por Tailscale desde el celu se nota.
+from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
+app.add_middleware(GZipMiddleware, minimum_size=2000)
 
 # ── Simple in-memory cache ─────────────────────────────────────────────────────
 _cache: dict = {}
@@ -5126,6 +5129,194 @@ def get_altlines_slate(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# NBA — doble-doble / triple-doble (altlines/dd.py, altlines/dd_live.py)
+# ══════════════════════════════════════════════════════════════════════════════
+# Plain `def`: simular y bajar logs es trabajo bloqueante (threadpool).
+
+@app.get("/api/nba/dd/slate")
+def get_nba_dd_slate(date: str | None = None):
+    """Partidos de la noche + lo ya simulado. No simula ni gasta créditos."""
+    try:
+        from altlines import dd_live
+        return dd_live.slate(date)
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/dd/slate error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/nba/dd/injuries")
+def get_nba_dd_injuries(date: str | None = None):
+    """Qué cambió en el parte de lesionados desde que se simuló cada partido.
+    No simula ni gasta créditos (el parte de ESPN es gratis)."""
+    try:
+        from altlines import dd_live
+        return dd_live.injury_status(date)
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/dd/injuries error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/nba/dd/game/{game_id}")
+def get_nba_dd_game(game_id: str, date: str | None = None, refresh: bool = False):
+    """Simulación de un partido (20.000 por jugador). `refresh` vuelve a bajar
+    planteles, lesionados y logs y simula de nuevo. Cuotas: las guardadas."""
+    try:
+        from altlines import dd_live
+        g = dd_live.find_game(game_id, date)
+        if g is None:
+            sim = dd_live.cached_sim(game_id)
+            if sim is None:
+                raise HTTPException(404, "Partido no encontrado")
+            return _no_dist(sim)
+        sim = dd_live.simulate_game(g, refresh=refresh)
+        try:
+            dd_live.log_picks(sim)
+        except Exception as e:                              # noqa: BLE001
+            logger.warning("nba dd log_picks: %s", e)
+        return _no_dist(sim)
+    except HTTPException:
+        raise
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/dd/game error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+def _no_dist(sim: dict) -> dict:
+    """La distribución completa (para las líneas de jugador) no le hace falta al doble-doble."""
+    return {**sim, "players": [{k: v for k, v in p.items() if k != "dist"} for p in sim.get("players") or []]}
+
+
+@app.get("/api/nba/props/game/{game_id}")
+def get_nba_props_game(game_id: str, refresh: bool = False):
+    """Puntos, rebotes, asistencias, triples y combinaciones de un partido contra
+    las cuotas (OddsPapi guardadas + Pinnacle de Odds API). `refresh`: Odds API de nuevo."""
+    try:
+        from altlines import props_live
+        return props_live.game_props(game_id, refresh=refresh)
+    except KeyError:
+        raise HTTPException(404, "Partido no encontrado")
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/props/game error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/nba/props/picks")
+def get_nba_props_picks():
+    """Jugadas de líneas de jugador de todos los partidos ya simulados de hoy."""
+    try:
+        from altlines import props_live
+        return props_live.slate_picks()
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/props/picks error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/nba/dd/odds")
+def post_nba_dd_odds():
+    """Pide cuotas DD/TD a bet365, Betano y Betsson (3 consultas de OddsPapi)."""
+    try:
+        from altlines import dd_live
+        return dd_live.refresh_odds()
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("POST /api/nba/dd/odds error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/nba/dd/odds/{game_id}")
+def post_nba_dd_odds_game(game_id: str):
+    """Pide las cuotas de un solo partido (1 pedido de OddsPapi) y deja las demás como están."""
+    try:
+        from altlines import dd_live
+        return dd_live.refresh_odds_game(game_id)
+    except KeyError:
+        raise HTTPException(404, "Partido no encontrado")
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("POST /api/nba/dd/odds/game error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/nba/dd/live/{game_id}")
+def get_nba_dd_live_build(game_id: str):
+    """Armate un live: lo que lleva cada jugador (ESPN) + cuotas en vivo (OpticOdds) → apuesta en vivo."""
+    try:
+        from altlines import live_build
+        return live_build.build(game_id)
+    except KeyError:
+        raise HTTPException(404, "Partido no encontrado")
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/dd/live error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/nba/dd/line/{game_id}")
+def get_nba_dd_line(game_id: str, player_id: str, market: str = "dd"):
+    """Movimiento de la cuota de un jugador (historial de OddsPapi, gratis)."""
+    try:
+        from altlines import dd_live
+        return dd_live.line_history(game_id, player_id, market)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/dd/line error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+class _NbaPlayed(BaseModel):
+    game_id: str
+    player_id: str
+    market: str
+    on: bool = True
+
+
+@app.get("/api/nba/dd/played")
+def get_nba_dd_played():
+    """Jugadas que el usuario marcó "La juego" (claves game|jugador|mercado)."""
+    from altlines import dd_live
+    return {"keys": dd_live.played_keys()}
+
+
+@app.post("/api/nba/dd/played")
+def post_nba_dd_played(p: _NbaPlayed):
+    from altlines import dd_live
+    if p.market not in ("dd", "td"):
+        raise HTTPException(400, "Mercado inválido")
+    return {"keys": dd_live.set_played(p.game_id, p.player_id, p.market, p.on)}
+
+
+@app.get("/api/nba/props/live")
+def get_nba_props_live():
+    """Lo que lleva en vivo cada jugador de las jugadas abiertas (box score de ESPN)."""
+    try:
+        from altlines import props_live
+        return props_live.live_tracker()
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/props/live error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/nba/props/results")
+def get_nba_props_results(days: int = 60):
+    """Destacados de líneas de jugador guardados, con su resultado (box score de ESPN)."""
+    try:
+        from altlines import props_live
+        return props_live.results(days)
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/props/results error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/nba/dd/results")
+def get_nba_dd_results(days: int = 60):
+    """Jugadas guardadas con su resultado (liquida con el box score de ESPN)."""
+    try:
+        from altlines import dd_live
+        return dd_live.results(days)
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/nba/dd/results error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # FÚTBOL TAB — GET /api/futbol/jornada
 # Modelo de remates y remates al arco (paquete futbol/, raíz del repo)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -5149,17 +5340,26 @@ _fb_lock = _fb_threading.Lock()
 def _futbol_odds_meta():
     from futbol import config as fcfg
     from futbol import oddspapi as fop
+    from futbol import books as fbooks
+    if fop.net():
+        fon = fop._net()
+        age = fon.cache_age_s()
+        return {"ttl_s": fcfg.ODDS_TTL_S, "age_s": {("OpticOdds" if fcfg.futbol_odds() == "optic" else "odds-api.net"): None if age is None else round(age)},
+                "would_fetch": age is None or age >= fcfg.ODDS_TTL_S,
+                "cost_per_refresh": fon.refresh_cost(), "plan_month": fon.usage()["limit"],
+                "books": fbooks.public(), "source": fcfg.futbol_odds(), "has_key": bool(fon.key())}
     ids = "_".join(str(v["oddspapi"]) for v in fcfg.LEAGUES.values())
     now = time.time()
     books, would_fetch = {}, False
-    for book in ("bet365.bet.ar", "betano", "betsson"):
+    for book in fbooks.oddspapi_ids():
         f = fop.DIR / f"odds_{book}_{ids}.json"
         age = (now - f.stat().st_mtime) if f.exists() else None
         books[book] = None if age is None else round(age)
         if age is None or age >= fcfg.ODDS_TTL_S:
             would_fetch = True
     return {"ttl_s": fcfg.ODDS_TTL_S, "age_s": books, "would_fetch": would_fetch,
-            "cost_per_refresh": 3, "plan_month": 250,
+            "cost_per_refresh": fop.refresh_cost(), "plan_month": fop.usage()["limit"],
+            "books": fbooks.public(),
             "has_key": bool(fcfg.oddspapi_key())}
 
 
@@ -5181,8 +5381,7 @@ def get_futbol_jornada(refresh: bool = False, refresh_odds: bool = False,
                 raise HTTPException(409, "Ya se está recalculando la jornada")
             try:
                 lg = [x for x in (leagues or "").split(",") if x] or None
-                data = frun.run(lg, days=days, refresh_odds=refresh_odds, verbose=False)
-                _fb_usage_cache["t"] = 0.0        # el contador de créditos se refresca ya
+                data = _fb_run_job(frun, lg, days, refresh_odds)
             finally:
                 _fb_lock.release()
         else:
@@ -5219,6 +5418,30 @@ def refresh_futbol_odds():
         return out
     except Exception as e:                                  # noqa: BLE001
         logger.error("POST /api/futbol/odds/refresh error: %s", e)
+        raise HTTPException(500, str(e))
+    finally:
+        _fb_status.update(running=None, since=None)
+        _fb_lock.release()
+
+
+@app.post("/api/futbol/odds/scope")
+def refresh_futbol_odds_scope(event_id: str | None = None, league: str | None = None):
+    """Cuotas nuevas de un partido (event_id) o de una liga entera (league):
+    1 pedido de RapidAPI por partido. Después reprecia la jornada."""
+    from futbol import run as frun
+    if not event_id and not league:
+        raise HTTPException(400, "Falta event_id o league")
+    if not _fb_lock.acquire(timeout=90):
+        raise HTTPException(409, "El servidor está ocupado, probá en un minuto")
+    _fb_status.update(running="odds", since=time.time())
+    try:
+        out = frun.refresh_scope(event_id=event_id, league=league)
+        _fb_usage_cache["t"] = 0.0
+        return out
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("POST /api/futbol/odds/scope error: %s", e)
         raise HTTPException(500, str(e))
     finally:
         _fb_status.update(running=None, since=None)
@@ -5338,8 +5561,25 @@ def get_api_usage(fresh: bool = False):
         out["apifootball"] = {"name": "API-Football", "error": str(e)}
     try:
         from futbol import oddspapi as fop
-        u = fop.usage()
-        out["oddspapi"] = {"name": "OddsPapi", **u, "use": "Cuotas de remates (fútbol)"}
+        from altlines import odds_net as _nba_net
+        _nba_on = _nba_net.on() and not _nba_net.optic()
+        from futbol import config as _fcfg
+        _fut_optic = _fcfg.futbol_odds() == "optic"
+        _fut_net = _fcfg.futbol_odds() == "net"
+        if _nba_net.optic() or _fut_optic:
+            from altlines import odds_optic as _opt
+            _ow = " y ".join(x for x, ok in (("fútbol", _fut_optic), ("NBA", _nba_net.optic())) if ok)
+            out["opticodds"] = {"name": "OpticOdds", **_opt.usage(), "use": f"Cuotas de {_ow} (1 pedido por partido, sin tope mensual)"}
+        if _fut_net or _nba_on:
+            from futbol import oddsnet as fon
+            _who = " y ".join(x for x, ok in (("fútbol", _fut_net), ("NBA", _nba_on)) if ok)
+            out["oddsnet"] = {"name": "odds-api.net", **fon.usage(), "use": f"Cuotas de {_who} (1 pedido por partido)"}
+    except Exception as e:                                  # noqa: BLE001
+        out["oddsnet"] = {"name": "odds-api.net", "error": str(e)}
+    try:
+        from futbol import oddspapi as fop
+        u = fop.usage(own=True)       # OddsPapi sigue para la NBA: su propio contador
+        out["oddspapi"] = {"name": "OddsPapi", **u, "use": "Cuotas de fútbol y NBA (API directa: 1 pedido por casa o por partido)" if u.get("api") == "direct" else "Cuotas de fútbol y NBA (RapidAPI, 1 pedido por partido)"}
     except Exception as e:                                  # noqa: BLE001
         out["oddspapi"] = {"name": "OddsPapi", "error": str(e)}
     try:
@@ -5360,6 +5600,46 @@ def get_api_usage(fresh: bool = False):
 # los cambios sin bajar la jornada entera: versión de la jornada y de las
 # preferencias, y qué partido se está simulando ahora.
 _fb_status = {"running": None, "since": None}
+# Recálculo de la jornada: corre en segundo plano y deja su avance acá, así la
+# barra sigue aunque se recargue la página o se mire desde otro dispositivo.
+_fb_job = {"kind": None, "pct": 0.0, "text": "", "since": None, "error": None, "ended": None}
+
+
+def _fb_run_job(frun, leagues, days: int, refresh_odds: bool):
+    """Corre la jornada con el lock ya tomado, informando el avance."""
+    def step(pct, text):
+        _fb_job.update(pct=round(float(pct), 1), text=text)
+    _fb_job.update(kind="jornada", pct=0.0, text="Arrancando", since=time.time(), error=None, ended=None)
+    try:
+        data = frun.run(leagues, days=days, refresh_odds=refresh_odds, verbose=False, progress=step)
+        _fb_usage_cache["t"] = 0.0        # el contador de créditos se refresca ya
+        _fb_job.update(pct=100.0, text="Listo")
+        return data
+    except Exception as e:                                  # noqa: BLE001
+        _fb_job.update(error=str(e))
+        raise
+    finally:
+        _fb_job.update(kind=None, ended=time.time())
+
+
+@app.post("/api/futbol/jornada/refresh")
+def start_futbol_refresh(refresh_odds: bool = False, days: int = 4, leagues: str | None = None):
+    """Arranca el recálculo y vuelve enseguida; el avance se lee en /api/futbol/status."""
+    from futbol import run as frun
+    if not _fb_lock.acquire(blocking=False):
+        return {"started": False, "busy": True, "job": _fb_job}
+    lg = [x for x in (leagues or "").split(",") if x] or None
+
+    def work():
+        try:
+            _fb_run_job(frun, lg, days, refresh_odds)
+        except Exception as e:                              # noqa: BLE001
+            logger.error("Recalcular jornada: %s", e)
+        finally:
+            _fb_lock.release()
+    _fb_job.update(kind="jornada", pct=0.0, text="Arrancando", since=time.time(), error=None, ended=None)
+    threading.Thread(target=work, daemon=True, name="fb-jornada").start()
+    return {"started": True, "busy": True, "job": _fb_job}
 
 
 def _fb_mtime(name: str) -> float | None:
@@ -5379,11 +5659,24 @@ def get_futbol_photo(pid: str):
     return Response(png, media_type="image/png", headers={"Cache-Control": "public, max-age=2592000"})
 
 
+# Mi boleta en vivo: cuántos remates lleva cada jugador (ESPN, gratis; no liquida).
+@app.post("/api/futbol/live")
+def futbol_live(body: dict = Body(...)):
+    from futbol import live as flive
+    rows = [r for r in (body.get("picks") or [])[:40]
+            if all(r.get(k) is not None for k in ("key", "league", "event_id", "player_id", "stat", "line"))]
+    try:
+        return {"picks": flive.picks(rows), "now": time.time()}
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("futbol live: %s", e)
+        raise HTTPException(500, str(e))
+
+
 @app.get("/api/futbol/status")
 def get_futbol_status():
     return {"version": _fb_mtime("jornada.json"), "prefs_version": _fb_mtime("prefs.json"),
             "running": _fb_status["running"], "running_since": _fb_status["since"],
-            "busy": _fb_lock.locked(), "now": time.time()}
+            "busy": _fb_lock.locked(), "job": _fb_job, "now": time.time()}
 
 
 # Preferencias compartidas entre dispositivos: partidos con estrella y boleta.
@@ -5429,6 +5722,22 @@ def get_futbol_results(days: int = 10):
             "summary_recent": picklog.summary(days), "picks": picklog.recent(days)}
 
 
+# Rendimiento: las jugadas por semana contra lo que esperaba el modelo y
+# contra toda la fecha (cada jugador que el modelo calculó, tabla preds).
+@app.get("/api/futbol/report")
+def get_futbol_report(weeks: int = 5):
+    try:
+        from futbol import picklog
+    except Exception as e:                                  # noqa: BLE001
+        raise HTTPException(500, f"Modelo de fútbol no disponible: {e}")
+    for fn in (picklog.settle, picklog.settle_preds):
+        try:
+            fn()
+        except Exception as e:                              # noqa: BLE001
+            logger.error("futbol report settle error: %s", e)
+    return picklog.report(max(1, min(12, weeks)))
+
+
 # Formaciones: ESPN las publica ~1 h antes. La UI llama esto cada pocos
 # minutos; sólo consulta ESPN por los partidos que empiezan en las próximas
 # 2 h y re-simula los que confirmaron formación. No gasta cuotas.
@@ -5449,3 +5758,93 @@ def check_futbol_lineups():
         _fb_lock.release()
     return {"updated": updated, "busy": False,
             "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z"}
+
+
+# "Cargar alineación": una foto de la formación → Claude la lee → el usuario la
+# revisa → se guarda como alineación oficial (fuente "foto").
+class FbPhotoIn(BaseModel):
+    event_id: str
+    image: str                      # data URL ("data:image/jpeg;base64,...") o base64 pelado
+
+
+class FbPhotoConfirm(BaseModel):
+    event_id: str
+    sides: dict
+    src: str = "foto"               # "foto" o "dt" (Modo DT)
+
+
+@app.post("/api/futbol/lineup/photo")
+def futbol_lineup_photo(body: FbPhotoIn):
+    from futbol import photo_lineup as fpl
+    if not fpl.has_key():
+        raise HTTPException(400, "Falta GEMINI_API_KEY en backend/.env")
+    img, media = body.image, "image/jpeg"
+    if img.startswith("data:"):
+        head, _, img = img.partition(",")
+        media = head[5:].split(";")[0] or media
+    if media not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+        raise HTTPException(400, "Formato de imagen no soportado")
+    if len(img) > 7_000_000:
+        raise HTTPException(413, "La imagen es muy grande")
+    try:
+        return fpl.read_photo(body.event_id, img, media)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("POST /api/futbol/lineup/photo error: %s", e)
+        raise HTTPException(500, f"No se pudo leer la foto: {e}")
+
+
+@app.post("/api/futbol/lineup/photo/confirm")
+def futbol_lineup_photo_confirm(body: FbPhotoConfirm):
+    from futbol import photo_lineup as fpl
+    if not _fb_lock.acquire(timeout=60):
+        raise HTTPException(409, "El servidor está ocupado, probá en un minuto")
+    try:
+        return fpl.confirm(body.event_id, body.sides, body.src)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("POST /api/futbol/lineup/photo/confirm error: %s", e)
+        raise HTTPException(500, str(e))
+    finally:
+        _fb_lock.release()
+
+
+@app.get("/api/futbol/parlay")
+def futbol_parlay(event_id: str):
+    """Modo parlay: últimas titularidades de cada jugador del partido."""
+    from futbol import run as frun
+    try:
+        return frun.recent_starts(event_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/futbol/parlay error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/futbol/lineup/dt")
+def futbol_lineup_dt(event_id: str):
+    """Modo DT: la alineación actual para editar a mano, con el banco armado."""
+    from futbol import photo_lineup as fpl
+    try:
+        return fpl.dt_draft(event_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:                                  # noqa: BLE001
+        logger.error("GET /api/futbol/lineup/dt error: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/futbol/lineup/photo/discard")
+def futbol_lineup_photo_discard(event_id: str):
+    from futbol import photo_lineup as fpl
+    if not _fb_lock.acquire(timeout=60):
+        raise HTTPException(409, "El servidor está ocupado, probá en un minuto")
+    try:
+        return fpl.discard(event_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    finally:
+        _fb_lock.release()

@@ -1,6 +1,6 @@
 {
-  "cv_mae": 1.7571,
-  "holdout_mae": 1.6947,
+  "cv_mae": 1.7623,
+  "holdout_mae": 1.6968,
   "train_rows": 10795,
   "test_rows": 3586,
   "n_features": 34,
@@ -46,5 +46,9 @@
     "opp_k_pct_lineup",
     "csw_x_opp_k",
     "cumulative_pitches_7d"
-  ]
+  ],
+  "recency_half_life_days": 365,
+  "weight_min": 0.1876740870238177,
+  "weight_max": 1.0,
+  "weight_mean": 0.5045117756757385
 }

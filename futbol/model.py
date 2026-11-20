@@ -52,6 +52,26 @@ ROLE_OF_GROUP = {"G": "GK", "D": "CB", "M": "CM", "F": "ST"}
 GROUP_OF_ROLE = {"GK": "G", "CB": "D", "FB": "D", "CM": "M", "AM": "M", "WG": "F", "ST": "F"}
 
 
+DM_POS = ("DM", "CDM", "SW")          # ESPN/API-Football: el 5 (SW = tapón del 4-1-3-2)
+
+
+def _dm_pos(a: str) -> bool:
+    # "CM" a secas es el del medio de una línea de tres (LM-CM-RM): el que tapa.
+    return a.startswith(DM_POS) or a == "CM"
+
+
+def is_dm(today, hist_pos=None) -> bool:
+    """¿Juega de mediocampista defensivo? El puesto de hoy manda; si no hay,
+    el más común de sus últimos 10 partidos. Sólo para mostrar."""
+    t = str(today or "").upper()
+    if t and t not in ("SUB", "?"):
+        return _dm_pos(t)
+    if hist_pos is None:
+        return False
+    hp = [str(x).upper() for x in hist_pos.dropna() if str(x).upper() not in ("SUB", "?", "")][-10:]
+    return bool(hp) and _dm_pos(pd.Series(hp).value_counts().index[0])
+
+
 def role_of(pos) -> str | None:
     a = str(pos or "").upper()
     if not a or a == "SUB" or a == "?":
@@ -253,6 +273,7 @@ class PlayerProfile:
     role: str = "CM"         # centrodelantero, extremo, enganche…
     sub_k: float = 1.0       # cuánto más remata por minuto cuando entra desde el banco
     phi: float = 0.0         # sobre-dispersión propia (0 = muy constante)
+    dm: bool = False         # mediocampista defensivo (sólo para mostrar; el modelo lo trata como CM)
 
 
 class History:
@@ -265,6 +286,8 @@ class History:
     def __init__(self, players: pd.DataFrame, teams: pd.DataFrame):
         p = players.copy()
         p["pos_resolved"] = _resolve_positions(p)
+        # sin ningún partido con puesto: build_profiles lo busca en el plantel
+        p["pos_known"] = p["player_id"].isin(p.loc[p["pos_group"].isin(POS), "player_id"].unique())
         p["role"] = p["pos"].map(role_of)
         mode = p.dropna(subset=["role"]).groupby("player_id")["role"].agg(lambda s: s.value_counts().index[0])
         p["role_resolved"] = p["player_id"].map(mode).fillna(p["pos_resolved"].map(ROLE_OF_GROUP))
@@ -276,8 +299,12 @@ class History:
         self.team_events = {tid: g.drop_duplicates("event_id")[["event_id", "date"]]
                             for tid, g in p.groupby("team_id", sort=False)}
         self.teams = teams
-        self.team_league = teams.drop_duplicates("team_id").set_index("team_id")["league"].to_dict()
-        self.mean_team_shots = float(teams["shots"].mean())
+        tl = teams.assign(_cup=teams["league"].isin(cfg.CUPS)).sort_values("_cup", kind="stable")
+        self.team_league = tl.drop_duplicates("team_id").set_index("team_id")["league"].to_dict()
+        # Selecciones: los equipos que juegan las competencias de cfg.NATIONAL
+        self.national_teams = set(teams.loc[teams["league"].isin(cfg.NATIONAL), "team_id"])
+        core = teams[teams["league"].isin([k for k in cfg.LEAGUES if k not in cfg.CUPS])]
+        self.mean_team_shots = float((core if len(core) else teams)["shots"].mean())
 
     def sub_intensity(self, q0: pd.DataFrame) -> float:
         """Porción de remates por minuto entrando desde el banco / como titular,
@@ -300,6 +327,8 @@ class History:
 
     def priors(self, asof) -> dict:
         q0 = self.p[(self.p["date"] < pd.Timestamp(asof)) & (self.p["minutes"] > 0)]
+        core = q0[q0["league"].isin([k for k in cfg.LEAGUES if k not in cfg.CUPS])]
+        q0 = core if len(core) else q0              # promedios: sólo las ligas de la app
         k_sub = self.sub_intensity(q0)
         q0 = q0.assign(_ew=np.where(q0["starter"] == 1, 1.0, k_sub ** cfg.SUB_K_PRIOR_POWER))
         out = {"sub_k": k_sub}
@@ -352,6 +381,16 @@ def _resolve_positions(players: pd.DataFrame) -> pd.Series:
     return players["player_id"].map(mode).fillna("M")
 
 
+def _roster_pos(hist: "History", team_id: str, pid: str) -> str | None:
+    """Puesto del plantel de ESPN (para quien la historia sólo tiene como 'SUB')."""
+    from futbol import espn
+    lg = hist.team_league.get(team_id)
+    try:
+        return espn.roster_positions(lg, team_id).get(str(pid)) if lg else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def build_profiles(hist: "History", team_id: str, asof, priors: dict,
                    squad: list[dict] | None = None) -> list[PlayerProfile]:
     """Perfiles de los jugadores de `team_id` para un partido en `asof`.
@@ -375,14 +414,21 @@ def build_profiles(hist: "History", team_id: str, asof, priors: dict,
     # factor de suplente de esta liga
     k_sub = float(priors.get("sub_k", 1.0)) ** cfg.SUB_K_POWER.get(hist.team_league.get(team_id), 0.0)
 
+    national = team_id in hist.national_teams
     out = []
     for pid in ids:
         g = hist.by_player.get(pid)
         h = g[g["date"] < asof] if g is not None else None
+        if h is not None and not national and hist.national_teams:
+            # partido de club: lo que hizo con su selección no cuenta (otro equipo, otro rol)
+            h = h[~h["team_id"].isin(hist.national_teams)]
         sq = next((s for s in (squad or []) if str(s["player_id"]) == pid), {})
         if h is not None and not h.empty:
             pos = h["pos_resolved"].iloc[-1]
             name = h["player"].iloc[-1]
+            if "pos_known" in h and not bool(h["pos_known"].iloc[-1]):
+                # nunca jugó con puesto (siempre "SUB"): el de hoy o el del plantel
+                pos = sq.get("pos_group") if sq.get("pos_group") in POS else _roster_pos(hist, team_id, pid) or pos
         else:
             h = None
             pos = sq.get("pos_group") if sq.get("pos_group") in POS else "M"
@@ -394,6 +440,7 @@ def build_profiles(hist: "History", team_id: str, asof, priors: dict,
             role = ROLE_OF_GROUP.get(pos, "CM")
         if sq.get("pos") and role_of(sq.get("pos")):
             role = role_of(sq.get("pos"))          # el puesto de HOY en la formación confirmada
+        dm = is_dm(sq.get("pos"), h["pos"] if h is not None and "pos" in h else None)
         pr = priors.get("role:" + role) if cfg.PLAYER_ROLES else None
         pr = pr or priors.get(pos, {"share90": 0.05, "acc": 0.3})
         if h is not None:
@@ -404,6 +451,10 @@ def build_profiles(hist: "History", team_id: str, asof, priors: dict,
             exp_team = exp_team * np.where(played["starter"].to_numpy() == 1, 1.0, k_sub)
             shots = played["shots"].fillna(0).to_numpy(float)
             sots = played["sot"].fillna(0).to_numpy(float)
+            # Sin remates del equipo ese partido no cuenta (ligas chicas de ESPN:
+            # a veces trae los del jugador y no los del equipo e inflaba su porción).
+            has_team = played["team_shots"].notna().to_numpy()
+            shots, sots = np.where(has_team, shots, 0.0), np.where(has_team, sots, 0.0)
             st = h[h["starter"] == 1]["minutes"].to_numpy(float)
             st = st[st > 0][-15:]
             bench = h[h["starter"] == 0].tail(15)
@@ -416,6 +467,16 @@ def build_profiles(hist: "History", team_id: str, asof, priors: dict,
             w = shots = sots = exp_team = np.zeros(0)
             st, sub, p_enter, p_start, n_min = np.zeros(0), np.zeros(0), 0.4, 0.3, 0.0
         share = (np.sum(w * shots) + pr["share90"] * prior_team) / (np.sum(w * exp_team) + prior_team)
+        if national and h is not None and cfg.NT_PRIOR_MIN is not None:
+            # Selección: su porción con la selección, partiendo de la del club.
+            # NT_PRIOR_MIN = minutos de selección que pesan lo mismo que todo el club.
+            nt = played["team_id"].isin(hist.national_teams).to_numpy()
+            if nt.any() and (~nt).any():
+                wc = 0.5 ** (np.arange(int((~nt).sum()))[::-1] / cfg.PLAYER_HALFLIFE)
+                wn = 0.5 ** (np.arange(int(nt.sum()))[::-1] / cfg.PLAYER_HALFLIFE)
+                club = (np.sum(wc * shots[~nt]) + pr["share90"] * prior_team) / (np.sum(wc * exp_team[~nt]) + prior_team)
+                kt = cfg.NT_PRIOR_MIN / 90.0 * max(hist.mean_team_shots, 1.0)
+                share = (np.sum(wn * shots[nt]) + club * kt) / (np.sum(wn * exp_team[nt]) + kt)
         acc = (np.sum(w * sots) + pr["acc"] * cfg.PLAYER_ACC_PRIOR) / (np.sum(w * shots) + cfg.PLAYER_ACC_PRIOR)
         # Constancia: cuánto se aparta partido a partido de lo esperado dados
         # los remates de su equipo y sus minutos (más allá del azar).
@@ -442,7 +503,7 @@ def build_profiles(hist: "History", team_id: str, asof, priors: dict,
             start_min=st if len(st) else np.array([DEFAULT_START_MIN[pos]]),
             sub_min=sub if len(sub) else np.array([DEFAULT_SUB_MIN]),
             p_enter_bench=float(p_enter), p_start=float(p_start), n_min=n_min,
-            role=role, phi=phi, sub_k=k_sub))
+            role=role, phi=phi, sub_k=k_sub, dm=dm))
     return out
 
 
@@ -533,7 +594,7 @@ def simulate_match(tm: TeamModel, home_id: str, away_id: str,
                 sp_shots, sp_sot = pshots[:, j] + rs, psot[:, j] + ro
                 out["players"].append({
                     "player_id": p.player_id, "player": p.player, "team_id": team, "side": side,
-                    "pos_group": p.pos_group, "role": p.role, "phi": p.phi, "p_start": p.p_start,
+                    "pos_group": p.pos_group, "role": p.role, "dm": p.dm, "phi": p.phi, "p_start": p.p_start,
                     "p_play": float(played.mean()),
                     "exp_minutes": float(mins[:, j].mean()),
                     "shots_mean": float(pshots[:, j].mean()), "sot_mean": float(psot[:, j].mean()),
@@ -571,3 +632,152 @@ def p_over(dist: np.ndarray, line: float) -> float:
     """P(X > line) desde una distribución discreta (la cola truncada va al último bin)."""
     k = int(math.floor(line)) + 1
     return float(dist[k:].sum()) if k < len(dist) else 0.0
+
+
+# ── Copas: un solo modelo con todas las ligas ────────────────────────────────
+# En una copa cada equipo juega 3-8 partidos; con eso solo su ataque y su
+# defensa salen muy ruidosos. Acá se ajusta TODO junto (liga local de cada
+# equipo + copas europeas): ataque = nivel de su liga + lo suyo dentro de la
+# liga. El nivel de cada liga sale de los cruces entre ligas (Champions,
+# Europa, Conference, previas, Mundial de Clubes): así 3 remates por partido
+# en Noruega no valen lo mismo que 3 en la Premier.
+# κ ("compresión"): en los cruces entre ligas la diferencia de nivel se
+# multiplica por κ. κ < 1 = el chico juega mejor de lo que dice su nivel (sin
+# presión, partido de su vida); κ > 1 = el grande lo pasa por arriba. No se
+# fija a mano: sale de los partidos de copa ya jugados.
+
+def _is_cross(lg: str) -> bool:
+    return lg in cfg.CUPS or str(lg).startswith("uefa.") or str(lg).startswith("fifa.")
+
+
+def team_home_league(teams: pd.DataFrame) -> dict:
+    """Liga local de cada equipo (la más jugada que no sea un cruce entre ligas)."""
+    d = teams[~teams["league"].map(_is_cross)]
+    return d.groupby("team_id")["league"].agg(lambda s: s.value_counts().index[0]).to_dict()
+
+
+def fit_team_model_cup(teams: pd.DataFrame, asof, cup: str,
+                       halflife_matches: float = cfg.TEAM_HALFLIFE,
+                       prior_k: float = cfg.TEAM_PRIOR_K, kappa_fixed: float | None = None,
+                       kappa_ridge: float = 40.0) -> TeamModel:
+    asof = pd.Timestamp(asof)
+    d = teams[(teams["date"] < asof) & teams["shots"].notna() & (teams["shots"] > 0)].copy()
+    lg_mean = d.groupby("league")["shots"].mean()
+    d = d[d["league"].map(lg_mean) >= 6.0]                       # ligas con datos rotos fuera
+    d = d[d["opp_id"].notna()]
+    if cfg.HISTORY_ONLY:
+        # Las ligas que se bajan sólo por los jugadores (cfg.HISTORY_ONLY) entran
+        # al modelo de equipos como antes: sólo los partidos de equipos de copa.
+        cup_teams = set(d.loc[d["league"].isin(cfg.CUPS), "team_id"])
+        extra = d["league"].isin(cfg.HISTORY_ONLY)
+        d = d[~extra | d["team_id"].isin(cup_teams) | d["opp_id"].isin(cup_teams)]
+    if d.empty or not (d["league"] == cup).any():
+        raise ValueError("sin historia para ajustar el modelo de copa")
+    w = _weights(d["date"], asof, halflife_matches * 7.0 * 2.0)  # más memoria: los cruces son pocos
+    home_lg = team_home_league(d)
+    ids = sorted(set(d["team_id"]) | set(d["opp_id"]))
+    ix = {t: i for i, t in enumerate(ids)}
+    grp = sorted({home_lg.get(t, "_") for t in ids})
+    gx = {g: i for i, g in enumerate(grp)}
+    tg = np.array([gx[home_lg.get(t, "_")] for t in ids])
+    lgs = sorted(d["league"].unique())
+    lx = {l: i for i, l in enumerate(lgs)}
+    n, nG, nL = len(ids), len(grp), len(lgs)
+    ti = d["team_id"].map(ix).to_numpy()
+    oi = d["opp_id"].map(ix).to_numpy()
+    li = d["league"].map(lx).to_numpy()
+    cross = d["league"].map(_is_cross).to_numpy()
+    hm = np.where(d["home"].to_numpy() == 1, 1.0, -1.0)
+    # neutral (final, Mundial de Clubes): sin localía
+    hm = np.where(d["league"].astype(str).str.startswith("fifa.").to_numpy(), 0.0, hm)
+    y = d["shots"].to_numpy(float)
+    lam_bar = float(np.average(y, weights=w))
+    ridge = prior_k * lam_bar * 0.5
+    ridge_g = ridge * 0.5
+    ridge_k = ridge * kappa_ridge
+    gt, go = tg[ti], tg[oi]
+    # offsets de grupo: sólo en cruces (dentro de una liga se cancelan con μ de la liga)
+    o_mu, o_h, o_A, o_D = 0, nL, nL + 1, nL + 1 + nG
+    o_a, o_b, o_k = nL + 1 + 2 * nG, nL + 1 + 2 * nG + n, nL + 1 + 2 * nG + 2 * n
+
+    def unpack(th):
+        return th[o_mu:o_h], th[o_h], th[o_A:o_D], th[o_D:o_a], th[o_a:o_b], th[o_b:o_k], th[o_k]
+
+    def nll(th):
+        mu, h, A, D, a, b, k = unpack(th)
+        if kappa_fixed is not None:
+            k = kappa_fixed
+        gap = np.where(cross, A[gt] + D[go], 0.0) + a[ti] + b[oi]
+        c = np.where(cross, k, 1.0)
+        eta = mu[li] + h * hm + c * gap
+        lam = np.exp(eta)
+        f = np.sum(w * (lam - y * eta)) + ridge * (a @ a + b @ b) / 2 \
+            + ridge_g * (A @ A + D @ D) / 2 + ridge_k * (k - 1.0) ** 2 / 2
+        r = w * (lam - y)
+        rc = r * c
+        g = np.zeros_like(th)
+        g[o_mu:o_h] = np.bincount(li, weights=r, minlength=nL)
+        g[o_h] = (r * hm).sum()
+        g[o_A:o_D] = np.bincount(gt, weights=np.where(cross, rc, 0.0), minlength=nG) + ridge_g * A
+        g[o_D:o_a] = np.bincount(go, weights=np.where(cross, rc, 0.0), minlength=nG) + ridge_g * D
+        g[o_a:o_b] = np.bincount(ti, weights=rc, minlength=n) + ridge * a
+        g[o_b:o_k] = np.bincount(oi, weights=rc, minlength=n) + ridge * b
+        g[o_k] = 0.0 if kappa_fixed is not None else float(np.sum(np.where(cross, r * gap, 0.0))) + ridge_k * (k - 1.0)
+        return f, g
+
+    th0 = np.zeros(o_k + 1)
+    th0[o_mu:o_h] = [math.log(max(float(np.average(y[li == j], weights=w[li == j])), 0.5)) for j in range(nL)]
+    th0[o_k] = 1.0
+    th = minimize(nll, th0, jac=True, method="L-BFGS-B").x
+    mu, h, A, D, a, b, k = unpack(th)
+    if kappa_fixed is not None:
+        k = kappa_fixed
+    att = {t: k * (A[tg[ix[t]]] + a[ix[t]]) for t in ids}
+    dfn = {t: k * (D[tg[ix[t]]] + b[ix[t]]) for t in ids}
+    mu_c = float(mu[lx[cup]])
+
+    # Sobre-dispersión, con los partidos de cruces entre ligas
+    gap = np.where(cross, A[gt] + D[go], 0.0) + a[ti] + b[oi]
+    lam_fit = np.exp(mu[li] + h * hm + np.where(cross, k, 1.0) * gap)
+    m = cross
+    excess = np.average((y[m] - lam_fit[m]) ** 2 - lam_fit[m], weights=w[m])
+    disp = float(np.clip(np.average(lam_fit[m] ** 2, weights=w[m]) / max(excess, 1e-6), 3.0, 200.0))
+
+    # Puntería: binomial con ν por liga y equipo/rival en todos sus partidos
+    ma = d["sot"].notna().to_numpy() & (y > 0)
+    s = y[ma]
+    kk = np.minimum(d["sot"].to_numpy(float)[ma].clip(0, None), s)
+    wa, ta, oa, la = w[ma], ti[ma], oi[ma], li[ma]
+    p_bar = float(np.sum(wa * kk) / np.sum(wa * s))
+    ridge_a = cfg.ACC_PRIOR_K * p_bar * (1 - p_bar)
+
+    def nll_a(th):
+        nu, aa, bb = th[:nL], th[nL:nL + n], th[nL + n:]
+        z = nu[la] + aa[ta] + bb[oa]
+        p = 1 / (1 + np.exp(-z))
+        f = -np.sum(wa * (kk * np.log(p + 1e-12) + (s - kk) * np.log(1 - p + 1e-12))) \
+            + ridge_a * (aa @ aa + bb @ bb) / 2
+        r = wa * (s * p - kk)
+        g = np.empty_like(th)
+        g[:nL] = np.bincount(la, weights=r, minlength=nL)
+        g[nL:nL + n] = np.bincount(ta, weights=r, minlength=n) + ridge_a * aa
+        g[nL + n:] = np.bincount(oa, weights=r, minlength=n) + ridge_a * bb
+        return f, g
+
+    tha = np.zeros(nL + 2 * n)
+    tha[:nL] = math.log(p_bar / (1 - p_bar))
+    ra = minimize(nll_a, tha, jac=True, method="L-BFGS-B").x
+    nu_all, aa, bb = ra[:nL], ra[nL:nL + n], ra[nL + n:]
+    acc = {t: aa[ix[t]] for t in ids}
+    allow = {t: bb[ix[t]] for t in ids}
+    pf = 1 / (1 + np.exp(-(nu_all[la] + aa[ta] + bb[oa])))
+    mc = cross[ma]
+    excess_a = np.average((kk[mc] - s[mc] * pf[mc]) ** 2 - s[mc] * pf[mc] * (1 - pf[mc]), weights=wa[mc])
+    acc_disp = float(np.clip(np.average((s[mc] * pf[mc]) ** 2, weights=wa[mc]) / max(excess_a, 1e-6), 4.0, 400.0))
+    tm = TeamModel(mu=mu_c, home=float(h), att=att, dfn=dfn, nu=float(nu_all[lx[cup]]), acc=acc,
+                   acc_allow=allow, disp=disp, acc_disp=acc_disp,
+                   league_shots=float(np.average(y[li == lx[cup]], weights=w[li == lx[cup]])), league_acc=p_bar)
+    tm.kappa = float(k)                                          # para mostrar / auditar
+    tm.league_level = {g: float(A[i]) for g, i in gx.items()}
+    tm.league_def = {g: float(D[i]) for g, i in gx.items()}
+    return tm

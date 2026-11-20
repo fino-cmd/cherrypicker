@@ -36,3 +36,4 @@ data/futbol/jornada.json
 data/futbol/backtest_predictions.csv.gz
 data/futbol/picks.db
 data/futbol/prefs.json
+.backup/

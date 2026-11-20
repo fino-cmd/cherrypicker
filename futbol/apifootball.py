@@ -32,8 +32,8 @@ from futbol.espn import norm_name
 
 BASE = "https://v3.football.api-sports.io"
 DIR = cfg.CACHE_DIR / "apifootball"
-AF_LEAGUES = {"arg": 128, "bra": 71, "eng": 39, "ita": 135}     # formaciones
-PHOTO_LEAGUES = {"arg": 128, "bra": 71, "eng": 39, "ita": 135}  # fotos
+AF_LEAGUES = {"arg": 128, "bra": 71, "eng": 39, "ita": 135, "esp": 140, "mex": 262, "ucl": 2, "uel": 3, "cdb": 73, "unl": 5}     # formaciones
+PHOTO_LEAGUES = {"arg": 128, "bra": 71, "eng": 39, "ita": 135, "esp": 140, "mex": 262, "ucl": 2, "uel": 3, "cdb": 73, "unl": 5}  # fotos
 PHOTO_TEAMS_PER_DAY = 20            # planteles por día (1 consulta cada uno)
 PHOTO_REFRESH_DAYS = 30             # un plantel se vuelve a pedir al mes
 AF_BEFORE_MIN = 65                  # empezar a preguntar 65' antes
@@ -163,7 +163,7 @@ def _pseudo_pos(row: int, col: int, n: int, max_row: int) -> str:
     if n == 1:
         return "DM"
     if n >= 4:
-        return "LM" if col == 1 else "RM" if col == n else ("CM-L" if col < mid else "CM-R")
+        return "LM" if col == 1 else "RM" if col == n else "CM" if col == mid else ("CM-L" if col < mid else "CM-R")
     return "CM" if col == mid else ("CM-L" if col < mid else "CM-R")
 
 
@@ -192,10 +192,23 @@ def _match_player(name: str, cands: dict[str, str]) -> str | None:
         else:
             hits.append((-1, pid))           # sólo el apellido: vale si es único en el plantel
     if not hits:
-        return None
+        return _fuzzy_player(k, cands)
     top = max(h[0] for h in hits)
     ids = {pid for sc, pid in hits if sc == top}
     return ids.pop() if len(ids) == 1 else None
+
+
+def _fuzzy_player(k: str, cands: dict[str, str], min_ratio: float = 0.88, gap: float = 0.06) -> str | None:
+    """Último recurso: el nombre escrito apenas distinto en cada fuente ("Alerrandro"
+    en PitchAPI, "Alerrando" en ESPN). Sólo si hay un candidato claramente mejor
+    que los demás del plantel; si no, mejor no cruzar."""
+    from difflib import SequenceMatcher
+    scored = sorted(((SequenceMatcher(None, k, ck).ratio(), pid) for ck, pid in cands.items()), reverse=True)
+    if not scored or scored[0][0] < min_ratio:
+        return None
+    if len(scored) > 1 and scored[1][1] != scored[0][1] and scored[0][0] - scored[1][0] < gap:
+        return None
+    return scored[0][1]
 
 
 def lineup(ev: dict, cands_by_team: dict[str, dict[str, str]]) -> list[dict]:
@@ -233,7 +246,7 @@ def lineup(ev: dict, cands_by_team: dict[str, dict[str, str]]) -> list[dict]:
             pid = _match_player(p["name"], cands)
             if pid:
                 _photos_new[pid] = p.get("photo") or photo_url(p["id"])
-            out.append({"team_id": tid, "formation": t.get("formation"), "formation_place": i + 1,
+            out.append({"team_id": tid, "formation": t.get("formation"), "formation_place": i + 1, "src": "api-football",
                         "player_id": pid or f"af:{p['id']}", "player": p["name"], "starter": True,
                         "pos": pos, "pos_group": p.get("pos") if p.get("pos") in ("G", "D", "M", "F") else "M"})
         for p in (x["player"] for x in t.get("substitutes") or []):
@@ -307,7 +320,9 @@ def photos_step(matches: list[dict], players, max_teams: int = PHOTO_TEAMS_PER_D
         for sd in need:
             queue.append((ev[f"{sd}_id"], fx[f"{sd}_id"], ev[sd]))
     n_photos, seen = 0, set()
-    last = players.sort_values("date").groupby("player_id").tail(1)
+    # Todos los que jugaron alguna vez en el equipo (no sólo su último partido): en una
+    # selección casi todos jugaron por última vez en su club y quedaban afuera del cruce.
+    by_team = players.sort_values("date").assign(team_id=lambda d: d["team_id"].astype(str)).drop_duplicates(["team_id", "player_id"], keep="last")
     for espn_tid, af_tid, name in queue:
         if budget <= 0:
             break
@@ -321,7 +336,7 @@ def photos_step(matches: list[dict], players, max_teams: int = PHOTO_TEAMS_PER_D
                 print(f"  fotos: {exc}")
             break
         budget -= 1
-        cands = {norm_name(r.player): str(r.player_id) for r in last[last["team_id"].astype(str) == str(espn_tid)].itertuples()}
+        cands = {norm_name(r.player): str(r.player_id) for r in by_team[by_team["team_id"] == str(espn_tid)].itertuples()}
         for p in (resp[0]["players"] if resp else []):
             pid = _match_player(p["name"], cands)
             if pid:

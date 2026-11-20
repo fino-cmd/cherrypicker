@@ -46,6 +46,8 @@ FDCO_FILES = {
     "bra": ["new/BRA.csv"],
     "eng": ["mmz4281/2425/E0.csv", "mmz4281/2526/E0.csv", "mmz4281/2627/E0.csv"],
     "ita": ["mmz4281/2425/I1.csv", "mmz4281/2526/I1.csv", "mmz4281/2627/I1.csv"],
+    "esp": ["mmz4281/2425/SP1.csv", "mmz4281/2526/SP1.csv", "mmz4281/2627/SP1.csv"],
+    "mex": ["new/MEX.csv"],
 }
 SPLIT = "2026-04-01"            # β se mide antes; se evalúa después (como calibrate.py)
 GOAL_HALFLIFE_DAYS = 120.0

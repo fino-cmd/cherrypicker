@@ -34,7 +34,7 @@
         "uvicorn",
         "backend.main:app",
         "--host",
-        "127.0.0.1",
+        "0.0.0.0",
         "--port",
         "8002"
       ],
@@ -44,11 +44,8 @@
       "name": "Frontend 5500 (app)",
       "runtimeExecutable": "python",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "5500",
-        "--bind",
-        "127.0.0.1"
+        "serve.py",
+        "5500"
       ],
       "port": 5500
     }

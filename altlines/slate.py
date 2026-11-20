@@ -43,6 +43,15 @@ import pandas as pd
 
 from altlines.config import RANDOM_SEED
 
+# La "noche NBA" no termina a la medianoche: los partidos de la costa oeste
+# empiezan 00:00-01:00 de Argentina. Hasta esta hora de la madrugada "hoy"
+# sigue siendo la fecha de ayer, así esos partidos no se van de la lista.
+NBA_DAY_CUTOFF_H = 3
+
+
+def nba_today() -> _date_cls:
+    return (datetime.now() - timedelta(hours=NBA_DAY_CUTOFF_H)).date()
+
 logger = logging.getLogger(__name__)
 
 
@@ -210,7 +219,7 @@ def fetch_espn_slate(date_str: str | None = None, search_days: int = 7,
     deterministic offline slate. A *successful* empty day is not a failure: it
     just keeps walking.
     """
-    base = _parse_date(date_str) or datetime.now().date()
+    base = _parse_date(date_str) or nba_today()
 
     span = max(int(search_days), 0)
     if direction < 0:
@@ -270,7 +279,7 @@ def demo_slate(date_str: str | None = None, n_games: int = 6,
     Used by the CLI without network and as the fallback when ESPN is
     unreachable. Fully deterministic for a given seed.
     """
-    day = _parse_date(date_str) or datetime.now().date()
+    day = _parse_date(date_str) or nba_today()
     rng = random.Random(f"{seed}:{day:%Y%m%d}")
 
     pool = [t[0] for t in NBA_TEAMS]

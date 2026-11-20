@@ -21,19 +21,19 @@
   // ── Íconos (trazo, heredan currentColor) ──────────────────────────────────
   const I = {
     nut: `<svg class="pst-mark" viewBox="0 0 48 48" aria-hidden="true"><g transform="rotate(28 24 26)"><path d="M24 25.5c-5-3.6-6.6-10.6-4.6-17 1.3-4.2 7.9-4.2 9.2 0 2 6.4.4 13.4-4.6 17z" fill="#9FCF5F"/><path d="M22 23.8c-3.4-3.7-4.4-9.6-2.6-14.9" stroke="#8C4E6C" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M25.8 9.2c1.1 2.7 1.3 6.1.6 9.2" stroke="#D6F0A9" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M24 45c-8.6 0-13.4-7.4-13.4-16.4 0-8.2 3.3-15.6 7.8-19.4 1 6.6 2.9 12.3 5.6 16.4z" fill="#EBD8AB"/><path d="M24 45c8.6 0 13.4-7.4 13.4-16.4 0-8.2-3.3-15.6-7.8-19.4-1 6.6-2.9 12.3-5.6 16.4z" fill="#D1B37A"/><path d="M18.4 9.2c1 6.6 2.9 12.3 5.6 16.4 2.7-4.1 4.6-9.8 5.6-16.4" stroke="#7B6038" stroke-width="1.1" stroke-linejoin="round" fill="none"/><path d="M24 25.6V45" stroke="#B4955A" stroke-width=".9"/><path d="M14.3 22.5c-.8 2.2-1.1 4.5-1.1 6.8 0 4.6 1.6 8.4 4.6 10.7" stroke="#F7EDD2" stroke-width="1.4" stroke-linecap="round" fill="none"/></g></svg>`,
-    edge: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l4.5-4.5 3 3L17 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 7H17v4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    tail: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5c.6 2.6 3.8 4.2 3.8 8a3.8 3.8 0 01-7.6 0c0-1.7.9-2.9 1.8-3.8.2 1.4.9 2.2 1.8 2.6-.4-2.4.2-4.6.2-6.8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
-    target: `<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="1" fill="currentColor"/></svg>`,
-    bolt: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.2 2L4.5 11.2h4.6L8.4 18l7.1-9.6h-4.7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
-    warn: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l7.5 13h-15z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 8v3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="13.9" r=".9" fill="currentColor"/></svg>`,
-    check: `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5l6 2.3v4.6c0 3.7-2.6 6.4-6 8.1-3.4-1.7-6-4.4-6-8.1V4.8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7.2 10l2 2 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    info: `<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 9v4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="6.4" r=".95" fill="currentColor"/></svg>`,
+    edge: ICON('trendUp'),
+    tail: ICON('flame'),
+    target: ICON('target'),
+    bolt: ICON('bolt'),
+    warn: ICON('warn'),
+    check: ICON('shieldCheck'),
+    info: ICON('info'),
   };
 
   // ── Definiciones (las mismas que muestra el glosario y el ⓘ) ──────────────
   const DEF = {
     blend: 'La probabilidad del pick mezcla la simulación (40 %) con el precio justo del libro (60 %): elegir el mayor EV entre cientos de líneas favorece justo las que el motor sobreestimó, y mezclar con el mercado lo corrige. Los recomendados además exigen ≥ 15 % de probabilidad, cuota ≤ 10 y una sola línea por jugador y mercado (máx. 2 por jugador).',
-    score: 'Pickstachio Score (0–100): resume el pick. Pesa la ventaja sobre el libro (40 %), cuánto le gana la cola del jugador a la curva genérica del libro (25 %), qué tan seguido pega (20 %) y si el modelo y el mercado coinciden en el nivel del jugador (15 %).',
+    score: 'CherryPick Score (0–100): resume el pick. Pesa la ventaja sobre el libro (40 %), cuánto le gana la cola del jugador a la curva genérica del libro (25 %), qué tan seguido pega (20 %) y si el modelo y el mercado coinciden en el nivel del jugador (15 %).',
     edge: 'Ventaja: cuántos puntos de probabilidad más le da el modelo al hito que el libro (ya sin su comisión). Es el corazón del pick: sin ventaja no hay pistacho.',
     tail: 'Cola gorda: cuántas veces más probable es el hito con la distribución REAL del jugador que con la curva simétrica que el libro usa para todos. Más de 1× = el libro le achica la cola.',
     reach: 'Hito: qué tan lejos está la línea alternativa de la línea principal, medido en desvíos del propio jugador. Cuanto más lejos, más pesa la forma de su cola (y más paga).',
@@ -281,7 +281,7 @@
         <div class="pst-modal-card">${front(r, m)}</div>
         <aside class="pst-sheet">
           <button class="pst-sheet-close" onclick="Pickstachio.close()" aria-label="Cerrar la ficha">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            ${ICON('xmark')}
           </button>
           ${sheet(r, m)}
         </aside>
@@ -363,11 +363,11 @@
   // Barra de resultados: de un vistazo, qué se ganó y qué se perdió. Una
   // ficha por pick (en el mismo orden que los cromos); tocarla abre su cromo.
   const MARK = {
-    won: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    lost: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
-    push: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
-    void: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
-    pending: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" fill="currentColor"/></svg>',
+    won: ICON('checkmark'),
+    lost: ICON('xmark'),
+    push: ICON('minus'),
+    void: ICON('minus'),
+    pending: ICON('dot'),
   };
   function resultsStrip(all, shown) {
     const rows = all.map(x => x.r);
@@ -403,7 +403,7 @@
     const rows = [
       [I.nut, 'Pistacho', 'Una línea alternativa donde el modelo le encuentra valor al precio del libro. El libro la ve cerrada; nosotros le vemos la grieta.'],
       [I.nut, 'Se abre', 'Que la apuesta pegue. "Se abre 1 de cada 4" = el modelo espera que pegue uno de cada cuatro partidos.'],
-      [I.nut, 'Pickstachio Score', DEF.score],
+      [I.nut, 'CherryPick Score', DEF.score],
       [I.edge, 'Probabilidad del pick', DEF.blend],
       [I.edge, 'Ventaja', DEF.edge],
       [I.tail, 'Cola gorda', DEF.tail],

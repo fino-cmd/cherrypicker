@@ -120,7 +120,104 @@ document.addEventListener('keydown', (e) => {
 function goToLanding() {
   document.getElementById('page-app').style.display = 'none';
   document.getElementById('page-landing').classList.add('active');
+  loadLauncherStats();
 }
+
+// Número que cuenta desde 0 hasta su valor (una vez por carga del launcher).
+function lxCount(el, to, fmt, ms = 1100) {
+  if (!el) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = fmt(to); return; }
+  const t0 = performance.now();
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / ms);
+    el.textContent = fmt(to * (1 - Math.pow(1 - k, 3)));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// Hora del partido en palabras: "en 25 min", "Hoy 21:30", "Mañana 14:45", "Jue 16:00".
+function lxWhen(t, now) {
+  const mins = Math.round((t - now) / 60000);
+  if (mins <= 0) return null;
+  if (mins < 60) return `en ${mins} min`;
+  const d = new Date(t);
+  const hm = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const day0 = new Date(now); day0.setHours(0, 0, 0, 0);
+  const diff = Math.floor((d - day0) / 864e5);
+  if (diff === 0) return `Hoy ${hm}`;
+  if (diff === 1) return `Mañana ${hm}`;
+  const wd = d.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
+  return `${wd.charAt(0).toUpperCase()}${wd.slice(1)} ${hm}`;
+}
+
+// Launcher: rendimiento de 30 días y próximos partidos, con datos reales del modelo.
+async function loadLauncherStats() {
+  const $ = (id) => document.getElementById(id);
+  if (!$('lx-roi')) return;
+  const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const int = (v) => Math.round(v).toLocaleString('es-AR');
+  try {
+    const r = await fetch(`${API}/api/futbol/results?days=30`).then((x) => x.json());
+    const s = r.summary || {};
+    if (s.picks != null) $('lx-picks').textContent = int(s.picks);
+    if (s.settled) {
+      const roi = (s.roi || 0) * 100;
+      const el = $('lx-roi');
+      el.classList.toggle('is-up', roi > 0);
+      el.classList.toggle('is-down', roi < 0);
+      lxCount(el, roi, (v) => `${v > 0.05 ? '+' : v < -0.05 ? '−' : ''}${Math.abs(v).toFixed(1).replace('.', ',')}%`);
+      $('lx-rec').textContent = `ROI sobre ${int(s.settled)} picks cerrados`;
+      $('lx-won').textContent = int(s.won || 0);
+      $('lx-lost').textContent = int(s.lost || 0);
+      const u = s.units || 0;
+      $('lx-units').textContent = `${u > 0 ? '+' : u < 0 ? '−' : ''}${Math.abs(u).toFixed(1).replace('.', ',')}`;
+    } else {
+      $('lx-rec').textContent = 'Todavía no hay picks cerrados';
+    }
+    $('lx-open').textContent = s.open ? `${int(s.open)} abiertos` : 'Sin picks abiertos';
+  } catch (_) {
+    $('lx-rec').textContent = 'Sin conexión con el modelo';
+  }
+
+  const list = $('lx-matches');
+  try {
+    const j = await fetch(`${API}/api/futbol/jornada`).then((x) => x.json());
+    const now = Date.now();
+    const picksBy = {};
+    (j.picks || []).forEach((p) => { picksBy[p.event_id] = (picksBy[p.event_id] || 0) + 1; });
+    const ms = (j.matches || [])
+      .map((m) => ({ m, t: Date.parse(m.date), st: m.ev && m.ev.state }))
+      .filter((x) => x.t && x.st !== 'post' && x.t > now - 2.25 * 3600e3)
+      .sort((a, b) => a.t - b.t)
+      .slice(0, 4);
+    const nPicks = (j.picks || []).length;
+    $('lx-today').textContent = nPicks ? `${int(nPicks)} jugadas en la jornada` : '';
+    if (!ms.length) { list.innerHTML = '<li class="lx-empty">No hay partidos cargados.</li>'; return; }
+    const LG = { arg: 'LPF', bra: 'BRA', eng: 'PL', ita: 'ITA', esp: 'ESP', ucl: 'UCL', uel: 'UEL', cdb: 'CDB', unl: 'UNL' };
+    const crest = (tm) => `<img src="https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(tm.team_id)}.png" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`;
+    list.innerHTML = ms.map(({ m, t, st }) => {
+      const h = m.teams.home, a = m.teams.away;
+      const when = lxWhen(t, now);
+      const live = st === 'in' || !when;
+      const n = picksBy[m.event_id] || 0;
+      return `<li><button class="lx-row" onclick="goToApp('futbol')">
+        <span class="lx-lg">${esc(LG[m.league] || String(m.league || '').toUpperCase())}</span>
+        <span class="lx-teams">
+          <span class="lx-team">${crest(h)}<span>${esc(h.name || h.abbr)}</span></span>
+          <span class="lx-team">${crest(a)}<span>${esc(a.name || a.abbr)}</span></span>
+        </span>
+        <span class="lx-when">
+          <b class="${live ? 'is-live' : ''}">${live ? 'En vivo' : esc(when)}</b>
+          <span class="${n ? 'has-picks' : ''}">${n ? `${n} ${n === 1 ? 'jugada' : 'jugadas'}` : 'sin jugadas'}</span>
+        </span>
+      </button></li>`;
+    }).join('');
+  } catch (_) {
+    if (list) list.innerHTML = '<li class="lx-empty">Sin conexión con el modelo.</li>';
+  }
+}
+document.addEventListener('DOMContentLoaded', loadLauncherStats);
 
 function showSection(name, el) {
   document.querySelectorAll('.app-section').forEach(s => s.style.display = 'none');
@@ -139,6 +236,9 @@ function showSection(name, el) {
   if (name === 'matchup-tool') loadMatchupTool();
   if (name === 'altlines') loadAltLines();
   if (name === 'futbol' && window.loadFutbol) window.loadFutbol();
+  // Doble-doble tiene su propio diseño: sin las herramientas de Alt Lines arriba.
+  document.body.classList.toggle('nd-on', name === 'nbadd');
+  if (name === 'nbadd' && window.loadNbaDD) window.loadNbaDD();
 }
 
 // ── MATCHUP TOOL ──────────────────────────────────────────────────────────────
@@ -224,9 +324,7 @@ async function loadMatchupTool() {
           <button class="sim-cube-play" id="play-${g.game_id}"
                   onclick="runCubeSim(${g.game_id})"
                   aria-label="Simular partido ${g.away_team} vs ${g.home_team}">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
-              <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/>
-            </svg>
+            ${ICON('play', 22)}
           </button>
         </div>
 
@@ -327,10 +425,10 @@ async function runCubeSim(game_id) {
         <div class="sim-cube-locked-wx" title="${Math.round(wx.temp_f)}°F · ${Math.round(wx.wind_mph)} mph ${wLabel} · HR ${wx.humidity_pct}%">
           <span>${Math.round(wx.temp_f)}°</span>
           <span class="sim-cube-locked-bp-sep">·</span>
-          <span class="${wCls}">💨 ${Math.round(wx.wind_mph)} ${wLabel}</span>
+          <span class="${wCls}">${ICON('wind')} ${Math.round(wx.wind_mph)} ${wLabel}</span>
         </div>`;
     } else if (wx && wx.roof === 'dome') {
-      wxChipHTML = `<div class="sim-cube-locked-wx"><span style="opacity:.6">🏟 DOME</span></div>`;
+      wxChipHTML = `<div class="sim-cube-locked-wx"><span style="opacity:.6">${ICON('dome')} DOME</span></div>`;
     }
 
     bottom.innerHTML = `
@@ -347,8 +445,8 @@ async function runCubeSim(game_id) {
         </div>
         ${wxChipHTML}
         <div class="sim-cube-locked-actions">
-          <button class="sim-cube-edit-btn" onclick="editCubeSim(${game_id}, ${ou_line})">✏ editar</button>
-          <button class="sim-cube-undo-btn" onclick="undoCubeSim(${game_id})">↩ undo</button>
+          <button class="sim-cube-edit-btn" onclick="editCubeSim(${game_id}, ${ou_line})">${ICON('pencil')} editar</button>
+          <button class="sim-cube-undo-btn" onclick="undoCubeSim(${game_id})">${ICON('undo')} undo</button>
         </div>
       </div>`;
 
@@ -432,9 +530,7 @@ async function undoCubeSim(game_id) {
     <button class="sim-cube-play" id="play-${game_id}"
             onclick="runCubeSim(${game_id})"
             aria-label="Simular">
-      <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
-        <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/>
-      </svg>
+      ${ICON('play', 22)}
     </button>`;
 
   const tpSec = document.getElementById('section-todays-picks');
@@ -476,9 +572,7 @@ function editCubeSim(game_id, prev_ou_line) {
     <button class="sim-cube-play" id="play-${game_id}"
             onclick="runCubeSim(${game_id})"
             aria-label="Simular">
-      <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
-        <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/>
-      </svg>
+      ${ICON('play', 22)}
     </button>`;
 }
 
@@ -520,13 +614,13 @@ function openNerdPanel(game_id) {
     const factorPct = ((wxFac - 1) * 100);
     const factorStr = (factorPct >= 0 ? '+' : '') + factorPct.toFixed(1) + '%';
     const factorColor = factorPct > 0.5 ? 'var(--red-light)' : factorPct < -0.5 ? '#22c55e' : 'var(--text-muted)';
-    const rainStr   = wx.precip_pct > 20 ? ` · ☔ ${wx.precip_pct}%` : '';
+    const rainStr   = wx.precip_pct > 20 ? ` · ${ICON('umbrella')} ${wx.precip_pct}%` : '';
     wxRowHTML = `
         <div class="mt-context-row">
-          <span class="mt-context-side" style="font-size:16px;letter-spacing:0">🌤</span>
+          <span class="mt-context-side" style="font-size:16px;letter-spacing:0">${ICON('cloudSun')}</span>
           <span class="mt-context-detail">
             <strong>${Math.round(wx.temp_f)}°F</strong> ·
-            <span style="display:inline-block;transform:rotate(${arrowRot}deg);color:${windColor}">➤</span>
+            <span style="display:inline-block;transform:rotate(${arrowRot}deg);color:${windColor}">${ICON('arrowRight')}</span>
             <strong style="color:${windColor}">${Math.round(wx.wind_mph)} mph ${wLabel}</strong> ·
             HR ${wx.humidity_pct}%${rainStr}${roofTag}
             · <strong style="color:${factorColor}">runs ${factorStr}</strong>
@@ -595,7 +689,7 @@ function openNerdPanel(game_id) {
           <span class="mt-context-detail">${d.home_pitcher} <span class="mt-hand-badge">${d.home_pitcher_hand}HP</span> — K%: <strong>${fmtKPct(d.away_k_pct_vs_hand)}</strong></span>
         </div>
         <div class="mt-context-row">
-          <span class="mt-context-side" style="font-size:16px;letter-spacing:0">🏟</span>
+          <span class="mt-context-side" style="font-size:16px;letter-spacing:0">${ICON('dome')}</span>
           <span class="mt-context-detail"><strong>${d.park_name}</strong> · PF: <strong style="color:${parkColor}">${d.park_factor}</strong> <span style="color:${parkColor}">${parkLabel}</span></span>
         </div>${wxRowHTML}
       </div>
@@ -608,8 +702,8 @@ function openNerdPanel(game_id) {
 
     <div class="mt-footer-note" style="color:${d.lineup_confirmed ? '#22c55e' : ''}">
       ${d.lineup_confirmed
-        ? `✅ Lineup confirmado (${(d.home_lineup || []).length} bateadores)`
-        : '⚠️ Stats de temporada — lineup no confirmado'}
+        ? `${ICON('checkCircle')} Lineup confirmado (${(d.home_lineup || []).length} bateadores)`
+        : `${ICON('warn')} Stats de temporada — lineup no confirmado`}
     </div>
     ${lineupHTML}
   `;
@@ -892,13 +986,13 @@ function renderPropsTable(pitchers, picksMap = {}) {
 
     // K-LINE cell
     const lineCell = pick
-      ? `<div class="pp-kline-set"><strong class="pp-kline-val">${num(pick.k_line, 1)}</strong><button class="pp-kline-edit-btn" onclick="editKLine(this)" title="Cambiar línea">✎</button></div>`
+      ? `<div class="pp-kline-set"><strong class="pp-kline-val">${num(pick.k_line, 1)}</strong><button class="pp-kline-edit-btn" onclick="editKLine(this)" title="Cambiar línea">${ICON('pencil')}</button></div>`
       : _klineEntry();
 
     // MODEL cell
     let modelCell;
     if (pick && pick.model_proj != null) {
-      const dirArrow = rec === 'OVER' ? '↑' : rec === 'UNDER' ? '↓' : '';
+      const dirArrow = rec === 'OVER' ? ICON('arrowUp') : rec === 'UNDER' ? ICON('arrowDown') : '';
       const dirLabel = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : '';
       const dirClass = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : '';
       modelCell = `<div class="pp-model-cell">
@@ -921,7 +1015,7 @@ function renderPropsTable(pitchers, picksMap = {}) {
     if (pick && pick.actual_ks != null) {
       const res  = pick.result || '';
       const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : 'push';
-      const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+      const icon = ICON.result(res);
       resultCell = `<span class="tp-result-pill ${rc}">${icon} ${pick.actual_ks}K</span>`;
     } else if (pick && rec !== 'SKIP') {
       resultCell = `
@@ -1042,14 +1136,14 @@ function openPitcherNerd(safeId) {
   const modelNum = pick && pick.model_proj != null ? num(pick.model_proj, 1) : '—';
   const kLine    = pick ? num(pick.k_line, 1) : '—';
 
-  const dirArrow = rec === 'OVER' ? '↑' : rec === 'UNDER' ? '↓' : '';
+  const dirArrow = rec === 'OVER' ? ICON('arrowUp') : rec === 'UNDER' ? ICON('arrowDown') : '';
   const dirClass = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : 'skip';
 
   let resultHtml = '';
   if (pick && pick.actual_ks != null) {
     const res  = pick.result || '';
     const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : 'push';
-    const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    const icon = ICON.result(res);
     resultHtml = `<div style="text-align:center;margin-top:16px"><span class="tp-result-pill ${rc}">${icon} ${pick.actual_ks}K</span></div>`;
   } else if (pick && rec !== 'SKIP') {
     resultHtml = `
@@ -1071,7 +1165,7 @@ function openPitcherNerd(safeId) {
   const kLineCell = pick
     ? `<div style="font-family:var(--font-display);font-size:24px;color:var(--text);display:flex;align-items:center;justify-content:center;gap:8px">
          ${kLine}
-         <button class="pp-kline-edit-btn" onclick="editKLineNerd('${safeId}')" title="Cambiar línea">✎</button>
+         <button class="pp-kline-edit-btn" onclick="editKLineNerd('${safeId}')" title="Cambiar línea">${ICON('pencil')}</button>
        </div>`
     : `<div id="nerd-kline-entry">${_klineEntry()}</div>`;
 
@@ -1151,7 +1245,7 @@ async function submitResultFromNerd(safeId, btn) {
     const result = await apiPost('/api/picks/result', { date: today, pitcher_name: d.p.name, actual_ks: actualKs });
     const res    = result.result || '';
     const rc     = res === 'W' ? 'win' : res === 'L' ? 'loss' : res === 'P' ? 'push' : 'pending';
-    const icon   = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    const icon   = ICON.result(res);
     const label  = res === 'W' ? 'WIN' : res === 'L' ? 'LOSS' : res === 'P' ? 'PUSH' : '?';
     _showToast(`${d.p.name} — ${actualKs} Ks → ${label}`, res === 'W' ? 'success' : 'info');
     // Also update desktop table row if visible
@@ -1170,7 +1264,7 @@ async function submitResultFromNerd(safeId, btn) {
 function _tpCardResultHtml(pick) {
   if (pick.actual_ks != null && pick.result) {
     const rc   = pick.result === 'W' ? 'win' : pick.result === 'L' ? 'loss' : 'push';
-    const icon = pick.result === 'W' ? '✓' : pick.result === 'L' ? '✕' : '·';
+    const icon = ICON.result(pick.result);
     return `<span class="tp-result-pill ${rc}">${icon} ${pick.actual_ks}K</span>`;
   }
   const safeId = pick.pitcher_name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
@@ -1229,7 +1323,7 @@ function _buildTpCards(actionable, matchupPicks) {
               ${oppLogoHtml || `<span class="tp-dim">${pick.opponent || '—'}</span>`}
             </div>
           </div>
-          <span class="tp-rec-pill ${recCls}">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span>
+          <span class="tp-rec-pill ${recCls}">${rec === 'OVER' ? ICON('triUp') : ICON('triDown')} ${rec}</span>
         </div>
         <div class="tp-card-stats">
           <div class="tp-cs">
@@ -1277,11 +1371,11 @@ function _buildTpCards(actionable, matchupPicks) {
         let resultHtml;
         if (mp.result) {
           const rc   = mp.result === 'W' ? 'win' : mp.result === 'L' ? 'loss' : 'push';
-          const icon = mp.result === 'W' ? '✓' : mp.result === 'L' ? '✕' : '·';
+          const icon = ICON.result(mp.result);
           resultHtml = `
             <div class="tp-log-row">
               <span class="tp-result-pill ${rc}">${icon} ${mp.actual_total}</span>
-              <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${mp.game_id}, ${mp.actual_total})" title="Editar resultado">✏</button>
+              <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${mp.game_id}, ${mp.actual_total})" title="Editar resultado">${ICON('pencil')}</button>
             </div>`;
         } else {
           resultHtml = `
@@ -1300,7 +1394,7 @@ function _buildTpCards(actionable, matchupPicks) {
                 <span class="tp-vs-label">@</span>
                 ${homeLogo ? `<img src="${homeLogo}" class="tp-opp-logo" alt="${mp.home_team}" onerror="this.style.display='none'">` : `<span>${mp.home_team}</span>`}
               </div>
-              <span class="tp-rec-pill ${dirCls}">${dir === 'OVER' ? '▲' : '▼'} ${dir}</span>
+              <span class="tp-rec-pill ${dirCls}">${dir === 'OVER' ? ICON('triUp') : ICON('triDown')} ${dir}</span>
             </div>
             <div class="tp-mc-pitchers">${mp.away_pitcher || '?'} · ${mp.home_pitcher || '?'}</div>
             <div class="tp-mc-stats">
@@ -1366,7 +1460,7 @@ async function loadTodaysPicks() {
         let resultCell;
         if (pick.actual_ks != null && pick.result) {
           const rc   = pick.result === 'W' ? 'win' : pick.result === 'L' ? 'loss' : 'push';
-          const icon = pick.result === 'W' ? '✓' : pick.result === 'L' ? '✕' : '·';
+          const icon = ICON.result(pick.result);
           resultCell = `<span class="tp-result-pill ${rc}">${icon} ${pick.actual_ks}K</span>`;
         } else {
           resultCell = `
@@ -1404,7 +1498,7 @@ async function loadTodaysPicks() {
             <td><strong>${num(pick.k_line, 1)}</strong></td>
             <td>${pick.model_proj != null ? num(pick.model_proj, 1) : '—'}</td>
             <td><span class="tp-edge ${edgeCls}">${edgeSign}${num(pick.edge, 1)}</span></td>
-            <td><span class="tp-rec-pill ${recCls}">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span></td>
+            <td><span class="tp-rec-pill ${recCls}">${rec === 'OVER' ? ICON('triUp') : ICON('triDown')} ${rec}</span></td>
             <td id="tp-result-${safeId}">${resultCell}</td>
           </tr>`;
       }).join('');
@@ -1451,11 +1545,11 @@ async function loadTodaysPicks() {
                 let resultCell;
                 if (mp.result) {
                   const rc   = mp.result === 'W' ? 'win' : mp.result === 'L' ? 'loss' : 'push';
-                  const icon = mp.result === 'W' ? '✓' : mp.result === 'L' ? '✕' : '·';
+                  const icon = ICON.result(mp.result);
                   resultCell = `
                     <div class="tp-log-row">
                       <span class="tp-result-pill ${rc}">${icon} ${mp.actual_total}</span>
-                      <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${mp.game_id}, ${mp.actual_total})" title="Editar resultado">✏</button>
+                      <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${mp.game_id}, ${mp.actual_total})" title="Editar resultado">${ICON('pencil')}</button>
                     </div>`;
                 } else {
                   resultCell = `
@@ -1473,7 +1567,7 @@ async function loadTodaysPicks() {
                     <td><strong>${num(mp.ou_line, 1)}</strong></td>
                     <td>${num(mp.avg_total, 1)}</td>
                     <td><span class="tp-edge ${dirCls}">${edgeSign}${edgePct}%</span></td>
-                    <td><span class="tp-rec-pill ${dirCls}">${dir === 'OVER' ? '▲' : '▼'} ${dir}</span></td>
+                    <td><span class="tp-rec-pill ${dirCls}">${dir === 'OVER' ? ICON('triUp') : ICON('triDown')} ${dir}</span></td>
                     <td>${resultCell}</td>
                   </tr>`;
               }).join('')}
@@ -1507,18 +1601,18 @@ async function submitMatchupResult(btn) {
     const result = await apiPost('/api/matchup-picks/result', { game_id: gameId, actual_total: total });
     const res  = result.result || '';
     const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : 'push';
-    const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    const icon = ICON.result(res);
     const container = btn.closest('td') || btn.closest('.tp-mc-foot') || btn.closest('.tp-card-foot');
     const logRow = btn.closest('.tp-log-row');
     if (logRow) {
       logRow.innerHTML = `
         <span class="tp-result-pill ${rc}">${icon} ${total}</span>
-        <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${gameId}, ${total})" title="Editar resultado">✏</button>`;
+        <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${gameId}, ${total})" title="Editar resultado">${ICON('pencil')}</button>`;
     } else if (container) {
       container.innerHTML = `
         <div class="tp-log-row">
           <span class="tp-result-pill ${rc}">${icon} ${total}</span>
-          <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${gameId}, ${total})" title="Editar resultado">✏</button>
+          <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${gameId}, ${total})" title="Editar resultado">${ICON('pencil')}</button>
         </div>`;
     }
     const row = btn.closest('tr');
@@ -1577,7 +1671,7 @@ async function submitTodaysPick(btn) {
     const rc  = res === 'W' ? 'win' : res === 'L' ? 'loss' : 'push';
     const rl  = res === 'W' ? 'WIN'  : res === 'L' ? 'LOSS'  : 'PUSH';
 
-    const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    const icon = ICON.result(res);
     const pill = `<span class="tp-result-pill ${rc}">${icon} ${actualKs}K</span>`;
 
     const resultEl = document.getElementById(`tp-result-${safeId}`);
@@ -1719,7 +1813,7 @@ async function cancelPick(btn, ev) {
   } catch (e) {
     console.error(e);
     btn.disabled = false;
-    btn.textContent = '↺';
+    btn.innerHTML = ICON('refresh');
     btn.style.borderColor = 'var(--red)';
   }
 }
@@ -1835,7 +1929,7 @@ async function submitResult(btn) {
     });
     const res = result.result || '';
     const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : res === 'P' ? 'push' : 'pending';
-    const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+    const icon = ICON.result(res);
     row.querySelectorAll('td')[9].innerHTML =
       `<span class="tp-result-pill ${rc}">${icon} ${actualKs}K</span>`;
     const label = res === 'W' ? 'WIN' : res === 'L' ? 'LOSS' : res === 'P' ? 'PUSH' : '?';
@@ -1909,7 +2003,7 @@ function editTrackerResult(btn) {
              data-pitcher="${pitcherName}" data-date="${date}">
       <button class="tp-log-btn" onclick="saveTrackerEdit(this)">SAVE</button>
       <button class="tp-log-btn" style="background:var(--bg3);color:var(--text-muted)"
-              onclick="loadTracker()">✕</button>
+              onclick="loadTracker()">${ICON('xmark')}</button>
     </div>`;
   host.querySelector('input').focus();
 }
@@ -1952,11 +2046,11 @@ function _applyPickToRow(row, pick) {
   const rec   = pick.recommendation || 'SKIP';
 
   // col 2 – K LINE
-  cells[2].innerHTML = `<div class="pp-kline-set"><strong class="pp-kline-val">${num(pick.k_line, 1)}</strong><button class="pp-kline-edit-btn" onclick="editKLine(this)" title="Cambiar línea">✎</button></div>`;
+  cells[2].innerHTML = `<div class="pp-kline-set"><strong class="pp-kline-val">${num(pick.k_line, 1)}</strong><button class="pp-kline-edit-btn" onclick="editKLine(this)" title="Cambiar línea">${ICON('pencil')}</button></div>`;
 
   // col 3 – MODEL
   const dirClass = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : 'skip';
-  const dirArrow = rec === 'OVER' ? '↑' : rec === 'UNDER' ? '↓' : '';
+  const dirArrow = rec === 'OVER' ? ICON('arrowUp') : rec === 'UNDER' ? ICON('arrowDown') : '';
   const dirLabel = rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : '';
   cells[3].innerHTML = pick.model_proj != null
     ? `<div class="pp-model-cell">
@@ -2043,13 +2137,13 @@ async function triggerRetrain() {
   const text = document.getElementById('retrain-status-text');
 
   btn.disabled    = true;
-  btn.textContent = '↻ Iniciando…';
+  btn.innerHTML = ICON('refresh') + ' Iniciando…';
 
   try {
     await apiPost('/api/model/retrain', {});
     text.textContent = 'Pipeline corriendo — puede tardar 10-30 min';
     text.style.color = '#f59e0b';
-    btn.textContent  = '↻ Corriendo…';
+    btn.innerHTML  = ICON('refresh') + ' Corriendo…';
     _showToast('Reentrenamiento iniciado. El modelo se actualizará automáticamente.', 'info');
     const poll = setInterval(async () => {
       try {
@@ -2060,12 +2154,12 @@ async function triggerRetrain() {
           if (s.error) {
             text.textContent = 'Error: ' + s.error.slice(0, 80);
             text.style.color = 'var(--red-light)';
-            btn.textContent  = '↻ Reentrenar modelo';
+            btn.innerHTML  = ICON('refresh') + ' Reentrenar modelo';
             _showToast('Error en reentrenamiento: ' + s.error.slice(0, 60), 'error');
           } else {
             text.textContent = 'Modelo actualizado ' + (s.last || '');
             text.style.color = '#22c55e';
-            btn.textContent  = '↻ Reentrenar modelo';
+            btn.innerHTML  = ICON('refresh') + ' Reentrenar modelo';
             _showToast('Modelo reentrenado exitosamente.', 'success');
           }
         }
@@ -2073,7 +2167,7 @@ async function triggerRetrain() {
     }, 15000);
   } catch (e) {
     btn.disabled    = false;
-    btn.textContent = '↻ Reentrenar modelo';
+    btn.innerHTML = ICON('refresh') + ' Reentrenar modelo';
     _showToast('Error: ' + e.message, 'error');
   }
 }
@@ -2247,7 +2341,7 @@ function _trkKPropCard(p) {
 
   if (settled) {
     const rc   = p.result === 'W' ? 'win' : p.result === 'L' ? 'loss' : 'push';
-    const icon = p.result === 'W' ? '✓' : p.result === 'L' ? '✕' : '·';
+    const icon = ICON.result(p.result);
     const pnlCls = p.pnl_pesos != null ? (p.pnl_pesos > 0 ? 'ok' : p.pnl_pesos < 0 ? 'loss' : '') : 'dim';
     const pnlStr = p.pnl_pesos != null ? (p.pnl_pesos >= 0 ? '+' : '') + money(p.pnl_pesos) : '—';
     resultHtml = `
@@ -2255,7 +2349,7 @@ function _trkKPropCard(p) {
         <span class="result-pill ${rc}">${icon} ${p.actual_ks}K</span>
         <button class="tracker-edit-btn" title="Corregir"
                 data-pitcher="${name}" data-date="${p.date}" data-ks="${p.actual_ks}"
-                onclick="editTrackerResult(this)">✎</button>
+                onclick="editTrackerResult(this)">${ICON('pencil')}</button>
       </div>`;
     payoutHtml = `<span class="bet-payout ${pnlCls}">${pnlStr}</span>`;
   } else {
@@ -2302,13 +2396,13 @@ function _trkOUCard(p) {
   let resultHtml, payoutHtml;
   if (settled) {
     const rc   = p.result === 'W' ? 'win' : p.result === 'L' ? 'loss' : 'push';
-    const icon = p.result === 'W' ? '✓' : p.result === 'L' ? '✕' : '·';
+    const icon = ICON.result(p.result);
     const pnlCls = p.pnl_pesos != null ? (p.pnl_pesos > 0 ? 'ok' : p.pnl_pesos < 0 ? 'loss' : '') : 'dim';
     const pnlStr = p.pnl_pesos != null ? (p.pnl_pesos >= 0 ? '+' : '') + money(p.pnl_pesos) : '—';
     resultHtml = `
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <span class="result-pill ${rc}">${icon} ${p.actual_total}</span>
-        <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${p.game_id}, ${p.actual_total})" title="Editar">✏</button>
+        <button class="tp-edit-result-btn" onclick="editMatchupResult(this, ${p.game_id}, ${p.actual_total})" title="Editar">${ICON('pencil')}</button>
       </div>`;
     payoutHtml = `<span class="bet-payout ${pnlCls}">${pnlStr}</span>`;
   } else {
@@ -2625,7 +2719,7 @@ async function autoGenerateTodayPicks() {
       const overs  = (data.generated || []).filter(g => g.rec === 'OVER').length;
       const unders = (data.generated || []).filter(g => g.rec === 'UNDER').length;
       const skips  = (data.generated || []).filter(g => g.rec === 'SKIP').length;
-      summary = `<b>✓ ${ng} picks generados</b> (${overs} OVER · ${unders} UNDER · ${skips} SKIP)`;
+      summary = `<b>${ICON('checkmark')} ${ng} picks generados</b> (${overs} OVER · ${unders} UNDER · ${skips} SKIP)`;
       if (ns > 0) summary += ` · ${ns} salteados`;
     }
 
@@ -3152,7 +3246,7 @@ function _cubeMarketRow(pick) {
     // State 1: user has manually entered their cuota
     userBestChip = `
       <span class="cube-mk-chip cube-mk-best" title="Tu cuota cargada">
-        <span class="cube-mk-lbl">★ Tuya</span>
+        <span class="cube-mk-lbl">${ICON('starFill')} Tuya</span>
         <span class="cube-mk-val">${userCasino}</span>
         <span class="cube-mk-odds">${num(userOdds, 2)}</span>
       </span>`;
@@ -3163,7 +3257,7 @@ function _cubeMarketRow(pick) {
       const missedPct = ((marketOdds - userOdds) / userOdds * 100).toFixed(1);
       marketBestChip = `
         <span class="cube-mk-chip cube-mk-market" title="Mejor cuota en TODO el mercado · estás dejando ${missedPct}% en la mesa">
-          <span class="cube-mk-lbl">↗ Mkt</span>
+          <span class="cube-mk-lbl">${ICON('arrowUpRight')} Mkt</span>
           <span class="cube-mk-val">${marketBest}</span>
           <span class="cube-mk-odds">${num(marketOdds, 2)}</span>
         </span>`;
@@ -3173,11 +3267,11 @@ function _cubeMarketRow(pick) {
     userBestChip = `
       <span class="cube-mk-chip cube-mk-nobook" title="Cargá la cuota que viste en bet365/Betano abajo. La app valida con simulación.">
         <span class="cube-mk-lbl">⏳ Cargá</span>
-        <span class="cube-mk-val">tu cuota ↓</span>
+        <span class="cube-mk-val">tu cuota ${ICON('arrowDown')}</span>
       </span>`;
     marketBestChip = `
       <span class="cube-mk-chip cube-mk-market" title="Cuota óptima del mercado global — referencia para comparar">
-        <span class="cube-mk-lbl">↗ Óptima</span>
+        <span class="cube-mk-lbl">${ICON('arrowUpRight')} Óptima</span>
         <span class="cube-mk-val">${marketBest}</span>
         <span class="cube-mk-odds">${num(marketOdds, 2)}</span>
       </span>`;
@@ -3324,10 +3418,10 @@ function _renderValidationPanel(hostEl, data) {
 
   // Verdict styling
   const verdictCfg = {
-    'STRONG_BET': { cls: 'cvp-strong', icon: '✅', label: 'APOSTÁ FUERTE' },
-    'BET':        { cls: 'cvp-good',   icon: '✅', label: 'APOSTABLE' },
-    'MARGINAL':   { cls: 'cvp-marg',   icon: '🟡', label: 'MARGINAL' },
-    'NO':         { cls: 'cvp-no',     icon: '❌', label: 'NO APOSTAR' },
+    'STRONG_BET': { cls: 'cvp-strong', icon: ICON('checkCircle'), label: 'APOSTÁ FUERTE' },
+    'BET':        { cls: 'cvp-good',   icon: ICON('checkCircle'), label: 'APOSTABLE' },
+    'MARGINAL':   { cls: 'cvp-marg',   icon: ICON('minusCircle'), label: 'MARGINAL' },
+    'NO':         { cls: 'cvp-no',     icon: ICON('xCircle'), label: 'NO APOSTAR' },
   }[verdict] || { cls: 'cvp-marg', icon: '·', label: verdict || '—' };
 
   const moneyFmt = (v) => v == null ? '—' : money(v, true);
@@ -3507,7 +3601,7 @@ function _cubePnlRow(pnlPesos, result) {
 // Settled-result pill shared by both action rows.
 function _cubeResultPill(actualKs, result) {
   const rc   = result === 'W' ? 'win' : result === 'L' ? 'loss' : 'push';
-  const icon = result === 'W' ? '✓'   : result === 'L' ? '✕'    : '·';
+  const icon = ICON.result(result);
   return `<span class="tp-result-pill ${rc}">${icon} ${actualKs}K</span>`;
 }
 
@@ -3528,7 +3622,7 @@ function _buildCubeCard(p, pick) {
     ? `<img src="cherry.png" class="cube-cherry" alt="${rec}" title="${rec}">`
     : '';
   const dirBadge = isHot
-    ? `<span class="cube-dir-badge">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span>`
+    ? `<span class="cube-dir-badge">${rec === 'OVER' ? ICON('triUp') : ICON('triDown')} ${rec}</span>`
     : '';
 
   // K-LINE cell — either a settled value or an entry form
@@ -3537,7 +3631,7 @@ function _buildCubeCard(p, pick) {
          <div class="cube-cell-label">Línea de Ponches</div>
          <div class="cube-cell-val">
            ${num(pick.k_line, 1)}
-           <button class="cube-cell-edit" onclick="editCubeKLine(this)" title="Cambiar línea">✎</button>
+           <button class="cube-cell-edit" onclick="editCubeKLine(this)" title="Cambiar línea">${ICON('pencil')}</button>
          </div>
        </div>`
     : `<div class="cube-cell cube-kline-cell">
@@ -3582,7 +3676,7 @@ function _buildCubeCard(p, pick) {
     <div class="cube-casino">
       <span class="cube-casino-label">Mejor cuota</span>
       <span class="cube-casino-name" id="cube-casino-${safeId}">${casinoStr || '—'}</span>
-      <button class="cube-casino-edit" onclick="editCubeCasino(this)" title="Editar casino">✎</button>
+      <button class="cube-casino-edit" onclick="editCubeCasino(this)" title="Editar casino">${ICON('pencil')}</button>
     </div>`;
 
   const marketRow      = pick ? _cubeMarketRow(pick)      : '';
@@ -3836,7 +3930,7 @@ async function submitCubeResult(btn) {
     const row = document.getElementById(`prop-row-${card.dataset.safeid}`);
     if (row) {
       const rc   = res === 'W' ? 'win' : res === 'L' ? 'loss' : res === 'P' ? 'push' : 'pending';
-      const icon = res === 'W' ? '✓' : res === 'L' ? '✕' : '·';
+      const icon = ICON.result(res);
       const cells = row.querySelectorAll('td');
       if (cells[9]) cells[9].innerHTML = `<span class="tp-result-pill ${rc}">${icon} ${actual}K</span>`;
     }
@@ -3916,7 +4010,7 @@ function _buildTpCubeCard(pick) {
 
   return `
     <div class="cube-card cube--${rec.toLowerCase()}" id="tpcube-${safeId}" data-pitcher="${name}" data-safeid="${safeId}">
-      <span class="cube-dir-badge">${rec === 'OVER' ? '▲' : '▼'} ${rec}</span>
+      <span class="cube-dir-badge">${rec === 'OVER' ? ICON('triUp') : ICON('triDown')} ${rec}</span>
       ${confLabel ? `<span class="cube-conf-chip">${confLabel}</span>` : ''}
       <div class="cube-avatar-wrap">
         <img src="cherry.png" class="cube-cherry" alt="${rec}">
@@ -4019,7 +4113,7 @@ function renderCasinoDepositSummary(picks) {
       const dir = p.recommendation === 'OVER' ? '▲' : '▼';
       const odds = p.odds_decimal != null ? num(p.odds_decimal, 2) : '—';
       return `<span class="cdc-pick-chip" title="${p.pitcher_name} · ${dir} ${num(p.k_line, 1)} · ${odds}">
-        ${dir} ${p.pitcher_name.split(' ').pop()} <span class="cdc-pick-stake">${money(p.stake_pesos)}</span>
+        ${p.recommendation === 'OVER' ? ICON('triUp') : ICON('triDown')} ${p.pitcher_name.split(' ').pop()} <span class="cdc-pick-stake">${money(p.stake_pesos)}</span>
       </span>`;
     }).join('');
     return `
@@ -4037,7 +4131,7 @@ function renderCasinoDepositSummary(picks) {
 
   if (unassignedN > 0) {
     footerEl.innerHTML = `
-      <span class="cdc-warn-icon">⚠</span>
+      <span class="cdc-warn-icon">${ICON('warn')}</span>
       ${unassignedN} pick${unassignedN > 1 ? 's' : ''} sin casino asignado.
       Cargá el casino con "Mejor cuota" en cada cubo para que sumen acá.
     `;
@@ -4155,7 +4249,7 @@ function toggleRetroForm() {
   if (!form) return;
   const isOpen = form.style.display !== 'none';
   form.style.display = isOpen ? 'none' : '';
-  if (btn) btn.textContent = isOpen ? '+ nuevo' : '× cerrar';
+  if (btn) btn.innerHTML = isOpen ? ICON('plus') + ' nuevo' : ICON('xmark') + ' cerrar';
 }
 
 async function submitRetroPick(ev) {
@@ -4218,7 +4312,7 @@ async function submitRetroPick(ev) {
    atributo data-sport (los que no lo llevan son MLB).
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SPORT_DEFAULT_SECTION = { mlb: 'pitcher-props', nba: 'altlines', futbol: 'futbol' };
+const SPORT_DEFAULT_SECTION = { mlb: 'pitcher-props', nba: 'nbadd', futbol: 'futbol' };
 
 function currentSport() {
   return document.body.dataset.sport || 'mlb';
@@ -4259,12 +4353,16 @@ function _applySport(sport) {
 }
 
 /**
- * La app "se convierte": un círculo del color de la app destino crece desde
- * la pestaña tocada hasta cubrir la pantalla, aparece su logo, se aplica el
- * cambio por detrás y el velo se funde revelando la página ya convertida.
- * Con prefers-reduced-motion es un fundido corto.
+ * Cambio de app estilo transmisión: tres franjas diagonales con los colores
+ * del deporte destino (la de adelante, oscura, lleva el logo) cruzan la pantalla, al centro aparece CherryPick con el
+ * nombre de la app, se aplica el cambio por detrás y las franjas salen por el
+ * otro lado. Con prefers-reduced-motion es un fundido corto.
  */
-const _PST_ICON = `<svg class="pst-mark" viewBox="0 0 48 48" aria-hidden="true"><g transform="rotate(28 24 26)"><path d="M24 25.5c-5-3.6-6.6-10.6-4.6-17 1.3-4.2 7.9-4.2 9.2 0 2 6.4.4 13.4-4.6 17z" fill="#9FCF5F"/><path d="M22 23.8c-3.4-3.7-4.4-9.6-2.6-14.9" stroke="#8C4E6C" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M25.8 9.2c1.1 2.7 1.3 6.1.6 9.2" stroke="#D6F0A9" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M24 45c-8.6 0-13.4-7.4-13.4-16.4 0-8.2 3.3-15.6 7.8-19.4 1 6.6 2.9 12.3 5.6 16.4z" fill="#EBD8AB"/><path d="M24 45c8.6 0 13.4-7.4 13.4-16.4 0-8.2-3.3-15.6-7.8-19.4-1 6.6-2.9 12.3-5.6 16.4z" fill="#D1B37A"/><path d="M18.4 9.2c1 6.6 2.9 12.3 5.6 16.4 2.7-4.1 4.6-9.8 5.6-16.4" stroke="#7B6038" stroke-width="1.1" stroke-linejoin="round" fill="none"/><path d="M24 25.6V45" stroke="#B4955A" stroke-width=".9"/><path d="M14.3 22.5c-.8 2.2-1.1 4.5-1.1 6.8 0 4.6 1.6 8.4 4.6 10.7" stroke="#F7EDD2" stroke-width="1.4" stroke-linecap="round" fill="none"/></g></svg>`;
+const _MORPH = {
+  mlb:    { c: ['#ff4d5e', '#b3192b', '#1a0509'], label: 'MLB', sub: 'Ponches' },
+  nba:    { c: ['#c8102e', '#1d428a', '#061230'], label: 'NBA', sub: 'Doble-doble' },
+  futbol: { c: ['#35c4ff', '#0d4d78', '#05101a'], label: 'Fútbol', sub: 'Remates' },
+};
 let _sportMorphing = false;
 
 async function _sportMorph(sport, origin, apply) {
@@ -4274,45 +4372,52 @@ async function _sportMorph(sport, origin, apply) {
   // un tope, y el cambio de deporte se aplica pase lo que pase.
   const settle = (anim, ms) => Promise.race([
     anim.finished.catch(() => {}), new Promise(res => setTimeout(res, ms))]);
+  const wait = (ms) => new Promise(res => setTimeout(res, ms));
   let applied = false;
   const doApply = () => { if (!applied) { applied = true; apply(); } };
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const M = _MORPH[sport] || _MORPH.mlb;
   const veil = document.createElement('div');
-  veil.className = `sport-morph sport-morph--${sport}`;
-  veil.innerHTML = sport === 'nba'
-    ? `<div class="sport-morph-logo">${_PST_ICON}<div>PICK<span>STACHIO</span></div></div>`
-    : sport === 'futbol'
-    ? `<div class="sport-morph-logo">${window.FB_BALL_ICON || ''}<div>RE<span>MATES</span></div></div>`
-    : `<div class="sport-morph-logo"><img src="cherries.png" alt=""><div>CHERRY<span>PICK</span></div></div>`;
+  veil.className = `sport-wipe sport-wipe--${sport}`;
+  veil.innerHTML = `
+    ${M.c.map((c, i) => `<i class="sw-band sw-band--${i}" style="background:${c}"></i>`).join('')}
+    <div class="sw-logo">
+      <img src="assets/cherry-logo.svg" alt="">
+      <div class="sw-word"><b>Cherry<em>Pick</em></b><span>${M.label}<i></i>${M.sub}</span></div>
+    </div>`;
   document.body.appendChild(veil);
-  const logo = veil.querySelector('.sport-morph-logo');
+  const bands = [...veil.querySelectorAll('.sw-band')];
+  const logo = veil.querySelector('.sw-logo');
   const main = document.querySelector('.app-main');
   _sportMorphing = true;
   try {
     if (reduced || !veil.animate || document.hidden) {
-      veil.style.opacity = '0';
+      veil.classList.add('is-flat');
       await settle(veil.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, fill: 'forwards' }), 400);
       doApply();
       await settle(veil.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }), 500);
       return;
     }
-    const r = origin ? origin.getBoundingClientRect() : { left: innerWidth / 2, top: 0, width: 0, height: 0 };
-    const x = r.left + r.width / 2, y = r.top + r.height / 2;
-    const R = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
-    const grow = veil.animate(
-      [{ clipPath: `circle(0px at ${x}px ${y}px)` }, { clipPath: `circle(${R}px at ${x}px ${y}px)` }],
-      { duration: 620, easing: 'cubic-bezier(.76,0,.24,1)', fill: 'forwards' });
-    logo.animate([{ opacity: 0, transform: 'scale(.92)', filter: 'blur(6px)' },
-                  { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' }],
-                 { duration: 520, delay: 280, easing: 'ease-out', fill: 'forwards' });
-    await settle(grow, 1100);
+    const ease = 'cubic-bezier(.77,0,.18,1)';
+    // Entran desde la izquierda, una detrás de otra (la del fondo primero)
+    const ins = bands.map((el, i) => el.animate(
+      [{ transform: 'translateX(-135%) skewX(-16deg)' }, { transform: 'translateX(0) skewX(-16deg)' }],
+      { duration: 560, delay: i * 70, easing: ease, fill: 'forwards' }));
+    logo.animate([{ opacity: 0, transform: 'translateX(-40px) scale(.94)' }, { opacity: 1, transform: 'none' }],
+                 { duration: 420, delay: 360, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' });
+    logo.querySelector('img').animate([{ transform: 'rotate(-25deg) scale(.6)' }, { transform: 'rotate(8deg) scale(1.08)' }, { transform: 'none' }],
+                 { duration: 620, delay: 360, easing: 'ease-out', fill: 'backwards' });
+    await settle(ins[ins.length - 1], 1100);
     doApply();
     if (main) { main.classList.remove('app-main-fadein'); void main.offsetWidth; main.classList.add('app-main-fadein'); }
-    await new Promise(res => setTimeout(res, 380));
-    logo.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.06)' }],
-                 { duration: 420, easing: 'ease-in', fill: 'forwards' });
-    await settle(veil.animate([{ opacity: 1 }, { opacity: 0 }],
-                              { duration: 520, delay: 120, easing: 'ease-out', fill: 'forwards' }), 1100);
+    await wait(300);
+    // Salen por la derecha, la del frente primero
+    logo.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(60px)' }],
+                 { duration: 320, easing: 'ease-in', fill: 'forwards' });
+    const outs = bands.slice().reverse().map((el, i) => el.animate(
+      [{ transform: 'translateX(0) skewX(-16deg)' }, { transform: 'translateX(135%) skewX(-16deg)' }],
+      { duration: 540, delay: 80 + i * 70, easing: ease, fill: 'forwards' }));
+    await settle(outs[outs.length - 1], 1200);
   } finally {
     doApply();
     veil.remove();
@@ -4458,12 +4563,12 @@ function _alDateNavHtml(compact) {
   return `
     <div class="rail-date ${compact ? 'rail-date--compact' : ''}">
       <button class="rail-arrow" title="Día anterior" aria-label="Día anterior" onclick="altLinesShiftDate(-1)">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        ${ICON('chevronLeft')}</button>
       <button class="rail-day js-rail-day" onclick="altLinesToday()" title="Volver a hoy">
         <span class="rail-dow">—</span><b class="rail-dnum">—</b><span class="rail-mon">—</span>
       </button>
       <button class="rail-arrow" title="Día siguiente" aria-label="Día siguiente" onclick="altLinesShiftDate(1)">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        ${ICON('chevronRight')}</button>
     </div>`;
 }
 
@@ -4481,11 +4586,7 @@ function _alSoundBtnHtml() {
   return `
     <button class="nba-sound js-sound" onclick="altLinesToggleSound()" aria-pressed="false"
             title="Sonido de la simulación">
-      <svg viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M3.5 7.5h3l4-3.5v12l-4-3.5h-3z" fill="currentColor"/>
-        <path class="nba-sound-on" d="M13.4 7.2a4 4 0 0 1 0 5.6M15.6 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <path class="nba-sound-off" d="m13.5 7.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
+      ${ICON('speaker')}
     </button>`;
 }
 
@@ -5545,7 +5646,7 @@ function _alModelTabs() {
    por su cuenta y volver a invocarlo dispararía una segunda carga. Aquí solo
    marcamos el deporte activo y ocultamos la navegación que no corresponde. */
 document.addEventListener('DOMContentLoaded', () => {
-  if (!document.body.dataset.sport) document.body.dataset.sport = 'mlb';
+  if (!document.body.dataset.sport) document.body.dataset.sport = 'futbol';   // ya no hay pestaña MLB
   const sport = document.body.dataset.sport;
   document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
     const s = item.dataset.sport || 'mlb';

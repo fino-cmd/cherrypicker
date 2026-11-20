@@ -1,0 +1,109 @@
+{
+  "_ayuda": "Casas de apuestas de la pestaña Fútbol. Para sumar o sacar una casa, cambiá 'enabled'. 'source' dice de dónde salen las cuotas: 'oddspapi' (cada casa cuesta 1 consulta del plan por actualización) o 'polymarket' (API pública, gratis). 'priority' 1 = se pide siempre; 2 = se saltea si el mes viene gastando de más. 'sub_promo' = ofrece la promo de suplente (Suplente+, Suplente de Oro…). Cobertura medida el 27/10/2026 en la nota de cada casa. 'nba' = se usa también en la pestaña NBA (doble-doble / triple-doble); cuenta aparte, 1 consulta por casa en cada 'Pedir cuotas' de NBA. 'net' = casa que se usa con odds-api.net (FUTBOL_ODDS=net en backend/.env): se junta la marca de todos sus países (bet365, bet365_es… → bet365) en una sola caja, prefiriendo la versión principal.",
+  "books": [
+    {
+      "id": "bet365.bet.ar",
+      "optic": true,
+      "name": "bet365",
+      "group": "local",
+      "enabled": true,
+      "source": "oddspapi",
+      "priority": 1,
+      "sub_promo": true,
+      "logo": "assets/books/bet365.png",
+      "note": "1X2 y totales en las 4 ligas; remates y al arco en LPF, Brasil, Italia y parte de la Premier",
+      "nba": true,
+      "net": true
+    },
+    {
+      "id": "betano",
+      "optic": true,
+      "name": "Betano",
+      "group": "local",
+      "enabled": true,
+      "source": "oddspapi",
+      "priority": 1,
+      "sub_promo": true,
+      "logo": "assets/books/betano.png",
+      "note": "OddsPapi no tiene Betano AR: es el feed general 'betano'. Remates (escalera) en Brasil, Premier e Italia; al arco no",
+      "nba": true,
+      "net": true
+    },
+    {
+      "id": "betsson",
+      "optic": true,
+      "logo": "assets/books/betsson.png",
+      "name": "Betsson",
+      "group": "local",
+      "enabled": true,
+      "source": "oddspapi",
+      "priority": 2,
+      "sub_promo": true,
+      "note": "Remates y al arco (más/menos) en Italia; al arco en Brasil",
+      "nba": true,
+      "net": true
+    },
+    {
+      "id": "stake",
+      "name": "Stake",
+      "group": "local",
+      "enabled": false,
+      "source": "oddspapi",
+      "priority": 2,
+      "sub_promo": false,
+      "note": "Stake.com. Remates y al arco en Brasil, Premier e Italia; LPF sólo 1X2 y totales",
+      "nba": false,
+      "note_nba": "NBA: doble-doble y triple-doble (pocos jugadores, aparecen cerca del inicio)"
+    },
+    {
+      "id": "1xbet",
+      "optic": true,
+      "logo": "assets/books/1xbet.png",
+      "name": "1xBet",
+      "group": "offshore",
+      "enabled": true,
+      "source": "oddspapi",
+      "priority": 2,
+      "sub_promo": false,
+      "note": "Remates y al arco en Premier, Brasil e Italia",
+      "nba": true,
+      "note_nba": "NBA: doble-doble y triple-doble"
+    },
+    {
+      "id": "polymarket",
+      "name": "Polymarket",
+      "group": "offshore",
+      "enabled": true,
+      "source": "polymarket",
+      "priority": 1,
+      "sub_promo": false,
+      "note": "Gratis. Remates y al arco en Brasil, Premier e Italia, abren ~20-50 min antes del partido. Precio = 1 / mejor oferta de compra",
+      "nba": false,
+      "note_nba": "NBA: Polymarket no publica doble-doble (0 mercados, medido 27/10/2026)"
+    },
+    {
+      "id": "betwar",
+      "name": "BetWarrior",
+      "group": "local",
+      "enabled": false,
+      "source": "oddspapi",
+      "priority": 2,
+      "sub_promo": false,
+      "note": "En OddsPapi figura como 'BetWar'. Sólo 1X2 y totales (sin props de remates): apagada para no gastar consultas",
+      "nba": false,
+      "note_nba": "NBA: sin doble-doble en OddsPapi"
+    },
+    {
+      "id": "codere.es",
+      "name": "Codere",
+      "group": "local",
+      "enabled": false,
+      "source": "oddspapi",
+      "priority": 2,
+      "sub_promo": false,
+      "note": "Codere ES (mismas cuotas en todos los países). Sólo 1X2 y totales: apagada para no gastar consultas",
+      "nba": false,
+      "note_nba": "NBA: sin doble-doble en OddsPapi"
+    }
+  ]
+}

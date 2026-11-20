@@ -1,8 +1,8 @@
 {
-  "A": 0.480835,
-  "B": -0.195774,
-  "fitted_at": "2026-04-28T21:25:09Z",
-  "n_samples": 193,
-  "brier_before": 0.2501,
-  "brier_after": 0.2348
+  "A": 0.395121,
+  "B": -0.147528,
+  "fitted_at": "2026-11-16T06:01:35Z",
+  "n_samples": 204,
+  "brier_before": 0.2581,
+  "brier_after": 0.2394
 }

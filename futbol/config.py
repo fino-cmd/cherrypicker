@@ -90,8 +90,14 @@ ODDS_REFRESH_DAY_CAP = 3       # como mucho 3 actualizaciones por día
 def odds_api() -> str:
     """De dónde salen las cuotas: 'direct' (api.oddspapi.io v4, ODDSPAPI_KEY)
     o 'rapid' (OddsPapi por RapidAPI v5, RAPIDAPI_KEY). Se elige con ODDS_API
-    en backend/.env; sin nada, RapidAPI."""
-    return (os.getenv("ODDS_API") or "rapid").strip().lower()
+    en backend/.env; sin nada, la que tenga clave (ODDSPAPI_KEY → directa,
+    si no RapidAPI)."""
+    v = (os.getenv("ODDS_API") or "").strip().lower()
+    if v in ("direct", "rapid"):
+        return v
+    if (os.getenv("ODDSPAPI_KEY") or "").strip() and not (os.getenv("RAPIDAPI_KEY") or "").strip():
+        return "direct"
+    return "rapid"
 
 
 def futbol_odds() -> str:

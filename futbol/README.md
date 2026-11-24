@@ -11,7 +11,7 @@ pronostica resultados: pronostica **cuánto se remata y quién remata**.
 | Alineación confirmada (~1 h antes) | ESPN | gratis |
 | Cuotas de remates por jugador | OddsPapi: **bet365 AR**, **Betano**, **Betsson** | 1 consulta por casa por refresco (plan gratis: 250/mes) |
 
-La clave de OddsPapi va en `backend/.env` como `ODDSPAPI_KEY` (fuera de git).
+La clave de OddsPapi va en `backend/.env` como `ODDSPAPI_KEY` (fuera de git). Con sólo esa clave la app usa la API directa (api.oddspapi.io); para RapidAPI, `RAPIDAPI_KEY` u `ODDS_API=rapid`.
 
 Cobertura de cuotas (octubre 2026):
 
